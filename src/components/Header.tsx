@@ -77,8 +77,8 @@ export function Header() {
               </Button>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={() => navigate('/login')} className="text-gray-500">
+                          <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => navigate('/login')} className="text-gray-500 hover:bg-transparent hover:text-gray-700 active:bg-transparent focus:bg-transparent">
                 Student Login
               </Button>
               <Button 
@@ -148,3 +148,4 @@ export function Header() {
     </header>
   );
 }
+
