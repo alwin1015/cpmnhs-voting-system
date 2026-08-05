@@ -182,6 +182,17 @@ export default function RegistrationsPage() {
                                 <CheckCircle className="h-4 w-4 mr-1.5" />
                                 Approve
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  await resetVoter(voter.id);
+                                  toast({ title: 'Account Reset', description: 'Student record deleted. They can now register again.' });
+                                }}
+                                className="text-orange-600 hover:text-orange-800 border-orange-200 hover:bg-orange-50"
+                              >
+                                Reset Account
+                              </Button>
                               {deleteConfirm === voter.id ? (
                                 <div className="flex items-center gap-1">
                                   <Button
@@ -233,3 +244,4 @@ export default function RegistrationsPage() {
     </div>
   );
 }
+

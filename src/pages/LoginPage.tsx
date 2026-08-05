@@ -1,3 +1,5 @@
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
@@ -13,6 +15,8 @@ import { Eye, EyeOff, LogIn, User, Lock, UserPlus, BookOpen, GraduationCap, File
 
 export default function LoginPage() {
   const [isRegisterMode, setIsRegisterMode] = useState(false);
+  const [showForgotDialog, setShowForgotDialog] = useState(false);
+  const [forgotLrn, setForgotLrn] = useState('');
 
   // Login state
   const [lrn, setLrn] = useState('');
@@ -31,9 +35,23 @@ export default function LoginPage() {
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
 
-  const { login, register, sections } = useVoting();
+  const { login, register, sections, requestPasswordReset } = useVoting();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const handleForgotSubmit = async () => {
+    if (!forgotLrn) return;
+    setIsLoading(true);
+    const { success, message } = await requestPasswordReset(forgotLrn);
+    setIsLoading(false);
+    setShowForgotDialog(false);
+    toast({
+      title: success ? "Request Sent" : "Request Failed",
+      description: success ? "Your account has been flagged for password reset. Please inform an admin to approve it." : message,
+      variant: success ? "default" : "destructive",
+    });
+    setForgotLrn('');
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -311,6 +329,7 @@ export default function LoginPage() {
                           )}
                         </button>
                       </div>
+                      <p className="text-xs text-muted-foreground mt-1">Recommended: At least 8 characters with a mix of letters and numbers.</p>
                     </div>
 
                     <div className="space-y-2">
@@ -361,6 +380,7 @@ export default function LoginPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="password">Password</Label>
+                      <button type="button" onClick={() => setShowForgotDialog(true)} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Forgot Password?</button>
                     </div>
                     <div className="relative">
                       <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -421,6 +441,34 @@ export default function LoginPage() {
       </main>
 
       <Footer />
+
+      <AlertDialog open={showForgotDialog} onOpenChange={setShowForgotDialog}>
+        <AlertDialogContent className="bg-white max-w-sm rounded-2xl border-0 overflow-hidden">
+          <AlertDialogHeader className="bg-slate-50 p-6 pb-4 border-b border-slate-100">
+            <AlertDialogTitle className="text-xl font-display text-slate-800">Reset Password</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-500 mt-2">
+              Enter your LRN to request a password reset. An admin will need to approve this request before you can register again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="p-6">
+            <Label htmlFor="forgot-lrn">Your LRN</Label>
+            <Input 
+              id="forgot-lrn" 
+              value={forgotLrn} 
+              onChange={(e) => setForgotLrn(e.target.value)} 
+              className="mt-2"
+              placeholder="Enter LRN..."
+            />
+          </div>
+          <AlertDialogFooter className="p-6 pt-0 bg-white">
+            <AlertDialogCancel className="rounded-xl border-slate-200">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleForgotSubmit} className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white">Submit Request</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+
+
+

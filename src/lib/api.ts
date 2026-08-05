@@ -28,6 +28,12 @@ export const api = {
     return { success: true, user, hasVoted: voter.has_voted };
   },
 
+  requestPasswordReset: async (lrn: string) => {
+    const { error } = await supabase.from('voters').update({ status: 'pending' }).eq('lrn', lrn);
+    if (error) throw new Error(error.message);
+    return { success: true };
+  },
+
   adminLogin: async (username: string, password: string) => {
     const { data: admin, error } = await supabase.from('admins').select('*').eq('username', username).single();
     if (error || !admin) throw new Error('Invalid username or password');
@@ -126,6 +132,12 @@ export const api = {
   
   rejectVoter: async (id: string) => {
     const { error } = await supabase.from('voters').update({ status: 'rejected' }).eq('id', id);
+    if (error) throw new Error(error.message);
+    return { success: true };
+  },
+
+  resetVoter: async (id: string) => {
+    const { error } = await supabase.from('voters').delete().eq('id', id);
     if (error) throw new Error(error.message);
     return { success: true };
   },
@@ -262,4 +274,5 @@ export const api = {
     return { success: true };
   }
 };
+
 
