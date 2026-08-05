@@ -16,7 +16,6 @@ export default function RegistrationsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [resetConfirm, setResetConfirm] = useState<string | null>(null);
 
   const isAdmin = isLoggedIn && user?.role === 'admin';
   const pendingVoters = voters.filter(v => v.status === 'pending');
@@ -265,6 +264,7 @@ export default function RegistrationsPage() {
     </div>
   );
 }
+
 
 
 
