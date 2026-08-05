@@ -7,13 +7,13 @@ export const api = {
   // Auth
   login: async (lrn: string, password: string) => {
     const { data: voter, error } = await supabase.from('voters').select('*').eq('lrn', lrn).single();
-    if (error || !voter) throw new Error('Invalid LRN');
+    if (error || !voter) throw new Error('You input a wrong password or LRN');
     
     // Check password
     const isValid = await bcrypt.compare(password, voter.password_hash);
-    if (!isValid) throw new Error('Invalid password');
+    if (!isValid) throw new Error('You input a wrong password or LRN');
     
-    if (voter.status !== 'approved') throw new Error('Your registration is still pending approval.');
+    if (voter.status !== 'approved') throw new Error('Your account is still pending for approval');
     
     // Setup session
     const user = {
@@ -262,3 +262,4 @@ export const api = {
     return { success: true };
   }
 };
+
