@@ -150,7 +150,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
       <Header />
       
-      <main className="flex-1 flex items-center justify-center p-4 py-12 relative overflow-hidden">
+      <main className="flex-1 flex items-center justify-center p-4 py-12 relative overflow-x-hidden overflow-y-auto min-h-[min-content]">
         {/* Decorative background elements */}
         <div className="absolute top-0 right-0 w-96 h-96 bg-blue-200/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
         <div className="absolute bottom-0 left-0 w-80 h-80 bg-blue-100/30 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
