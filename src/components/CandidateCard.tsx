@@ -44,7 +44,7 @@ export function CandidateCard({
         <div className="flex flex-col items-center text-center">
           {/* Photo */}
           <div className={cn(
-            "relative w-32 h-32 rounded-full mb-3 flex items-center justify-center overflow-hidden transition-transform duration-500 group-hover:scale-105 shadow-md mx-auto",
+            "relative w-40 h-40 sm:w-44 sm:h-44 rounded-full mb-3 flex items-center justify-center overflow-hidden transition-transform duration-500 group-hover:scale-105 shadow-md mx-auto",
             isSelected ? "bg-indigo-100 ring-4 ring-indigo-500/20" : "bg-slate-100"
           )}>
             {candidate.photo ? (
@@ -72,8 +72,7 @@ export function CandidateCard({
           </h3>
 
           {/* Party */}
-          <Badge variant="secondary" className="mb-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 px-3 py-1 text-xs tracking-wider uppercase font-bold">
-            {candidate.party}
+          <Badge variant="secondary" className="mb-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 px-3 py-1 text-sm tracking-wider font-bold uppercase"> {candidate.party} Partylist
           </Badge>
 
           {/* Info */}
@@ -124,5 +123,7 @@ export function CandidateCard({
     </Card>
   );
 }
+
+
 
 
