@@ -17,10 +17,13 @@ export function Footer() {
             </div>
           </div>
           
-          <div className="text-center md:text-right">
+          <div className="text-center md:text-right flex flex-col items-center md:items-end gap-1">
             <p className="text-xs text-gray-400">
               © {new Date().getFullYear()} CPMNHS Voting Site. All rights reserved.
             </p>
+            <a href="/admin-login" className="text-[10px] text-gray-300 hover:text-gray-500 transition-colors">
+              Admin Access
+            </a>
           </div>
         </div>
       </div>
