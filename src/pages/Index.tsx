@@ -30,11 +30,7 @@ const Index = () => {
       title: 'Fair Elections',
       description: 'Every student gets one vote, ensuring a democratic and fair election process.',
     },
-    {
-      icon: BarChart3,
-      title: 'Real-time Results',
-      description: 'View live election results as votes are counted in real-time.',
-    },
+    
     {
       icon: Shield,
       title: 'Verified Voters',
@@ -137,7 +133,7 @@ const Index = () => {
               </p>
             </div>
 
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
               {features.map((feature, index) => (
                 <div
                   key={index}
@@ -191,4 +187,5 @@ const Index = () => {
 };
 
 export default Index;
+
 
