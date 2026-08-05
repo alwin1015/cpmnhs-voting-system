@@ -313,7 +313,6 @@ export default function VotingPage() {
               <Button
                 size="lg"
                 onClick={() => setShowConfirmDialog(true)}
-                disabled={!allPositionsVoted}
                 className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white shadow-lg hover:shadow-xl transition-all rounded-xl px-8 h-12 border-0"
               >
                 <Send className="h-4 w-4 mr-2" />
@@ -405,6 +404,7 @@ export default function VotingPage() {
     </div>
   );
 }
+
 
 
 
