@@ -48,13 +48,20 @@ const Index = () => {
 
       <main className="flex-1">
         {/* Hero Section */}
-        <section className="relative overflow-hidden">
+        <section className="relative overflow-hidden min-h-[100dvh] flex items-center">
           {/* Professional Blue Background */}
           <div className="absolute inset-0 bg-gradient-to-br from-blue-900 via-blue-800 to-blue-950" />
           {/* Subtle pattern overlay for texture */}
           <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:20px_20px]" />
 
-          <div className="relative container mx-auto px-4 py-12 md:py-16 lg:py-24">
+          {/* Admin Access at Top Right */}
+          <div className="absolute top-4 right-4 md:right-8 z-20">
+            <Button variant="ghost" size="sm" onClick={() => navigate('/admin-login')} className="text-white/70 hover:text-white hover:bg-white/10">
+              Admin Access
+            </Button>
+          </div>
+
+          <div className="relative container mx-auto px-4 py-12 md:py-16 lg:py-24 w-full">
             <div className="flex flex-col lg:flex-row-reverse items-center justify-between gap-10 lg:gap-16">
               {/* Content */}
               <div className="flex-1 text-center lg:text-left animate-slide-up order-2 lg:order-1">
