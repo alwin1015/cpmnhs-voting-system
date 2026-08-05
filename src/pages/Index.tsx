@@ -80,7 +80,7 @@ const Index = () => {
                   Exercise your right to vote and shape the future of our school community.
                 </p>
 
-                <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+                <div className="flex flex-col items-center sm:flex-row gap-4 justify-center lg:justify-start">
                   {isLoggedIn ? (
                     <Button
                       size="xl"
@@ -191,3 +191,4 @@ const Index = () => {
 };
 
 export default Index;
+
