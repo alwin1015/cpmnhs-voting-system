@@ -225,7 +225,7 @@ export default function VotingPage() {
         <div className="container mx-auto px-4">
           {/* Progress */}
           <div className="mb-10 max-w-2xl mx-auto">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex flex-col items-center justify-center mb-4 gap-2 text-center">
               <span className="text-sm font-semibold tracking-wider text-indigo-600 uppercase">
                 Position {currentPositionIndex + 1} of {votablePositions.length}
               </span>
@@ -405,6 +405,7 @@ export default function VotingPage() {
     </div>
   );
 }
+
 
 
 
