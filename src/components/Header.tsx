@@ -27,7 +27,7 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full">
-      <div className="container mx-auto flex h-12 md:h-16 items-center justify-between px-4">
+      <div className="container mx-auto flex h-10 md:h-12 items-center justify-between px-4">
         <Link to="/" className="flex items-center gap-3">
           <div className="hidden sm:block">
             <h1 className="text-sm font-bold text-gray-900 leading-tight">CPMNHS</h1>
@@ -44,7 +44,7 @@ export function Header() {
 
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-6">
-          {!centerTitle && (
+          {!centerTitle && location.pathname !== '/vote' && (
             <>
               <Link to="/" className="text-sm font-medium text-gray-500 hover:text-blue-600 transition-colors">
                 Home
@@ -106,12 +106,16 @@ export function Header() {
       {mobileMenuOpen && (
         <div className="md:hidden border-t border-gray-100 bg-white animate-fade-in">
           <nav className="container mx-auto px-4 py-4 flex flex-col gap-3">
-            <Link to="/" className="text-sm font-medium py-2 text-gray-700" onClick={() => setMobileMenuOpen(false)}>
-              Home
-            </Link>
-            <Link to="/candidates" className="text-sm font-medium py-2 text-gray-700" onClick={() => setMobileMenuOpen(false)}>
-              Candidates
-            </Link>
+            {location.pathname !== '/vote' && (
+              <>
+                <Link to="/" className="text-sm font-medium py-2 text-gray-700" onClick={() => setMobileMenuOpen(false)}>
+                  Home
+                </Link>
+                <Link to="/candidates" className="text-sm font-medium py-2 text-gray-700" onClick={() => setMobileMenuOpen(false)}>
+                  Candidates
+                </Link>
+              </>
+            )}
             {isLoggedIn && user?.role === 'admin' && (
               <Link to="/results" className="text-sm font-medium py-2 text-gray-700" onClick={() => setMobileMenuOpen(false)}>
                 Results
@@ -148,4 +152,6 @@ export function Header() {
     </header>
   );
 }
+
+
 
