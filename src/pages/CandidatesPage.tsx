@@ -113,7 +113,7 @@ export default function CandidatesPage() {
       addCandidate({
         name: form.name,
         position: form.position,
-        party: form.party,
+        party: formattedParty,
         gradeLevel: form.gradeLevel,
         section: form.section,
         motto: form.motto,
@@ -516,5 +516,7 @@ export default function CandidatesPage() {
     </div>
   );
 }
+
+
 
 

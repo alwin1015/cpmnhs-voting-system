@@ -72,7 +72,7 @@ export function CandidateCard({
           </h3>
 
           {/* Party */}
-          <Badge variant="secondary" className="mb-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 px-3 py-1 text-sm tracking-wider font-bold uppercase"> {candidate.party} Partylist
+          <Badge variant="secondary" className="mb-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 px-3 py-1 text-sm tracking-wider font-bold uppercase"> {candidate.party}
           </Badge>
 
           {/* Info */}
@@ -123,6 +123,7 @@ export function CandidateCard({
     </Card>
   );
 }
+
 
 
 
