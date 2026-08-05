@@ -182,8 +182,8 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
     if (!OFFLINE_MODE) {
       const channel = supabase
-        .channel('public:voters')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
+        .channel('public:all-tables')
+        .on('postgres_changes', { event: '*', schema: 'public' }, () => {
           refreshData();
         })
         .subscribe();
@@ -553,4 +553,5 @@ export function useVoting() {
   }
   return context;
 }
+
 
