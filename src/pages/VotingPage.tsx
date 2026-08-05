@@ -33,10 +33,7 @@ export default function VotingPage() {
       <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
                 {isLoggedIn && (
           <div className="absolute top-4 right-4 z-50">
-            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-700 bg-white/50 backdrop-blur-sm rounded-full px-4 border border-slate-200 shadow-sm">
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
+            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-800 hover:bg-transparent active:bg-transparent focus:bg-transparent">Logout</Button>
           </div>
         )}
         <main className="flex-1 flex items-center justify-center p-4">
@@ -64,10 +61,7 @@ export default function VotingPage() {
       <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
                 {isLoggedIn && (
           <div className="absolute top-4 right-4 z-50">
-            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-700 bg-white/50 backdrop-blur-sm rounded-full px-4 border border-slate-200 shadow-sm">
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
+            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-800 hover:bg-transparent active:bg-transparent focus:bg-transparent">Logout</Button>
           </div>
         )}
         <main className="flex-1 flex items-center justify-center p-4">
@@ -97,10 +91,7 @@ export default function VotingPage() {
       <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
                 {isLoggedIn && (
           <div className="absolute top-4 right-4 z-50">
-            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-700 bg-white/50 backdrop-blur-sm rounded-full px-4 border border-slate-200 shadow-sm">
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
+            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-800 hover:bg-transparent active:bg-transparent focus:bg-transparent">Logout</Button>
           </div>
         )}
         <main className="flex-1 flex items-center justify-center p-4">
@@ -137,10 +128,7 @@ export default function VotingPage() {
       <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
                 {isLoggedIn && (
           <div className="absolute top-4 right-4 z-50">
-            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-700 bg-white/50 backdrop-blur-sm rounded-full px-4 border border-slate-200 shadow-sm">
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
+            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-800 hover:bg-transparent active:bg-transparent focus:bg-transparent">Logout</Button>
           </div>
         )}
         <main className="flex-1 flex items-center justify-center p-4">
@@ -229,10 +217,7 @@ export default function VotingPage() {
       
               {isLoggedIn && (
           <div className="absolute top-4 right-4 z-50">
-            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-700 bg-white/50 backdrop-blur-sm rounded-full px-4 border border-slate-200 shadow-sm">
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
+            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-800 hover:bg-transparent active:bg-transparent focus:bg-transparent">Logout</Button>
           </div>
         )}
       
@@ -420,6 +405,8 @@ export default function VotingPage() {
     </div>
   );
 }
+
+
 
 
 
