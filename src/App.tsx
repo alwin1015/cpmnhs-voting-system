@@ -16,6 +16,8 @@ import VotersPage from "./pages/VotersPage";
 import SectionsPage from "./pages/SectionsPage";
 import PositionsPage from "./pages/PositionsPage";
 
+import { ErrorBoundary } from "./components/ErrorBoundary";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -24,7 +26,8 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <ErrorBoundary>
+          <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<LoginPage />} />
@@ -40,6 +43,7 @@ const App = () => (
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
+        </ErrorBoundary>
       </TooltipProvider>
     </VotingProvider>
   </QueryClientProvider>
