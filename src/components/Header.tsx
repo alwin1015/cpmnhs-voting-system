@@ -26,17 +26,12 @@ export function Header() {
   const centerTitle = getCenterTitle();
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-gray-100" style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(20px)' }}>
+    <header className="sticky top-0 z-50 w-full">
       <div className="container mx-auto flex h-12 md:h-16 items-center justify-between px-4">
         <Link to="/" className="flex items-center gap-3">
-          <img 
-            src={schoolLogo} 
-            alt="CPMNHS Logo" 
-            className="h-7 w-7 md:h-10 md:w-10 rounded-full object-cover shadow-sm border border-gray-100"
-          />
           <div className="hidden sm:block">
             <h1 className="text-sm font-bold text-gray-900 leading-tight">CPMNHS</h1>
-            <p className="text-xs text-gray-400">Voting Site</p>
+            <p className="text-xs text-gray-500">Voting Site</p>
           </div>
         </Link>
 
