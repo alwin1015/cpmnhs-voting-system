@@ -29,6 +29,9 @@ export const api = {
   },
 
   requestPasswordReset: async (lrn: string) => {
+    const { data: voter, error: searchError } = await supabase.from('voters').select('id').eq('lrn', lrn).single();
+    if (searchError || !voter) throw new Error('LRN not found in our records.');
+    
     const { error } = await supabase.from('voters').update({ status: 'pending' }).eq('lrn', lrn);
     if (error) throw new Error(error.message);
     return { success: true };
@@ -274,5 +277,6 @@ export const api = {
     return { success: true };
   }
 };
+
 
 

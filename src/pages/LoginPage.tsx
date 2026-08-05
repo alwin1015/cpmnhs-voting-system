@@ -40,7 +40,10 @@ export default function LoginPage() {
   const { toast } = useToast();
 
   const handleForgotSubmit = async () => {
-    if (!forgotLrn) return;
+    if (!forgotLrn) {
+      toast({ title: 'Error', description: 'Please enter your LRN.', variant: 'destructive' });
+      return;
+    }
     setIsLoading(true);
     const { success, message } = await requestPasswordReset(forgotLrn);
     setIsLoading(false);
@@ -469,6 +472,7 @@ export default function LoginPage() {
     </div>
   );
 }
+
 
 
 
