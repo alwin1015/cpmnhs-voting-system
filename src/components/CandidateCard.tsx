@@ -98,7 +98,7 @@ export function CandidateCard({
             <Button
               variant={isSelected ? "default" : "outline"}
               className={cn(
-                "mt-4 w-3/4 mx-auto rounded-xl h-10 transition-all duration-300",
+                "mt-4 w-1/2 mx-auto rounded-xl h-10 transition-all duration-300",
                 isSelected 
                   ? "bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-200" 
                   : "bg-white hover:bg-slate-50 border-slate-200 text-slate-700 group-hover:border-indigo-200 group-hover:text-indigo-600"
@@ -123,6 +123,8 @@ export function CandidateCard({
     </Card>
   );
 }
+
+
 
 
 
