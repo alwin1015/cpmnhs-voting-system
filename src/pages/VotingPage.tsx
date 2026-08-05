@@ -17,10 +17,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Vote, CheckCircle, ArrowRight, ArrowLeft, Send, Clock } from 'lucide-react';
+import { Vote, CheckCircle, ArrowRight, ArrowLeft, Send, Clock, LogOut } from 'lucide-react';
 
 export default function VotingPage() {
-  const { candidates, positions, votes, setVote, submitVotes, hasVoted, isLoggedIn, user, election } = useVoting();
+  const { candidates, positions, votes, setVote, submitVotes, hasVoted, isLoggedIn, user, election, logout } = useVoting();
   const [currentPositionIndex, setCurrentPositionIndex] = useState(0);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,7 +31,14 @@ export default function VotingPage() {
   if (!isLoggedIn || user?.role !== 'voter') {
     return (
       <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
-        <Header />
+                {isLoggedIn && (
+          <div className="absolute top-4 right-4 z-50">
+            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-700 bg-white/50 backdrop-blur-sm rounded-full px-4 border border-slate-200 shadow-sm">
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
+            </Button>
+          </div>
+        )}
         <main className="flex-1 flex items-center justify-center p-4">
           <Card className="glass-card max-w-md w-full text-center p-8">
             <CardContent className="pt-6">
@@ -55,7 +62,14 @@ export default function VotingPage() {
   if (election && !election.isActive) {
     return (
       <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
-        <Header />
+                {isLoggedIn && (
+          <div className="absolute top-4 right-4 z-50">
+            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-700 bg-white/50 backdrop-blur-sm rounded-full px-4 border border-slate-200 shadow-sm">
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
+            </Button>
+          </div>
+        )}
         <main className="flex-1 flex items-center justify-center p-4">
           <Card className="glass-card max-w-md w-full text-center p-8">
             <CardContent className="pt-6">
@@ -81,7 +95,14 @@ export default function VotingPage() {
   if (hasVoted) {
     return (
       <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
-        <Header />
+                {isLoggedIn && (
+          <div className="absolute top-4 right-4 z-50">
+            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-700 bg-white/50 backdrop-blur-sm rounded-full px-4 border border-slate-200 shadow-sm">
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
+            </Button>
+          </div>
+        )}
         <main className="flex-1 flex items-center justify-center p-4">
           <Card className="glass-card max-w-md w-full text-center p-8 animate-scale-in">
             <CardContent className="pt-6">
@@ -114,7 +135,14 @@ export default function VotingPage() {
   if (votablePositions.length === 0) {
     return (
       <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
-        <Header />
+                {isLoggedIn && (
+          <div className="absolute top-4 right-4 z-50">
+            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-700 bg-white/50 backdrop-blur-sm rounded-full px-4 border border-slate-200 shadow-sm">
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
+            </Button>
+          </div>
+        )}
         <main className="flex-1 flex items-center justify-center p-4">
           <Card className="glass-card max-w-md w-full text-center p-8">
             <CardContent className="pt-6">
@@ -199,7 +227,14 @@ export default function VotingPage() {
       <div className="absolute top-0 right-0 w-96 h-96 bg-blue-100 rounded-full mix-blend-multiply filter blur-3xl opacity-50 -z-10 translate-x-1/3 -translate-y-1/3"></div>
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-indigo-100 rounded-full mix-blend-multiply filter blur-3xl opacity-50 -z-10 -translate-x-1/3 translate-y-1/3"></div>
       
-      <Header />
+              {isLoggedIn && (
+          <div className="absolute top-4 right-4 z-50">
+            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-700 bg-white/50 backdrop-blur-sm rounded-full px-4 border border-slate-200 shadow-sm">
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
+            </Button>
+          </div>
+        )}
       
       <main className="flex-1 py-8">
         <div className="container mx-auto px-4">
@@ -385,3 +420,6 @@ export default function VotingPage() {
     </div>
   );
 }
+
+
+
