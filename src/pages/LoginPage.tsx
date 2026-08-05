@@ -1,5 +1,3 @@
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
@@ -36,23 +34,6 @@ export default function LoginPage() {
   const { login, register, sections } = useVoting();
   const navigate = useNavigate();
   const { toast } = useToast();
-
-  const handleForgotSubmit = async () => {
-    if (!forgotLrn) {
-      toast({ title: 'Error', description: 'Please enter your LRN.', variant: 'destructive' });
-      return;
-    }
-    setIsLoading(true);
-    const { success, message } = await requestPasswordReset(forgotLrn);
-    setIsLoading(false);
-    setShowForgotDialog(false);
-    toast({
-      title: success ? "Request Sent" : "Request Failed",
-      description: success ? "Your account has been flagged for password reset. Please inform an admin to approve it." : message,
-      variant: success ? "default" : "destructive",
-    });
-    setForgotLrn('');
-  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -447,6 +428,8 @@ export default function LoginPage() {
     </div>
   );
 }
+
+
 
 
 
