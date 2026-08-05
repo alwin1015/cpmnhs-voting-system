@@ -44,7 +44,7 @@ export function CandidateCard({
         <div className="flex flex-col items-center text-center">
           {/* Photo */}
           <div className={cn(
-            "relative w-24 h-24 sm:w-28 sm:h-28 rounded-full mb-3 flex items-center justify-center overflow-hidden transition-transform duration-500 group-hover:scale-105 shadow-md mx-auto",
+            "relative w-32 h-32 rounded-full mb-3 flex items-center justify-center overflow-hidden transition-transform duration-500 group-hover:scale-105 shadow-md mx-auto",
             isSelected ? "bg-indigo-100 ring-4 ring-indigo-500/20" : "bg-slate-100"
           )}>
             {candidate.photo ? (
@@ -124,4 +124,5 @@ export function CandidateCard({
     </Card>
   );
 }
+
 
