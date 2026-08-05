@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, Rea
 import { Candidate, Position, Voter, Section, Election, User } from '@/types/voting';
 import { api as onlineApi } from '@/lib/api';
 import { offlineApi } from '@/lib/offlineApi';
+import { supabase } from '@/lib/supabase';
 
 // ⚡ OFFLINE MODE TOGGLE
 // Set to true to use localStorage (no internet needed)
@@ -156,7 +157,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // On mount: check existing session and load data
+    // On mount: check existing session and load data
   useEffect(() => {
     const init = async () => {
       try {
@@ -173,11 +174,24 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           setHasVoted(Boolean(meData.has_voted ?? meData.hasVoted ?? false));
         }
       } catch {
-        // No active session – that's fine
+        // No active session � that's fine
       }
       await refreshData();
     };
     init();
+
+    if (!OFFLINE_MODE) {
+      const channel = supabase
+        .channel('public:voters')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
+          refreshData();
+        })
+        .subscribe();
+      
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
   }, [refreshData]);
 
   const login = useCallback(
@@ -539,3 +553,4 @@ export function useVoting() {
   }
   return context;
 }
+
