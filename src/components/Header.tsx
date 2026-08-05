@@ -27,12 +27,12 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-gray-100" style={{ background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(20px)' }}>
-      <div className="container mx-auto flex h-16 items-center justify-between px-4">
+      <div className="container mx-auto flex h-14 md:h-16 items-center justify-between px-4">
         <Link to="/" className="flex items-center gap-3">
           <img 
             src={schoolLogo} 
             alt="CPMNHS Logo" 
-            className="h-10 w-10 rounded-full object-cover shadow-sm border border-gray-100"
+            className="h-8 w-8 md:h-10 md:w-10 rounded-full object-cover shadow-sm border border-gray-100"
           />
           <div className="hidden sm:block">
             <h1 className="text-sm font-bold text-gray-900 leading-tight">CPMNHS</h1>
