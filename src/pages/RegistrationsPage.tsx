@@ -177,7 +177,7 @@ export default function RegistrationsPage() {
                             <div className="flex items-center justify-end gap-2">
                               <Button
                                 size="sm"
-                                onClick={() => approveVoter(voter.id)}
+                                onClick={async () => { const success = await approveVoter(voter.id); if (!success) toast({ title: 'Error', description: 'Failed to approve voter. Check console or database permissions.', variant: 'destructive' }); }}
                                 className="bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 border-0"
                               >
                                 <CheckCircle className="h-4 w-4 mr-1.5" />
@@ -218,7 +218,7 @@ export default function RegistrationsPage() {
                                 <div className="flex items-center gap-1">
                                   <Button
                                     size="sm"
-                                    onClick={() => handleReject(voter.id)}
+                                    onClick={async () => { await handleReject(voter.id); }}
                                     className="bg-red-500 hover:bg-red-600 text-white"
                                   >
                                     Confirm
@@ -265,5 +265,10 @@ export default function RegistrationsPage() {
     </div>
   );
 }
+
+
+
+
+
 
 
