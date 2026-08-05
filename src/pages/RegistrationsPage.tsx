@@ -182,37 +182,7 @@ export default function RegistrationsPage() {
                                 <CheckCircle className="h-4 w-4 mr-1.5" />
                                 Approve
                               </Button>
-                              {resetConfirm === voter.id ? (
-                                <div className="flex items-center gap-1">
-                                  <Button
-                                    size="sm"
-                                    onClick={async () => {
-                                      await resetVoter(voter.id);
-                                      setResetConfirm(null);
-                                      toast({ title: 'Account Reset', description: 'Student record deleted. They can now register again.' });
-                                    }}
-                                    className="bg-orange-500 hover:bg-orange-600 text-white"
-                                  >
-                                    Confirm
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    onClick={() => setResetConfirm(null)}
-                                    variant="outline"
-                                  >
-                                    No
-                                  </Button>
-                                </div>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => setResetConfirm(voter.id)}
-                                  className="text-orange-600 hover:text-orange-800 border-orange-200 hover:bg-orange-50"
-                                >
-                                  Reset Account
-                                </Button>
-                              )}
+                              
                               {deleteConfirm === voter.id ? (
                                 <div className="flex items-center gap-1">
                                   <Button
@@ -264,6 +234,8 @@ export default function RegistrationsPage() {
     </div>
   );
 }
+
+
 
 
 
