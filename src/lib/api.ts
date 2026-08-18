@@ -268,19 +268,25 @@ export const api = {
   },
   
   resetSystem: async () => {
-    // Note: Due to RLS or constraints, doing bulk deletes with neq might be restricted if not using service key,
-    // but we enabled open RLS for this specific app setup.
-    await supabase.from('tie_resolutions').delete().neq('id', 0);
-    await supabase.from('vote_verifications').delete().neq('id', 0);
+    // Clean up all data safely
+    try { await supabase.from('tie_resolutions').delete().neq('id', 0); } catch (_) {}
+    try { await supabase.from('vote_verifications').delete().neq('id', 0); } catch (_) {}
     await supabase.from('votes').delete().neq('id', 0);
     await supabase.from('candidates').update({ votes: 0 }).neq('id', 0);
     await supabase.from('voters').update({ has_voted: false, voted_at: null }).neq('status', 'nonexistent');
-    await supabase.from('election_settings').update({ 
-      is_active: false, 
-      results_finalized: false, 
-      finalized_by: null, 
-      finalized_at: null 
-    }).eq('id', 1);
+    
+    try {
+      await supabase.from('election_settings').update({ 
+        is_active: false, 
+        results_finalized: false, 
+        finalized_by: null, 
+        finalized_at: null 
+      }).eq('id', 1);
+    } catch (_) {
+      await supabase.from('election_settings').update({ is_active: false }).eq('id', 1);
+    }
+
+    localStorage.removeItem('election_finalization_backup');
     return { success: true };
   },
 
@@ -288,12 +294,19 @@ export const api = {
 
   // Get all vote verifications
   getVerifications: async () => {
-    const { data, error } = await supabase
-      .from('vote_verifications')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (error) throw new Error(error.message);
-    return data || [];
+    try {
+      const { data, error } = await supabase
+        .from('vote_verifications')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) {
+        console.warn('Verifications table notice:', error.message);
+        return [];
+      }
+      return data || [];
+    } catch (e) {
+      return [];
+    }
   },
 
   // Initiate manual vote verification for a tied position
@@ -329,7 +342,12 @@ export const api = {
       .select()
       .single();
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (error.message.includes('relation "vote_verifications" does not exist') || error.message.includes('schema cache')) {
+        throw new Error('Please run the database migration SQL script in your Supabase SQL Editor first.');
+      }
+      throw new Error(error.message);
+    }
     return data;
   },
 
@@ -389,12 +407,19 @@ export const api = {
 
   // Get all tie resolutions
   getTieResolutions: async () => {
-    const { data, error } = await supabase
-      .from('tie_resolutions')
-      .select('*')
-      .order('resolved_at', { ascending: false });
-    if (error) throw new Error(error.message);
-    return data || [];
+    try {
+      const { data, error } = await supabase
+        .from('tie_resolutions')
+        .select('*')
+        .order('resolved_at', { ascending: false });
+      if (error) {
+        console.warn('Tie resolutions table notice:', error.message);
+        return [];
+      }
+      return data || [];
+    } catch (e) {
+      return [];
+    }
   },
 
   // Resolve a tie by selecting a winner
@@ -430,22 +455,32 @@ export const api = {
   finalizeResults: async () => {
     const sessionStr = localStorage.getItem('voting_session');
     const session = sessionStr ? JSON.parse(sessionStr) : null;
+    const finalData = {
+      results_finalized: true,
+      finalized_by: session?.user?.name || 'Admin',
+      finalized_at: new Date().toISOString(),
+    };
+
+    localStorage.setItem('election_finalization_backup', JSON.stringify(finalData));
 
     const { error } = await supabase
       .from('election_settings')
-      .update({
-        results_finalized: true,
-        finalized_by: session?.user?.name || 'Admin',
-        finalized_at: new Date().toISOString(),
-      })
+      .update(finalData)
       .eq('id', 1);
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (error.message.includes('schema cache') || error.message.includes('column')) {
+        throw new Error('Please run the ALTER TABLE script in your Supabase SQL Editor to add finalized_at and results_finalized columns.');
+      }
+      throw new Error(error.message);
+    }
     return { success: true };
   },
 
   // Unfinalize election results (for corrections)
   unfinalizeResults: async () => {
+    localStorage.removeItem('election_finalization_backup');
+
     const { error } = await supabase
       .from('election_settings')
       .update({

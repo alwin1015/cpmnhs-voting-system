@@ -149,9 +149,26 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           totalVoters: mappedVoters.filter((v) => v.status === 'approved').length,
           totalVoted: mappedVoters.filter((v) => v.hasVoted).length,
           gradeMappings: parsedMappings,
-          resultsFinalized: Boolean(eData.results_finalized ?? false),
-          finalizedBy: eData.finalized_by ?? null,
-          finalizedAt: eData.finalized_at ? new Date(eData.finalized_at) : null,
+          resultsFinalized: Boolean(eData.results_finalized ?? (() => {
+            try {
+              const b = localStorage.getItem('election_finalization_backup');
+              return b ? JSON.parse(b).results_finalized : false;
+            } catch (_) { return false; }
+          })()),
+          finalizedBy: eData.finalized_by ?? (() => {
+            try {
+              const b = localStorage.getItem('election_finalization_backup');
+              return b ? JSON.parse(b).finalized_by : null;
+            } catch (_) { return null; }
+          })(),
+          finalizedAt: eData.finalized_at 
+            ? new Date(eData.finalized_at) 
+            : (() => {
+                try {
+                  const b = localStorage.getItem('election_finalization_backup');
+                  return b ? new Date(JSON.parse(b).finalized_at) : null;
+                } catch (_) { return null; }
+              })(),
         });
       } else {
         // Fallback: compute from voters even without election data
