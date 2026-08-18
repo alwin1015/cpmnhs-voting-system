@@ -320,12 +320,12 @@ export const api = {
   },
   
   resetSystem: async () => {
-    // Clean up all data safely
+    // Clean up all election and voter data safely
     try { await supabase.from('tie_resolutions').delete().neq('id', 0); } catch (_) {}
     try { await supabase.from('vote_verifications').delete().neq('id', 0); } catch (_) {}
-    await supabase.from('votes').delete().neq('id', 0);
-    await supabase.from('candidates').update({ votes: 0 }).neq('id', 0);
-    await supabase.from('voters').update({ has_voted: false, voted_at: null }).neq('status', 'nonexistent');
+    try { await supabase.from('votes').delete().neq('id', 0); } catch (_) {}
+    try { await supabase.from('candidates').update({ votes: 0 }).neq('id', 0); } catch (_) {}
+    try { await supabase.from('voters').delete().neq('id', 0); } catch (_) {}
     
     try {
       await supabase.from('election_settings').update({ 

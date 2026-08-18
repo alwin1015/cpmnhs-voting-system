@@ -290,11 +290,12 @@ export const offlineApi = {
     const candidates = getStore<any>(LS_KEYS.candidates);
     candidates.forEach((c: any) => c.votes = 0);
     setStore(LS_KEYS.candidates, candidates);
-    const voters = getStore<any>(LS_KEYS.voters);
-    voters.forEach((v: any) => { v.has_voted = false; v.voted_at = null; });
-    setStore(LS_KEYS.voters, voters);
+    setStore(LS_KEYS.voters, []);
     const election = JSON.parse(localStorage.getItem(LS_KEYS.election) || '{}');
     election.is_active = false;
+    election.results_finalized = false;
+    election.finalized_by = null;
+    election.finalized_at = null;
     setStore(LS_KEYS.election, election);
     return { success: true };
   },
