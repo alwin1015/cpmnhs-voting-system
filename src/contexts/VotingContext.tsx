@@ -37,8 +37,9 @@ interface VotingContextType {
   addCandidate: (candidate: Omit<Candidate, 'id' | 'votes'>) => void;
   updateCandidate: (id: string, candidate: Partial<Candidate>) => void;
   deleteCandidate: (id: string) => void;
-  addPosition: (position: Omit<Position, 'id'>) => void;
+  addPosition: (position: Omit<Position, 'id'>) => Promise<void>;
   deletePosition: (id: string) => void;
+  cleanupDuplicatePositions: () => Promise<{ success: boolean; count: number }>;
   addSection: (section: Omit<Section, 'id'>) => void;
   deleteSection: (id: string) => void;
   approveVoter: (id: string) => void;
@@ -90,18 +91,25 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         }))
       );
 
-      // Map positions
-      setPositions(
-        (Array.isArray(positionsData) ? positionsData : []).map((p: any) => {
-          return {
+      // Map positions with deduplication by name
+      const seenPositionNames = new Set<string>();
+      const uniquePositions: Position[] = [];
+
+      (Array.isArray(positionsData) ? positionsData : []).forEach((p: any) => {
+        const normalized = (p.name || '').trim().toLowerCase();
+        if (!seenPositionNames.has(normalized)) {
+          seenPositionNames.add(normalized);
+          uniquePositions.push({
             id: String(p.id),
             name: p.name,
             order: Number(p.display_order ?? p.order ?? 0),
             maxVotes: Number(p.max_votes ?? p.maxVotes ?? 1),
             strictGradeMapping: Boolean(p.strict_grade_mapping ?? p.strictGradeMapping ?? false),
-          };
-        })
-      );
+          });
+        }
+      });
+
+      setPositions(uniquePositions.sort((a, b) => a.order - b.order));
 
       // Map sections
       setSections(
@@ -478,17 +486,20 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   // Position CRUD
   const addPosition = useCallback(
-    (positionData: Omit<Position, 'id'>) => {
+    async (positionData: Omit<Position, 'id'>) => {
       const mapped = {
         name: positionData.name,
         display_order: positionData.order,
         max_votes: positionData.maxVotes,
         strict_grade_mapping: positionData.strictGradeMapping ? true : false,
       };
-      api
-        .addPosition(mapped)
-        .then(() => refreshData())
-        .catch((error) => console.error('Add position failed:', error));
+      try {
+        await api.addPosition(mapped);
+        await refreshData();
+      } catch (error) {
+        console.error('Add position failed:', error);
+        throw error;
+      }
     },
     [refreshData]
   );
@@ -502,6 +513,17 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     },
     [refreshData]
   );
+
+  const cleanupDuplicatePositions = useCallback(async () => {
+    try {
+      const result = await api.cleanupDuplicatePositions();
+      await refreshData();
+      return result;
+    } catch (error) {
+      console.error('Cleanup duplicate positions failed:', error);
+      throw error;
+    }
+  }, [refreshData]);
 
   // Section CRUD
   const addSection = useCallback(
@@ -579,6 +601,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         deleteCandidate,
         addPosition,
         deletePosition,
+        cleanupDuplicatePositions,
         addSection,
         deleteSection,
         approveVoter,

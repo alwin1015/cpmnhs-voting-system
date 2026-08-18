@@ -178,6 +178,16 @@ export const api = {
   },
   
   addPosition: async (data: any) => {
+    // Check if position with same name already exists
+    const { data: existing } = await supabase
+      .from('positions')
+      .select('id, name')
+      .ilike('name', data.name.trim());
+    
+    if (existing && existing.length > 0) {
+      throw new Error(`A position named "${data.name}" already exists.`);
+    }
+
     const { error } = await supabase.from('positions').insert(data);
     if (error) throw new Error(error.message);
     return { success: true };
@@ -187,6 +197,48 @@ export const api = {
     const { error } = await supabase.from('positions').delete().eq('id', id);
     if (error) throw new Error(error.message);
     return { success: true };
+  },
+
+  cleanupDuplicatePositions: async () => {
+    const { data: allPositions, error: posErr } = await supabase
+      .from('positions')
+      .select('*')
+      .order('id', { ascending: true });
+    if (posErr) throw new Error(posErr.message);
+
+    const seenNames = new Map<string, any>();
+    const toDeleteIds: number[] = [];
+    const remapping: Record<string, string> = {};
+
+    for (const pos of allPositions || []) {
+      const normalizedName = (pos.name || '').trim().toLowerCase();
+      if (seenNames.has(normalizedName)) {
+        const primaryPos = seenNames.get(normalizedName);
+        toDeleteIds.push(pos.id);
+        remapping[String(pos.id)] = String(primaryPos.id);
+      } else {
+        seenNames.set(normalizedName, pos);
+      }
+    }
+
+    if (toDeleteIds.length === 0) return { success: true, count: 0 };
+
+    // Remap candidates pointing to duplicate positions
+    for (const [dupId, keepId] of Object.entries(remapping)) {
+      try {
+        await supabase.from('candidates').update({ position_id: keepId }).eq('position_id', dupId);
+      } catch (_) {}
+      try {
+        await supabase.from('votes').update({ position_id: keepId }).eq('position_id', dupId);
+      } catch (_) {}
+    }
+
+    // Delete duplicates
+    for (const id of toDeleteIds) {
+      await supabase.from('positions').delete().eq('id', id);
+    }
+
+    return { success: true, count: toDeleteIds.length };
   },
 
   // Sections
