@@ -233,14 +233,6 @@ export default function AdminDashboard() {
       onClick: () => navigate('/positions'),
     },
     {
-      title: 'Results',
-      description: 'View election results',
-      icon: BarChart3,
-      iconColor: '#0891b2',
-      iconBg: '#ecfeff',
-      onClick: () => navigate('/results'),
-    },
-    {
       title: 'Grade Map',
       description: 'Configure voting permissions',
       icon: Settings,
@@ -255,6 +247,14 @@ export default function AdminDashboard() {
       iconColor: '#dc2626',
       iconBg: '#fef2f2',
       onClick: () => setIsResetDialogOpen(true),
+    },
+    {
+      title: 'Results',
+      description: 'View election results',
+      icon: BarChart3,
+      iconColor: '#0891b2',
+      iconBg: '#ecfeff',
+      onClick: () => navigate('/results'),
     }
   ];
 
