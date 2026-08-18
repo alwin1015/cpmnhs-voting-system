@@ -130,6 +130,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         hasVoted: Boolean(v.has_voted ?? v.hasVoted ?? false),
         votedAt: v.voted_at ? new Date(v.voted_at) : v.votedAt ? new Date(v.votedAt) : undefined,
         status: v.status ?? 'pending',
+        createdAt: v.created_at ? new Date(v.created_at) : v.createdAt ? new Date(v.createdAt) : undefined,
       }));
       setVoters(mappedVoters);
 

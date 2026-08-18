@@ -27,6 +27,7 @@ export interface Voter {
   hasVoted: boolean;
   votedAt?: Date;
   status: 'pending' | 'approved' | 'rejected';
+  createdAt?: Date;
 }
 
 export interface Section {
