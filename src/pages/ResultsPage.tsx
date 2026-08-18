@@ -5,17 +5,6 @@ import { Footer } from '@/components/Footer';
 import { useVoting } from '@/contexts/VotingContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
 import {
   BarChart3,
@@ -31,19 +20,15 @@ import {
   Printer,
   ArrowLeft,
   AlertTriangle,
-  Award,
   Check
 } from 'lucide-react';
 import schoolLogo from '@/assets/school-logo.png';
 import type { TieResolution, VoteVerification } from '@/types/voting';
 
 export default function ResultsPage() {
-  const { election, getResults, candidates, positions, user, isLoggedIn, finalizeResults } = useVoting();
-  const { toast } = useToast();
+  const { election, getResults, candidates, user, isLoggedIn } = useVoting();
   const printRef = useRef<HTMLDivElement>(null);
 
-  const [isFinalizing, setIsFinalizing] = useState(false);
-  const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
   const [showPrintReport, setShowPrintReport] = useState(false);
   const [tieResolutions, setTieResolutions] = useState<TieResolution[]>([]);
   const [verifications, setVerifications] = useState<VoteVerification[]>([]);
@@ -118,26 +103,6 @@ export default function ResultsPage() {
   }, [results, tieResolutions]);
 
   const hasUnresolvedTies = detectedTies.length > 0;
-
-  const handleFinalize = async () => {
-    setIsFinalizing(true);
-    try {
-      await finalizeResults();
-      toast({
-        title: 'Results Locked & Finalized',
-        description: 'Election results are now officially finalized and ready for printing.',
-      });
-      setShowFinalizeDialog(false);
-    } catch (error: any) {
-      toast({
-        title: 'Finalization Failed',
-        description: error.message || 'Could not finalize election results.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsFinalizing(false);
-    }
-  };
 
   const handlePrint = () => {
     window.print();
@@ -505,7 +470,7 @@ export default function ResultsPage() {
 
             {/* Action Buttons */}
             <div className="flex items-center gap-2 flex-wrap">
-              {election?.resultsFinalized ? (
+              {election?.resultsFinalized && (
                 <Button
                   onClick={() => setShowPrintReport(true)}
                   size="sm"
@@ -513,20 +478,6 @@ export default function ResultsPage() {
                 >
                   <Printer className="h-4 w-4" />
                   Print Final Results
-                </Button>
-              ) : (
-                <Button
-                  onClick={() => setShowFinalizeDialog(true)}
-                  disabled={hasUnresolvedTies || isFinalizing}
-                  size="sm"
-                  className={`h-9 gap-1.5 text-xs sm:text-sm text-white font-semibold shadow-sm rounded-xl ${
-                    hasUnresolvedTies
-                      ? 'bg-slate-400 cursor-not-allowed'
-                      : 'bg-emerald-600 hover:bg-emerald-700'
-                  }`}
-                >
-                  <Lock className="h-4 w-4" />
-                  {isFinalizing ? 'Finalizing...' : 'Finalize Election Result'}
                 </Button>
               )}
 
@@ -579,7 +530,7 @@ export default function ResultsPage() {
                   size="sm"
                   className="bg-amber-600 hover:bg-amber-700 text-white text-xs h-8 gap-1 self-start sm:self-auto rounded-lg shadow-xs"
                 >
-                  Resolve Ties <FileText className="h-3.5 w-3.5 ml-1" />
+                  Resolve Ties in Audit & Verification <FileText className="h-3.5 w-3.5 ml-1" />
                 </Button>
               </Link>
             </div>
@@ -729,41 +680,6 @@ export default function ResultsPage() {
           </div>
 
         </div>
-
-        {/* Finalize Confirmation Dialog */}
-        <AlertDialog open={showFinalizeDialog} onOpenChange={setShowFinalizeDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2 text-emerald-700">
-                <Lock className="h-5 w-5" />
-                Finalize & Lock Election Results?
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                This will officially lock the vote tallies and declare the election winners.
-                <br /><br />
-                <strong>Once finalized:</strong>
-                <ul className="list-disc list-inside mt-2 space-y-1 text-slate-600">
-                  <li>Vote counting is officially concluded.</li>
-                  <li>Your administrator name and timestamp will be recorded.</li>
-                  <li>The formal <strong>Print Final Results</strong> certificate will be permanently generated.</li>
-                </ul>
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={isFinalizing}>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleFinalize();
-                }}
-                disabled={isFinalizing}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              >
-                {isFinalizing ? 'Finalizing...' : 'Yes, Finalize & Lock Results'}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </main>
 
       <Footer />
