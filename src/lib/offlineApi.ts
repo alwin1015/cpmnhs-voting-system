@@ -1,5 +1,5 @@
 // Offline localStorage-based API — mirrors the Supabase api.ts interface
-// All data is stored in localStorage so the app works without internet.
+// All data is stored in localStorage so the app works 100% offline without internet.
 
 const LS_KEYS = {
   candidates: 'offline_candidates',
@@ -10,6 +10,8 @@ const LS_KEYS = {
   admins: 'offline_admins',
   election: 'offline_election',
   session: 'voting_session',
+  verifications: 'offline_verifications',
+  tieResolutions: 'offline_tie_resolutions',
 };
 
 function getStore<T>(key: string, fallback: T[] = []): T[] {
@@ -51,10 +53,66 @@ function seedDefaults() {
     setStore(LS_KEYS.positions, defaultPositions);
   }
 
+  if (!localStorage.getItem(LS_KEYS.sections)) {
+    const defaultSections = [
+      { id: '1', grade_level: '7', name: 'Diamond' },
+      { id: '2', grade_level: '7', name: 'Emerald' },
+      { id: '3', grade_level: '8', name: 'Ruby' },
+      { id: '4', grade_level: '8', name: 'Sapphire' },
+      { id: '5', grade_level: '9', name: 'Topaz' },
+      { id: '6', grade_level: '10', name: 'Garnet' },
+      { id: '7', grade_level: '11', name: 'STEM A' },
+      { id: '8', grade_level: '12', name: 'HUMSS A' },
+    ];
+    setStore(LS_KEYS.sections, defaultSections);
+  }
+
+  if (!localStorage.getItem(LS_KEYS.candidates)) {
+    const defaultCandidates = [
+      { id: '101', name: 'Juan Dela Cruz', position_id: '1', party: 'LAKAS PARTY', grade_level: '12', section: 'HUMSS A', motto: 'Service with Integrity', votes: 0 },
+      { id: '102', name: 'Maria Clara Santos', position_id: '1', party: 'PROGRESSIVE PARTY', grade_level: '11', section: 'STEM A', motto: 'Leadership for Tomorrow', votes: 0 },
+      { id: '103', name: 'Pedro Penduko', position_id: '2', party: 'LAKAS PARTY', grade_level: '11', section: 'STEM A', motto: 'Action above words', votes: 0 },
+      { id: '104', name: 'Gabriela Silang', position_id: '2', party: 'PROGRESSIVE PARTY', grade_level: '10', section: 'Garnet', motto: 'Empowering Student Voices', votes: 0 },
+      { id: '105', name: 'Jose Rizal', position_id: '3', party: 'LAKAS PARTY', grade_level: '10', section: 'Garnet', motto: 'Honesty and Dedication', votes: 0 },
+      { id: '106', name: 'Andres Bonifacio', position_id: '4', party: 'PROGRESSIVE PARTY', grade_level: '9', section: 'Topaz', motto: 'Transparent and Accountable', votes: 0 },
+    ];
+    setStore(LS_KEYS.candidates, defaultCandidates);
+  }
+
   if (!localStorage.getItem(LS_KEYS.admins)) {
     setStore(LS_KEYS.admins, [
       { id: '1', username: 'admin', email: 'admin@cpmnhs.edu.ph', password_hash: 'admin123' }
     ]);
+  }
+
+  if (!localStorage.getItem(LS_KEYS.voters)) {
+    const defaultVoters = [
+      {
+        id: '201',
+        lrn: '123456789012',
+        name: 'Carlos Yulo',
+        grade_level: '12',
+        section: 'HUMSS A',
+        password_hash: 'student123',
+        status: 'approved',
+        has_voted: false,
+        voted_at: null,
+        created_at: new Date().toISOString(),
+      },
+      {
+        id: '202',
+        lrn: '123456789013',
+        name: 'Hidilyn Diaz',
+        grade_level: '11',
+        section: 'STEM A',
+        password_hash: 'student123',
+        status: 'approved',
+        has_voted: false,
+        voted_at: null,
+        created_at: new Date().toISOString(),
+      }
+    ];
+    setStore(LS_KEYS.voters, defaultVoters);
   }
 
   if (!localStorage.getItem(LS_KEYS.election)) {
@@ -66,13 +124,15 @@ function seedDefaults() {
       end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       is_active: true,
       grade_mappings: {},
+      results_finalized: false,
+      finalized_by: null,
+      finalized_at: null,
     });
   }
 
-  if (!localStorage.getItem(LS_KEYS.candidates)) setStore(LS_KEYS.candidates, []);
-  if (!localStorage.getItem(LS_KEYS.sections)) setStore(LS_KEYS.sections, []);
-  if (!localStorage.getItem(LS_KEYS.voters)) setStore(LS_KEYS.voters, []);
   if (!localStorage.getItem(LS_KEYS.votes)) setStore(LS_KEYS.votes, []);
+  if (!localStorage.getItem(LS_KEYS.verifications)) setStore(LS_KEYS.verifications, []);
+  if (!localStorage.getItem(LS_KEYS.tieResolutions)) setStore(LS_KEYS.tieResolutions, []);
 }
 
 seedDefaults();
@@ -222,6 +282,21 @@ export const offlineApi = {
     setStore(LS_KEYS.positions, positions);
     return { success: true };
   },
+  cleanupDuplicatePositions: async () => {
+    const positions = getStore<any>(LS_KEYS.positions);
+    const uniquePositions: any[] = [];
+    const seen = new Set<string>();
+    for (const p of positions) {
+      const key = p.name.trim().toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniquePositions.push(p);
+      }
+    }
+    const removedCount = positions.length - uniquePositions.length;
+    setStore(LS_KEYS.positions, uniquePositions);
+    return { success: true, count: removedCount };
+  },
 
   // Sections
   getSections: async () => getStore(LS_KEYS.sections),
@@ -284,6 +359,89 @@ export const offlineApi = {
     setStore(LS_KEYS.election, { ...existing, ...data });
     return { success: true };
   },
+  finalizeResults: async () => {
+    const election = JSON.parse(localStorage.getItem(LS_KEYS.election) || '{}');
+    const session = JSON.parse(localStorage.getItem(LS_KEYS.session) || '{}');
+    election.results_finalized = true;
+    election.finalized_by = session?.user?.name || 'Administrator';
+    election.finalized_at = new Date().toISOString();
+    setStore(LS_KEYS.election, election);
+    return { success: true };
+  },
+  unfinalizeResults: async () => {
+    const election = JSON.parse(localStorage.getItem(LS_KEYS.election) || '{}');
+    election.results_finalized = false;
+    election.finalized_by = null;
+    election.finalized_at = null;
+    setStore(LS_KEYS.election, election);
+    return { success: true };
+  },
+
+  // Verifications & Tie Resolutions
+  getVerifications: async () => getStore(LS_KEYS.verifications),
+  getTieResolutions: async () => getStore(LS_KEYS.tieResolutions),
+  initiateVerification: async (positionId: string, tiedCandidateIds: string[], originalVoteCounts: Record<string, number>) => {
+    const voters = getStore<any>(LS_KEYS.voters).filter((v: any) => v.has_voted);
+    const selectedVoterIds = voters.slice(0, 5).map((v: any) => v.id);
+    const verifications = getStore<any>(LS_KEYS.verifications);
+    const newVer = {
+      id: genId(),
+      position_id: positionId,
+      tied_candidate_ids: JSON.stringify(tiedCandidateIds),
+      selected_voter_ids: JSON.stringify(selectedVoterIds),
+      verification_status: 'in_progress',
+      original_vote_counts: JSON.stringify(originalVoteCounts),
+      created_at: new Date().toISOString(),
+    };
+    verifications.push(newVer);
+    setStore(LS_KEYS.verifications, verifications);
+    return newVer;
+  },
+  getVerificationVotes: async (voterIds: string[], positionId: string) => {
+    const votes = getStore<any>(LS_KEYS.votes);
+    const voters = getStore<any>(LS_KEYS.voters);
+    const candidates = getStore<any>(LS_KEYS.candidates);
+    return votes
+      .filter((v: any) => voterIds.includes(String(v.voter_id)) && String(v.position_id) === String(positionId))
+      .map((v: any) => {
+        const voter = voters.find((vt: any) => String(vt.id) === String(v.voter_id));
+        const cand = candidates.find((c: any) => String(c.id) === String(v.candidate_id));
+        return {
+          voterName: voter?.name || 'Voter',
+          voterLrn: voter?.lrn || '—',
+          candidateName: cand?.name || 'Candidate',
+        };
+      });
+  },
+  completeVerification: async (verificationId: string, notes: string, tieRemains: boolean) => {
+    const verifications = getStore<any>(LS_KEYS.verifications);
+    const v = verifications.find((item: any) => String(item.id) === String(verificationId));
+    if (v) {
+      v.verification_status = tieRemains ? 'tie_remains' : 'completed';
+      v.notes = notes;
+      v.verified_at = new Date().toISOString();
+      const session = JSON.parse(localStorage.getItem(LS_KEYS.session) || '{}');
+      v.verified_by = session?.user?.name || 'Admin';
+    }
+    setStore(LS_KEYS.verifications, verifications);
+    return { success: true };
+  },
+  resolveTie: async (verificationId: string, positionId: string, winnerId: string, reason: string) => {
+    const tieResolutions = getStore<any>(LS_KEYS.tieResolutions);
+    const session = JSON.parse(localStorage.getItem(LS_KEYS.session) || '{}');
+    tieResolutions.push({
+      id: genId(),
+      verification_id: verificationId,
+      position_id: positionId,
+      selected_winner_id: winnerId,
+      resolution_method: 'admin_resolution',
+      resolved_by: session?.user?.name || 'Administrator',
+      resolved_at: new Date().toISOString(),
+      reason,
+    });
+    setStore(LS_KEYS.tieResolutions, tieResolutions);
+    return { success: true };
+  },
 
   resetSystem: async () => {
     setStore(LS_KEYS.votes, []);
@@ -291,6 +449,8 @@ export const offlineApi = {
     candidates.forEach((c: any) => c.votes = 0);
     setStore(LS_KEYS.candidates, candidates);
     setStore(LS_KEYS.voters, []);
+    setStore(LS_KEYS.verifications, []);
+    setStore(LS_KEYS.tieResolutions, []);
     const election = JSON.parse(localStorage.getItem(LS_KEYS.election) || '{}');
     election.is_active = false;
     election.results_finalized = false;
