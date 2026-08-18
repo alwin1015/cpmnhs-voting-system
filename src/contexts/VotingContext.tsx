@@ -30,6 +30,8 @@ interface VotingContextType {
   setVote: (positionId: string, candidateId: string) => void;
   submitVotes: () => Promise<boolean>;
   getResults: () => { position: Position; candidates: Candidate[] }[];
+  finalizeResults: () => Promise<void>;
+  unfinalizeResults: () => Promise<void>;
   updateElection: (updates: Partial<Election>) => Promise<void>;
   resetSystem: () => Promise<void>;
   addCandidate: (candidate: Omit<Candidate, 'id' | 'votes'>) => void;
@@ -147,6 +149,9 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           totalVoters: mappedVoters.filter((v) => v.status === 'approved').length,
           totalVoted: mappedVoters.filter((v) => v.hasVoted).length,
           gradeMappings: parsedMappings,
+          resultsFinalized: Boolean(eData.results_finalized ?? false),
+          finalizedBy: eData.finalized_by ?? null,
+          finalizedAt: eData.finalized_at ? new Date(eData.finalized_at) : null,
         });
       } else {
         // Fallback: compute from voters even without election data
@@ -174,7 +179,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           setHasVoted(Boolean(meData.has_voted ?? meData.hasVoted ?? false));
         }
       } catch {
-        // No active session – that's fine
+        // No active session ï¿½ that's fine
       }
       await refreshData();
     };
@@ -344,6 +349,26 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         .sort((a, b) => b.votes - a.votes),
     }));
   }, [candidates, positions]);
+
+  const finalizeResults = useCallback(async () => {
+    try {
+      await api.finalizeResults();
+      await refreshData();
+    } catch (error) {
+      console.error('Finalize results failed:', error);
+      throw error;
+    }
+  }, [refreshData]);
+
+  const unfinalizeResults = useCallback(async () => {
+    try {
+      await api.unfinalizeResults();
+      await refreshData();
+    } catch (error) {
+      console.error('Unfinalize results failed:', error);
+      throw error;
+    }
+  }, [refreshData]);
 
   const updateElection = useCallback(
     async (updates: Partial<Election>) => {
@@ -528,6 +553,8 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         setVote,
         submitVotes,
         getResults,
+        finalizeResults,
+        unfinalizeResults,
         updateElection,
         resetSystem,
         addCandidate,

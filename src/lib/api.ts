@@ -270,12 +270,194 @@ export const api = {
   resetSystem: async () => {
     // Note: Due to RLS or constraints, doing bulk deletes with neq might be restricted if not using service key,
     // but we enabled open RLS for this specific app setup.
+    await supabase.from('tie_resolutions').delete().neq('id', 0);
+    await supabase.from('vote_verifications').delete().neq('id', 0);
     await supabase.from('votes').delete().neq('id', 0);
     await supabase.from('candidates').update({ votes: 0 }).neq('id', 0);
     await supabase.from('voters').update({ has_voted: false, voted_at: null }).neq('status', 'nonexistent');
-    await supabase.from('election_settings').update({ is_active: false }).eq('id', 1);
+    await supabase.from('election_settings').update({ 
+      is_active: false, 
+      results_finalized: false, 
+      finalized_by: null, 
+      finalized_at: null 
+    }).eq('id', 1);
     return { success: true };
-  }
+  },
+
+  // ==================== Election Report API ====================
+
+  // Get all vote verifications
+  getVerifications: async () => {
+    const { data, error } = await supabase
+      .from('vote_verifications')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return data || [];
+  },
+
+  // Initiate manual vote verification for a tied position
+  initiateVerification: async (positionId: string, tiedCandidateIds: string[], originalVoteCounts: Record<string, number>) => {
+    // Get voters who voted for this position
+    const { data: votesForPosition, error: votesError } = await supabase
+      .from('votes')
+      .select('voter_id')
+      .eq('position_id', positionId);
+    
+    if (votesError) throw new Error(votesError.message);
+
+    // Get unique voter IDs
+    const uniqueVoterIds = [...new Set((votesForPosition || []).map((v: any) => String(v.voter_id)))];
+    
+    // Randomly select up to 10 voters
+    const shuffled = uniqueVoterIds.sort(() => Math.random() - 0.5);
+    const selectedVoterIds = shuffled.slice(0, Math.min(10, shuffled.length));
+
+    const sessionStr = localStorage.getItem('voting_session');
+    const session = sessionStr ? JSON.parse(sessionStr) : null;
+
+    const { data, error } = await supabase
+      .from('vote_verifications')
+      .insert({
+        position_id: positionId,
+        tied_candidate_ids: JSON.stringify(tiedCandidateIds),
+        selected_voter_ids: JSON.stringify(selectedVoterIds),
+        verification_status: 'in_progress',
+        verified_by: session?.user?.name || 'Admin',
+        original_vote_counts: JSON.stringify(originalVoteCounts),
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  },
+
+  // Get the votes of selected voters for a verification (transparency)
+  getVerificationVotes: async (selectedVoterIds: string[], positionId: string) => {
+    const { data: votes, error: votesError } = await supabase
+      .from('votes')
+      .select('voter_id, candidate_id')
+      .eq('position_id', positionId)
+      .in('voter_id', selectedVoterIds);
+
+    if (votesError) throw new Error(votesError.message);
+
+    // Get voter names
+    const { data: voters, error: votersError } = await supabase
+      .from('voters')
+      .select('id, name, lrn')
+      .in('id', selectedVoterIds);
+
+    if (votersError) throw new Error(votersError.message);
+
+    // Get candidate names
+    const candidateIds = [...new Set((votes || []).map((v: any) => v.candidate_id))];
+    const { data: candidates, error: candError } = await supabase
+      .from('candidates')
+      .select('id, name')
+      .in('id', candidateIds);
+
+    if (candError) throw new Error(candError.message);
+
+    const voterMap = Object.fromEntries((voters || []).map((v: any) => [String(v.id), v]));
+    const candMap = Object.fromEntries((candidates || []).map((c: any) => [String(c.id), c]));
+
+    return (votes || []).map((v: any) => ({
+      voterId: String(v.voter_id),
+      voterName: voterMap[String(v.voter_id)]?.name || 'Unknown',
+      voterLrn: voterMap[String(v.voter_id)]?.lrn || 'N/A',
+      candidateId: String(v.candidate_id),
+      candidateName: candMap[String(v.candidate_id)]?.name || 'Unknown',
+    }));
+  },
+
+  // Complete a verification session
+  completeVerification: async (verificationId: string, notes: string, tieRemains: boolean) => {
+    const { error } = await supabase
+      .from('vote_verifications')
+      .update({
+        verification_status: tieRemains ? 'tie_remains' : 'completed',
+        notes,
+        verified_at: new Date().toISOString(),
+      })
+      .eq('id', verificationId);
+
+    if (error) throw new Error(error.message);
+    return { success: true };
+  },
+
+  // Get all tie resolutions
+  getTieResolutions: async () => {
+    const { data, error } = await supabase
+      .from('tie_resolutions')
+      .select('*')
+      .order('resolved_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return data || [];
+  },
+
+  // Resolve a tie by selecting a winner
+  resolveTie: async (verificationId: string, positionId: string, winnerId: string, reason: string) => {
+    const sessionStr = localStorage.getItem('voting_session');
+    const session = sessionStr ? JSON.parse(sessionStr) : null;
+
+    const { error: resError } = await supabase
+      .from('tie_resolutions')
+      .insert({
+        verification_id: verificationId,
+        position_id: positionId,
+        selected_winner_id: winnerId,
+        resolution_method: 'admin_selection',
+        resolved_by: session?.user?.name || 'Admin',
+        reason,
+      });
+
+    if (resError) throw new Error(resError.message);
+
+    // Update verification status
+    const { error: verError } = await supabase
+      .from('vote_verifications')
+      .update({ verification_status: 'completed' })
+      .eq('id', verificationId);
+
+    if (verError) throw new Error(verError.message);
+
+    return { success: true };
+  },
+
+  // Finalize election results
+  finalizeResults: async () => {
+    const sessionStr = localStorage.getItem('voting_session');
+    const session = sessionStr ? JSON.parse(sessionStr) : null;
+
+    const { error } = await supabase
+      .from('election_settings')
+      .update({
+        results_finalized: true,
+        finalized_by: session?.user?.name || 'Admin',
+        finalized_at: new Date().toISOString(),
+      })
+      .eq('id', 1);
+
+    if (error) throw new Error(error.message);
+    return { success: true };
+  },
+
+  // Unfinalize election results (for corrections)
+  unfinalizeResults: async () => {
+    const { error } = await supabase
+      .from('election_settings')
+      .update({
+        results_finalized: false,
+        finalized_by: null,
+        finalized_at: null,
+      })
+      .eq('id', 1);
+
+    if (error) throw new Error(error.message);
+    return { success: true };
+  },
 };
 
 

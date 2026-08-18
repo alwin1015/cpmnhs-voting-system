@@ -241,6 +241,14 @@ export default function AdminDashboard() {
       onClick: () => navigate('/results'),
     },
     {
+      title: 'Election Report',
+      description: 'Results report & verification',
+      icon: ClipboardList,
+      iconColor: '#7c3aed',
+      iconBg: '#f5f3ff',
+      onClick: () => navigate('/election-report'),
+    },
+    {
       title: 'Grade Map',
       description: 'Configure voting permissions',
       icon: Settings,

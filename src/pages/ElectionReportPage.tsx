@@ -1,0 +1,879 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Header } from '@/components/Header';
+import { Footer } from '@/components/Footer';
+import { useVoting } from '@/contexts/VotingContext';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useToast } from '@/hooks/use-toast';
+import { api } from '@/lib/api';
+import type { ElectionResult, VoteVerification, TieResolution, VerificationVoterDetail } from '@/types/voting';
+import {
+  FileText, Trophy, AlertTriangle, CheckCircle, Lock, Printer,
+  Shield, Search, Filter, ChevronDown, ChevronUp, Users, XCircle, Award
+} from 'lucide-react';
+import schoolLogo from '@/assets/school-logo.png';
+
+export default function ElectionReportPage() {
+  const { election, candidates, positions, voters, user, isLoggedIn, finalizeResults, unfinalizeResults } = useVoting();
+  const { toast } = useToast();
+  const printRef = useRef<HTMLDivElement>(null);
+
+  // Filters
+  const [filterGrade, setFilterGrade] = useState<string>('all');
+  const [filterPosition, setFilterPosition] = useState<string>('all');
+
+  // State
+  const [verifications, setVerifications] = useState<VoteVerification[]>([]);
+  const [tieResolutions, setTieResolutions] = useState<TieResolution[]>([]);
+  const [expandedTie, setExpandedTie] = useState<string | null>(null);
+  const [verificationVotes, setVerificationVotes] = useState<Record<string, VerificationVoterDetail[]>>({});
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
+  const [showOfficialReport, setShowOfficialReport] = useState(false);
+  const [verificationNotes, setVerificationNotes] = useState('');
+  const [tieResolveReason, setTieResolveReason] = useState('');
+  const [selectedWinner, setSelectedWinner] = useState<string>('');
+
+  const isAdmin = isLoggedIn && user?.role === 'admin';
+
+  // Load verifications and tie resolutions
+  const loadVerificationData = useCallback(async () => {
+    try {
+      const [vData, tData] = await Promise.all([
+        api.getVerifications(),
+        api.getTieResolutions(),
+      ]);
+      setVerifications(vData.map((v: any) => ({
+        id: String(v.id),
+        positionId: String(v.position_id),
+        tiedCandidateIds: JSON.parse(v.tied_candidate_ids || '[]'),
+        selectedVoterIds: JSON.parse(v.selected_voter_ids || '[]'),
+        verificationStatus: v.verification_status,
+        verifiedBy: v.verified_by,
+        verifiedAt: v.verified_at ? new Date(v.verified_at) : undefined,
+        notes: v.notes,
+        originalVoteCounts: JSON.parse(v.original_vote_counts || '{}'),
+        createdAt: new Date(v.created_at),
+      })));
+      setTieResolutions(tData.map((t: any) => ({
+        id: String(t.id),
+        verificationId: String(t.verification_id),
+        positionId: String(t.position_id),
+        selectedWinnerId: String(t.selected_winner_id),
+        resolutionMethod: t.resolution_method,
+        resolvedBy: t.resolved_by,
+        resolvedAt: t.resolved_at ? new Date(t.resolved_at) : undefined,
+        reason: t.reason,
+      })));
+    } catch (error) {
+      console.error('Failed to load verification data:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAdmin) {
+      loadVerificationData();
+    }
+  }, [isAdmin, loadVerificationData]);
+
+  // Compute election results
+  const computeResults = useCallback((): ElectionResult[] => {
+    const results: ElectionResult[] = [];
+
+    positions.forEach((position) => {
+      const positionCandidates = candidates
+        .filter((c) => c.position === position.id)
+        .sort((a, b) => b.votes - a.votes);
+
+      const totalPositionVotes = positionCandidates.reduce((sum, c) => sum + c.votes, 0);
+
+      // Find tie resolution for this position
+      const resolution = tieResolutions.find((r) => r.positionId === position.id);
+
+      positionCandidates.forEach((candidate, index) => {
+        const percentage = totalPositionVotes > 0
+          ? Math.round((candidate.votes / totalPositionVotes) * 100)
+          : 0;
+
+        // Determine rank (handle ties)
+        let rank = 1;
+        for (let i = 0; i < index; i++) {
+          if (positionCandidates[i].votes > candidate.votes) {
+            rank = i + 1;
+            break;
+          }
+          rank = i + 1;
+        }
+        if (index > 0 && positionCandidates[index - 1].votes === candidate.votes) {
+          rank = results.filter(r => r.positionId === position.id && r.totalVotes > candidate.votes).length + 1;
+        } else {
+          rank = index + 1;
+        }
+
+        // Determine status
+        let status: ElectionResult['status'] = 'pending';
+        const isTied = index > 0 && positionCandidates[index - 1].votes === candidate.votes;
+        const isTiedWithNext = index < positionCandidates.length - 1 && positionCandidates[index + 1]?.votes === candidate.votes;
+        const isTopCandidate = rank === 1;
+
+        if (isTopCandidate && !isTied && !isTiedWithNext) {
+          status = 'winner';
+        } else if (isTopCandidate && (isTied || isTiedWithNext)) {
+          // Check if resolved
+          if (resolution && resolution.selectedWinnerId === candidate.id) {
+            status = 'verified_winner';
+          } else if (resolution) {
+            status = 'lost'; // Tie was resolved, but not in this candidate's favor
+          } else {
+            status = 'tied';
+          }
+        } else if (rank === 1 && (isTied || isTiedWithNext)) {
+          if (resolution && resolution.selectedWinnerId === candidate.id) {
+            status = 'verified_winner';
+          } else if (resolution) {
+            status = 'lost';
+          } else {
+            status = 'tied';
+          }
+        } else {
+          status = 'lost';
+        }
+
+        results.push({
+          positionId: position.id,
+          positionName: position.name,
+          positionOrder: position.order,
+          candidateId: candidate.id,
+          candidateName: candidate.name,
+          candidateParty: candidate.party,
+          candidateGradeLevel: candidate.gradeLevel,
+          totalVotes: candidate.votes,
+          rank,
+          status,
+          percentage,
+        });
+      });
+    });
+
+    return results.sort((a, b) => a.positionOrder - b.positionOrder || a.rank - b.rank);
+  }, [candidates, positions, tieResolutions]);
+
+  const allResults = computeResults();
+
+  // Apply filters
+  const filteredResults = allResults.filter((r) => {
+    if (filterGrade !== 'all' && r.candidateGradeLevel !== filterGrade) return false;
+    if (filterPosition !== 'all' && r.positionId !== filterPosition) return false;
+    return true;
+  });
+
+  // Detect ties
+  const ties = positions
+    .map((position) => {
+      const positionResults = allResults.filter((r) => r.positionId === position.id && r.status === 'tied');
+      if (positionResults.length >= 2) {
+        return { positionId: position.id, positionName: position.name, tiedCandidates: positionResults };
+      }
+      return null;
+    })
+    .filter(Boolean) as { positionId: string; positionName: string; tiedCandidates: ElectionResult[] }[];
+
+  const allTiesResolved = ties.length === 0;
+
+  // Get unique grade levels from candidates
+  const gradeOptions = [...new Set(candidates.map((c) => c.gradeLevel))].sort();
+
+  // Handlers
+  const handleInitiateVerification = async (positionId: string, tiedCandidateIds: string[]) => {
+    setIsVerifying(true);
+    try {
+      const voteCounts: Record<string, number> = {};
+      tiedCandidateIds.forEach((id) => {
+        const cand = candidates.find((c) => c.id === id);
+        if (cand) voteCounts[id] = cand.votes;
+      });
+
+      const verification = await api.initiateVerification(positionId, tiedCandidateIds, voteCounts);
+      toast({ title: 'Verification Initiated', description: `${JSON.parse(verification.selected_voter_ids).length} voters randomly selected for verification.` });
+      await loadVerificationData();
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to initiate verification.', variant: 'destructive' });
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleLoadVerificationVotes = async (verification: VoteVerification) => {
+    try {
+      const votes = await api.getVerificationVotes(verification.selectedVoterIds, verification.positionId);
+      setVerificationVotes((prev) => ({ ...prev, [verification.id]: votes }));
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleCompleteVerification = async (verification: VoteVerification, tieRemains: boolean) => {
+    try {
+      await api.completeVerification(verification.id, verificationNotes, tieRemains);
+      toast({
+        title: tieRemains ? 'Tie Remains' : 'Verification Completed',
+        description: tieRemains
+          ? 'Tie remains after verification. Further action required.'
+          : 'Verification completed successfully.',
+      });
+      setVerificationNotes('');
+      await loadVerificationData();
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleResolveTie = async (verification: VoteVerification) => {
+    if (!selectedWinner) {
+      toast({ title: 'Error', description: 'Please select a winner.', variant: 'destructive' });
+      return;
+    }
+    try {
+      await api.resolveTie(verification.id, verification.positionId, selectedWinner, tieResolveReason);
+      toast({ title: 'Tie Resolved', description: 'The tie has been resolved and a winner selected.' });
+      setSelectedWinner('');
+      setTieResolveReason('');
+      await loadVerificationData();
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleFinalizeResults = async () => {
+    setIsFinalizing(true);
+    try {
+      await finalizeResults();
+      toast({ title: 'Results Finalized', description: 'Election results have been locked and finalized.' });
+      setShowFinalizeDialog(false);
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    } finally {
+      setIsFinalizing(false);
+    }
+  };
+
+  const getStatusBadge = (status: ElectionResult['status']) => {
+    switch (status) {
+      case 'winner':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700"><Trophy className="h-3 w-3" />Winner</span>;
+      case 'tied':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700"><AlertTriangle className="h-3 w-3" />Tie Detected</span>;
+      case 'verified_winner':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700"><CheckCircle className="h-3 w-3" />Verified Winner</span>;
+      case 'lost':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-50 text-gray-500">Lost</span>;
+      case 'pending':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-50 text-gray-400">Pending</span>;
+    }
+  };
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        <Header />
+        <main className="flex-1 flex items-center justify-center p-4">
+          <Card className="max-w-md w-full text-center p-8 border-slate-100 shadow-xl bg-white/80 backdrop-blur-md rounded-2xl">
+            <CardContent className="pt-6">
+              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-6">
+                <Shield className="h-8 w-8 text-slate-400" />
+              </div>
+              <h2 className="font-display text-2xl font-bold mb-2 text-slate-800">Access Denied</h2>
+              <p className="text-slate-500 mb-8 leading-relaxed">
+                The election report is only accessible to administrators.
+              </p>
+              <Button
+                onClick={() => window.location.href = '/'}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-11 transition-colors"
+              >
+                Return Home
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  // ==================== OFFICIAL REPORT (PRINTABLE) ====================
+  if (showOfficialReport) {
+    return (
+      <div className="min-h-screen flex flex-col" style={{ background: '#fff' }}>
+        {/* Screen-only controls */}
+        <div className="no-print p-4 bg-gray-50 border-b flex items-center justify-between">
+          <Button variant="ghost" onClick={() => setShowOfficialReport(false)}>
+            ← Back to Report
+          </Button>
+          <Button
+            onClick={() => window.print()}
+            className="gap-2 text-white"
+            style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)' }}
+          >
+            <Printer className="h-4 w-4" />
+            Print Official Results
+          </Button>
+        </div>
+
+        {/* Printable content */}
+        <div ref={printRef} className="max-w-4xl mx-auto p-8 print-report">
+          {/* Header */}
+          <div className="text-center mb-8 border-b-2 border-gray-900 pb-6">
+            <img src={schoolLogo} alt="CPMNHS Logo" className="w-20 h-20 mx-auto mb-3" />
+            <div className="text-sm text-gray-600">Republic of the Philippines</div>
+            <div className="text-sm text-gray-600">Department of Education</div>
+            <div className="text-sm text-gray-600">Region VII – Central Visayas</div>
+            <div className="text-sm text-gray-600">Division of Bohol</div>
+            <h1 className="text-xl font-bold mt-2">CONGRESSMAN PABLO MALASARTE NATIONAL HIGH SCHOOL</h1>
+            <div className="text-sm text-gray-600">Cabad, Balilihan, Bohol</div>
+            <div className="mt-4 text-lg font-bold uppercase tracking-wide">Official Election Results</div>
+            <div className="text-sm mt-1 text-gray-700">
+              iVote: Student Voting System
+            </div>
+          </div>
+
+          {/* Election Info */}
+          <div className="grid grid-cols-2 gap-4 mb-6 text-sm">
+            <div><strong>Election:</strong> {election?.name}</div>
+            <div><strong>School Year:</strong> {election?.schoolYear}</div>
+            <div><strong>Schedule:</strong> {election?.startDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} – {election?.endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
+            <div><strong>Total Voters:</strong> {election?.totalVoters} | <strong>Voted:</strong> {election?.totalVoted}</div>
+          </div>
+
+          {/* Results Table */}
+          <table className="w-full border-collapse text-sm mb-8">
+            <thead>
+              <tr className="border-b-2 border-gray-900">
+                <th className="text-left py-2 px-2 font-bold">#</th>
+                <th className="text-left py-2 px-2 font-bold">Position</th>
+                <th className="text-left py-2 px-2 font-bold">Candidate</th>
+                <th className="text-left py-2 px-2 font-bold">Party</th>
+                <th className="text-left py-2 px-2 font-bold">Grade</th>
+                <th className="text-right py-2 px-2 font-bold">Votes</th>
+                <th className="text-center py-2 px-2 font-bold">Rank</th>
+                <th className="text-center py-2 px-2 font-bold">Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allResults.map((r, idx) => {
+                const isNewPosition = idx === 0 || allResults[idx - 1].positionId !== r.positionId;
+                return (
+                  <tr key={`${r.positionId}-${r.candidateId}`} className={`border-b border-gray-200 ${isNewPosition ? 'border-t-2 border-t-gray-400' : ''}`}>
+                    <td className="py-1.5 px-2 text-gray-500">{idx + 1}</td>
+                    <td className="py-1.5 px-2 font-medium">{isNewPosition ? r.positionName : ''}</td>
+                    <td className="py-1.5 px-2">{r.candidateName}</td>
+                    <td className="py-1.5 px-2 text-gray-600">{r.candidateParty}</td>
+                    <td className="py-1.5 px-2 text-gray-600">{r.candidateGradeLevel}</td>
+                    <td className="py-1.5 px-2 text-right font-semibold">{r.totalVotes}</td>
+                    <td className="py-1.5 px-2 text-center">{r.rank}</td>
+                    <td className="py-1.5 px-2 text-center font-semibold">
+                      {r.status === 'winner' && '✅ Winner'}
+                      {r.status === 'verified_winner' && '✅ Winner (Verified)'}
+                      {r.status === 'tied' && '⚠ Tied'}
+                      {r.status === 'lost' && '—'}
+                      {r.status === 'pending' && '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {/* Verification Info */}
+          {verifications.length > 0 && (
+            <div className="mb-8">
+              <h3 className="font-bold text-sm mb-2 uppercase tracking-wide">Verification / Recount Information</h3>
+              {verifications.map((v) => {
+                const pos = positions.find((p) => p.id === v.positionId);
+                const resolution = tieResolutions.find((t) => t.verificationId === v.id);
+                return (
+                  <div key={v.id} className="border border-gray-200 rounded p-3 mb-2 text-sm">
+                    <div><strong>Position:</strong> {pos?.name || 'Unknown'}</div>
+                    <div><strong>Status:</strong> {v.verificationStatus}</div>
+                    <div><strong>Verified By:</strong> {v.verifiedBy || 'N/A'}</div>
+                    <div><strong>Voters Verified:</strong> {v.selectedVoterIds.length}</div>
+                    {v.notes && <div><strong>Notes:</strong> {v.notes}</div>}
+                    {resolution && (
+                      <div className="mt-1 text-blue-700">
+                        <strong>Tie Resolution:</strong> Winner selected by {resolution.resolvedBy} — {resolution.reason}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Footer */}
+          <div className="mt-12 border-t-2 border-gray-900 pt-6">
+            <div className="grid grid-cols-2 gap-8 text-sm">
+              <div>
+                <div className="text-gray-600 mb-1">Date of Finalization:</div>
+                <div className="font-semibold">
+                  {election?.finalizedAt
+                    ? new Date(election.finalizedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : 'Not yet finalized'}
+                </div>
+              </div>
+              <div>
+                <div className="text-gray-600 mb-1">Prepared / Verified By:</div>
+                <div className="font-semibold">{election?.finalizedBy || 'N/A'}</div>
+              </div>
+            </div>
+            <div className="mt-12 grid grid-cols-3 gap-8 text-center text-sm">
+              <div>
+                <div className="border-b border-gray-900 mb-1 pb-8"></div>
+                <div className="text-gray-600">SSG Adviser</div>
+              </div>
+              <div>
+                <div className="border-b border-gray-900 mb-1 pb-8"></div>
+                <div className="text-gray-600">Election Committee Chair</div>
+              </div>
+              <div>
+                <div className="border-b border-gray-900 mb-1 pb-8"></div>
+                <div className="text-gray-600">School Principal</div>
+              </div>
+            </div>
+            <div className="mt-8 text-center text-xs text-gray-400">
+              <p>This is a computer-generated document from the iVote: Student Voting System.</p>
+              <p>Printed on: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==================== MAIN REPORT VIEW ====================
+  return (
+    <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
+      <Header />
+
+      <main className="flex-1 py-8">
+        <div className="container mx-auto px-4 max-w-6xl">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6 animate-slide-up">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-1">Election Results Report</h1>
+              <p className="text-gray-500">{election?.name} • S.Y. {election?.schoolYear}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {election?.resultsFinalized && (
+                <Button
+                  onClick={() => setShowOfficialReport(true)}
+                  className="gap-2 text-white"
+                  style={{ background: 'linear-gradient(135deg, #059669, #047857)' }}
+                >
+                  <FileText className="h-4 w-4" />
+                  Generate Official Results
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Finalized Banner */}
+          {election?.resultsFinalized && (
+            <div className="mb-6 p-4 rounded-xl border border-emerald-200 bg-emerald-50/80 backdrop-blur-sm animate-fade-in">
+              <div className="flex items-center gap-3">
+                <Lock className="h-5 w-5 text-emerald-600" />
+                <div>
+                  <p className="font-semibold text-emerald-800">Results Finalized</p>
+                  <p className="text-sm text-emerald-600">
+                    Finalized by {election.finalizedBy} on {election.finalizedAt
+                      ? new Date(election.finalizedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                      : 'N/A'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Tie Detection Banner */}
+          {ties.length > 0 && !election?.resultsFinalized && (
+            <div className="mb-6 p-4 rounded-xl border border-amber-200 bg-amber-50/80 backdrop-blur-sm animate-fade-in">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600" />
+                <div>
+                  <p className="font-semibold text-amber-800">Tie Detected – Verification Required</p>
+                  <p className="text-sm text-amber-600">
+                    {ties.length} position{ties.length > 1 ? 's have' : ' has'} tied candidates. Please verify and resolve ties before finalizing.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Filter Bar */}
+          <Card className="border border-gray-100 shadow-sm mb-6 animate-fade-in" style={{ background: 'rgba(255,255,255,0.95)' }}>
+            <CardContent className="py-4 px-6">
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-4 w-4 text-gray-400" />
+                  <span className="text-sm font-medium text-gray-600">Filters:</span>
+                </div>
+                <select
+                  value={filterGrade}
+                  onChange={(e) => setFilterGrade(e.target.value)}
+                  className="h-9 px-3 text-sm rounded-md border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="all">All Grade Levels</option>
+                  {gradeOptions.map((g) => (
+                    <option key={g} value={g}>Grade {g}</option>
+                  ))}
+                </select>
+
+                <select
+                  value={filterPosition}
+                  onChange={(e) => setFilterPosition(e.target.value)}
+                  className="h-9 px-3 text-sm rounded-md border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="all">All Positions</option>
+                  {positions.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                {(filterGrade !== 'all' || filterPosition !== 'all') && (
+                  <Button variant="ghost" size="sm" onClick={() => { setFilterGrade('all'); setFilterPosition('all'); }} className="text-gray-400 hover:text-gray-600">
+                    <XCircle className="h-4 w-4 mr-1" /> Clear
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Results Table */}
+          <Card className="border border-gray-100 shadow-sm mb-6 animate-fade-in" style={{ background: 'rgba(255,255,255,0.95)' }}>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50/50">
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Election</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Grade</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Position</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Candidate</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Total Votes</th>
+                      <th className="text-center py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Rank</th>
+                      <th className="text-center py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Result</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredResults.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-gray-400">
+                          <Search className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                          <p className="font-medium">No results found</p>
+                          <p className="text-sm">Try adjusting your filters</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredResults.map((r, idx) => {
+                        const isNewPosition = idx === 0 || filteredResults[idx - 1].positionId !== r.positionId;
+                        return (
+                          <tr
+                            key={`${r.positionId}-${r.candidateId}`}
+                            className={`border-b border-gray-50 hover:bg-blue-50/30 transition-colors ${isNewPosition && idx > 0 ? 'border-t-2 border-t-gray-100' : ''}`}
+                          >
+                            <td className="py-3 px-4 text-sm text-gray-500">
+                              {isNewPosition ? `${election?.name || 'Election'}` : ''}
+                            </td>
+                            <td className="py-3 px-4 text-sm text-gray-600">
+                              {isNewPosition ? `Grade ${r.candidateGradeLevel}` : `Grade ${r.candidateGradeLevel}`}
+                            </td>
+                            <td className="py-3 px-4 text-sm font-medium text-gray-900">
+                              {isNewPosition ? r.positionName : ''}
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-900">{r.candidateName}</span>
+                                <span className="text-xs text-gray-400">({r.candidateParty})</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <span className="text-sm font-bold text-gray-900">{r.totalVotes}</span>
+                              <span className="text-xs text-gray-400 ml-1">({r.percentage}%)</span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 text-sm font-bold text-gray-600">
+                                {r.rank}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              {getStatusBadge(r.status)}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Tie Detection & Verification Section */}
+          {ties.length > 0 && !election?.resultsFinalized && (
+            <div className="space-y-4 mb-6">
+              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                Tie Detection & Verification
+              </h2>
+
+              {ties.map((tie) => {
+                const existingVerification = verifications.find(
+                  (v) => v.positionId === tie.positionId && (v.verificationStatus === 'in_progress' || v.verificationStatus === 'tie_remains')
+                );
+                const isExpanded = expandedTie === tie.positionId;
+
+                return (
+                  <Card key={tie.positionId} className="border border-amber-200 shadow-sm" style={{ background: 'rgba(255,251,235,0.8)' }}>
+                    <CardContent className="p-4">
+                      {/* Header */}
+                      <div
+                        className="flex items-center justify-between cursor-pointer"
+                        onClick={() => setExpandedTie(isExpanded ? null : tie.positionId)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                            <AlertTriangle className="h-5 w-5 text-amber-600" />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900">{tie.positionName}</p>
+                            <p className="text-sm text-amber-600">
+                              {tie.tiedCandidates.length} candidates tied at {tie.tiedCandidates[0].totalVotes} votes each
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {!existingVerification && (
+                            <Button
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleInitiateVerification(tie.positionId, tie.tiedCandidates.map((c) => c.candidateId));
+                              }}
+                              disabled={isVerifying}
+                              className="text-white"
+                              style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}
+                            >
+                              <Search className="h-4 w-4 mr-1" />
+                              {isVerifying ? 'Starting...' : 'Initiate Verification'}
+                            </Button>
+                          )}
+                          {isExpanded ? <ChevronUp className="h-5 w-5 text-gray-400" /> : <ChevronDown className="h-5 w-5 text-gray-400" />}
+                        </div>
+                      </div>
+
+                      {/* Expanded Detail */}
+                      {isExpanded && (
+                        <div className="mt-4 pt-4 border-t border-amber-200 space-y-4">
+                          {/* Tied Candidates */}
+                          <div>
+                            <p className="text-sm font-medium text-gray-600 mb-2">Tied Candidates:</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                              {tie.tiedCandidates.map((c) => (
+                                <div key={c.candidateId} className="flex items-center gap-2 p-2 rounded-lg bg-white/70 border border-amber-100">
+                                  <Award className="h-4 w-4 text-amber-500" />
+                                  <span className="text-sm font-medium">{c.candidateName}</span>
+                                  <span className="text-xs text-gray-400">({c.candidateParty})</span>
+                                  <span className="ml-auto text-sm font-bold text-amber-700">{c.totalVotes} votes</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Verification Panel */}
+                          {existingVerification && (
+                            <div className="p-4 rounded-lg bg-white/80 border border-gray-200 space-y-3">
+                              <div className="flex items-center gap-2">
+                                <Users className="h-4 w-4 text-blue-500" />
+                                <span className="text-sm font-semibold text-gray-700">
+                                  Manual Vote Verification — {existingVerification.selectedVoterIds.length} voters selected
+                                </span>
+                                <span className={`ml-auto text-xs px-2 py-0.5 rounded-full font-medium ${
+                                  existingVerification.verificationStatus === 'in_progress' ? 'bg-blue-100 text-blue-700' :
+                                  existingVerification.verificationStatus === 'tie_remains' ? 'bg-red-100 text-red-700' :
+                                  'bg-green-100 text-green-700'
+                                }`}>
+                                  {existingVerification.verificationStatus.replace('_', ' ')}
+                                </span>
+                              </div>
+
+                              {/* Load votes button */}
+                              {!verificationVotes[existingVerification.id] && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleLoadVerificationVotes(existingVerification)}
+                                  className="text-sm"
+                                >
+                                  <Search className="h-3 w-3 mr-1" />
+                                  View Selected Voters' Votes
+                                </Button>
+                              )}
+
+                              {/* Voter votes table */}
+                              {verificationVotes[existingVerification.id] && (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm">
+                                    <thead>
+                                      <tr className="border-b border-gray-100">
+                                        <th className="text-left py-2 px-2 text-xs text-gray-400">Voter</th>
+                                        <th className="text-left py-2 px-2 text-xs text-gray-400">LRN</th>
+                                        <th className="text-left py-2 px-2 text-xs text-gray-400">Voted For</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {verificationVotes[existingVerification.id].map((vv, i) => (
+                                        <tr key={i} className="border-b border-gray-50">
+                                          <td className="py-1.5 px-2">{vv.voterName}</td>
+                                          <td className="py-1.5 px-2 text-gray-500">{vv.voterLrn}</td>
+                                          <td className="py-1.5 px-2 font-medium">{vv.candidateName}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+
+                              {/* Complete Verification / Resolve Tie */}
+                              {existingVerification.verificationStatus === 'in_progress' && (
+                                <div className="space-y-2 pt-2 border-t border-gray-100">
+                                  <textarea
+                                    value={verificationNotes}
+                                    onChange={(e) => setVerificationNotes(e.target.value)}
+                                    placeholder="Add verification notes..."
+                                    className="w-full p-2 text-sm border border-gray-200 rounded-lg resize-none h-20"
+                                  />
+                                  <div className="flex gap-2">
+                                    <Button size="sm" onClick={() => handleCompleteVerification(existingVerification, false)}
+                                      className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                                      <CheckCircle className="h-3 w-3 mr-1" /> Verification Complete (No Tie)
+                                    </Button>
+                                    <Button size="sm" variant="outline" onClick={() => handleCompleteVerification(existingVerification, true)}
+                                      className="border-red-200 text-red-600 hover:bg-red-50">
+                                      <AlertTriangle className="h-3 w-3 mr-1" /> Tie Remains
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {existingVerification.verificationStatus === 'tie_remains' && (
+                                <div className="space-y-3 pt-2 border-t border-red-200 bg-red-50/50 p-3 rounded-lg">
+                                  <p className="text-sm font-semibold text-red-700">
+                                    Tie Remains – Further Action Required
+                                  </p>
+                                  <p className="text-xs text-red-600">
+                                    Select the winner based on your school's approved tie-breaking procedure.
+                                  </p>
+                                  <select
+                                    value={selectedWinner}
+                                    onChange={(e) => setSelectedWinner(e.target.value)}
+                                    className="w-full h-9 px-3 text-sm rounded-md border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                                  >
+                                    <option value="">Select Winner</option>
+                                    {tie.tiedCandidates.map((c) => (
+                                      <option key={c.candidateId} value={c.candidateId}>{c.candidateName}</option>
+                                    ))}
+                                  </select>
+                                  <input
+                                    type="text"
+                                    value={tieResolveReason}
+                                    onChange={(e) => setTieResolveReason(e.target.value)}
+                                    placeholder="Reason for selection (e.g., coin toss, academic standing)..."
+                                    className="w-full p-2 text-sm border border-gray-200 rounded-lg"
+                                  />
+                                  <Button size="sm" onClick={() => handleResolveTie(existingVerification)}
+                                    disabled={!selectedWinner}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white">
+                                    <Trophy className="h-3 w-3 mr-1" /> Confirm Winner Selection
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Finalize Button */}
+          {!election?.resultsFinalized && (
+            <div className="text-center py-6">
+              <Button
+                onClick={() => setShowFinalizeDialog(true)}
+                disabled={!allTiesResolved || isFinalizing}
+                size="lg"
+                className="gap-2 text-white shadow-lg"
+                style={{
+                  background: allTiesResolved
+                    ? 'linear-gradient(135deg, #059669, #047857)'
+                    : 'linear-gradient(135deg, #9ca3af, #6b7280)',
+                }}
+              >
+                <Lock className="h-5 w-5" />
+                {isFinalizing ? 'Finalizing...' : 'Finalize Election Results'}
+              </Button>
+              {!allTiesResolved && (
+                <p className="text-sm text-gray-400 mt-2">All ties must be resolved before finalizing results.</p>
+              )}
+            </div>
+          )}
+
+          {/* Finalize Confirmation Dialog */}
+          <AlertDialog open={showFinalizeDialog} onOpenChange={setShowFinalizeDialog}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <Lock className="h-5 w-5 text-emerald-600" />
+                  Finalize Election Results
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently lock the election results. Once finalized, the results cannot be changed without administrator authorization.
+                  <br /><br />
+                  <strong>This action will:</strong>
+                  <ul className="list-disc list-inside mt-2 space-y-1">
+                    <li>Lock all vote counts from further changes</li>
+                    <li>Record your name and the current date/time</li>
+                    <li>Enable the "Generate Official Results" function</li>
+                  </ul>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleFinalizeResults}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  Yes, Finalize Results
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </main>
+
+      <Footer />
+    </div>
+  );
+}

@@ -45,6 +45,55 @@ export interface Election {
   totalVoters?: number;
   totalVoted?: number;
   gradeMappings?: Record<string, string>; // Maps voter grade to candidate grade
+  resultsFinalized?: boolean;
+  finalizedBy?: string;
+  finalizedAt?: Date;
+}
+
+export interface ElectionResult {
+  positionId: string;
+  positionName: string;
+  positionOrder: number;
+  candidateId: string;
+  candidateName: string;
+  candidateParty: string;
+  candidateGradeLevel: string;
+  totalVotes: number;
+  rank: number;
+  status: 'winner' | 'tied' | 'verified_winner' | 'lost' | 'pending';
+  percentage: number;
+}
+
+export interface VoteVerification {
+  id: string;
+  positionId: string;
+  tiedCandidateIds: string[];
+  selectedVoterIds: string[];
+  verificationStatus: 'pending' | 'in_progress' | 'completed' | 'tie_remains';
+  verifiedBy?: string;
+  verifiedAt?: Date;
+  notes?: string;
+  originalVoteCounts: Record<string, number>;
+  createdAt: Date;
+}
+
+export interface TieResolution {
+  id: string;
+  verificationId: string;
+  positionId: string;
+  selectedWinnerId: string;
+  resolutionMethod: string;
+  resolvedBy?: string;
+  resolvedAt?: Date;
+  reason?: string;
+}
+
+export interface VerificationVoterDetail {
+  voterId: string;
+  voterName: string;
+  voterLrn: string;
+  candidateId: string;
+  candidateName: string;
 }
 
 export interface Vote {
