@@ -13,123 +13,141 @@ import {
   XCircle,
   Vote,
   Shield,
-  ArrowUpDown,
   Filter,
-  Layers,
-  ChevronLeft,
-  ChevronRight,
-  UserCheck
+  LayoutGrid,
+  ExternalLink,
+  ChevronDown,
+  GraduationCap
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function VotersPage() {
-  const { voters, user, isLoggedIn } = useVoting();
+  const { voters, sections, user, isLoggedIn } = useVoting();
 
-  // Search & Filters State
+  // Filter & Search States
   const [searchQuery, setSearchQuery] = useState('');
   const [filterGrade, setFilterGrade] = useState<string>('all');
   const [filterSection, setFilterSection] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterVoted, setFilterVoted] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<string>('name_asc');
-
-  // Pagination State
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 25;
 
   const isAdmin = isLoggedIn && user?.role === 'admin';
 
-  // Extract all unique sections for dropdown
+  // Standard grade levels
+  const standardGrades = ['7', '8', '9', '10', '11', '12'];
+
+  // Dynamically extract all grades present in sections or standardGrades
+  const allGrades = useMemo(() => {
+    const sectionGrades = sections.map((s) => s.gradeLevel);
+    const voterGrades = voters.map((v) => v.gradeLevel);
+    const combined = [...new Set([...standardGrades, ...sectionGrades, ...voterGrades])]
+      .filter(Boolean)
+      .sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0));
+    return combined;
+  }, [sections, voters]);
+
+  // Dynamically build available sections from Manage Grade Sections
   const availableSections = useMemo(() => {
-    const relevantVoters = filterGrade === 'all'
-      ? voters
-      : voters.filter((v) => v.gradeLevel === filterGrade);
-    return [...new Set(relevantVoters.map((v) => v.section).filter(Boolean))].sort();
-  }, [voters, filterGrade]);
+    const list = filterGrade === 'all'
+      ? sections
+      : sections.filter((s) => s.gradeLevel === filterGrade);
+    return [...new Set(list.map((s) => s.name))].sort();
+  }, [sections, filterGrade]);
 
-  // Reset section filter if it no longer applies to selected grade
-  const handleGradeChange = (grade: string) => {
-    setFilterGrade(grade);
-    setFilterSection('all');
-    setCurrentPage(1);
-  };
+  // Summary Metrics
+  const totalVotersCount = voters.length;
+  const approvedCount = voters.filter((v) => v.status === 'approved').length;
+  const votedCount = voters.filter((v) => v.hasVoted).length;
+  const pendingCount = voters.filter((v) => v.status === 'pending').length;
+  const totalSectionsCount = sections.length;
 
-  // Filtered & Sorted Voters
-  const filteredVoters = useMemo(() => {
-    return voters
-      .filter((voter) => {
-        // Search query
-        if (searchQuery.trim()) {
-          const q = searchQuery.toLowerCase().trim();
-          const matchName = (voter.name || '').toLowerCase().includes(q);
-          const matchLrn = (voter.lrn || '').toLowerCase().includes(q);
-          const matchSection = (voter.section || '').toLowerCase().includes(q);
-          if (!matchName && !matchLrn && !matchSection) return false;
-        }
+  // Filter voters by global search/status/voted
+  const searchFilteredVoters = useMemo(() => {
+    return voters.filter((voter) => {
+      // Search query (name, LRN, section)
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchName = (voter.name || '').toLowerCase().includes(q);
+        const matchLrn = (voter.lrn || '').toLowerCase().includes(q);
+        const matchSection = (voter.section || '').toLowerCase().includes(q);
+        if (!matchName && !matchLrn && !matchSection) return false;
+      }
 
-        // Grade filter
-        if (filterGrade !== 'all' && voter.gradeLevel !== filterGrade) {
-          return false;
-        }
+      // Registration status filter
+      if (filterStatus !== 'all' && voter.status !== filterStatus) {
+        return false;
+      }
 
-        // Section filter
-        if (filterSection !== 'all' && voter.section !== filterSection) {
-          return false;
-        }
+      // Voting status filter
+      if (filterVoted === 'voted' && !voter.hasVoted) return false;
+      if (filterVoted === 'not_voted' && voter.hasVoted) return false;
 
-        // Registration status filter
-        if (filterStatus !== 'all' && voter.status !== filterStatus) {
-          return false;
-        }
+      return true;
+    });
+  }, [voters, searchQuery, filterStatus, filterVoted]);
 
-        // Voting status filter
-        if (filterVoted === 'voted' && !voter.hasVoted) return false;
-        if (filterVoted === 'not_voted' && voter.hasVoted) return false;
+  // Build the hierarchical structure: Grade Level -> Section -> Voters
+  const gradeSectionGroups = useMemo(() => {
+    const gradesToShow = filterGrade === 'all' ? allGrades : [filterGrade];
 
-        return true;
-      })
-      .sort((a, b) => {
-        switch (sortBy) {
-          case 'name_asc':
-            return (a.name || '').localeCompare(b.name || '');
-          case 'name_desc':
-            return (b.name || '').localeCompare(a.name || '');
-          case 'grade_asc':
-            return (parseInt(a.gradeLevel) || 0) - (parseInt(b.gradeLevel) || 0) || (a.name || '').localeCompare(b.name || '');
-          case 'grade_desc':
-            return (parseInt(b.gradeLevel) || 0) - (parseInt(a.gradeLevel) || 0) || (a.name || '').localeCompare(b.name || '');
-          case 'date_newest': {
-            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-            return timeB - timeA;
-          }
-          case 'date_oldest': {
-            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-            return timeA - timeB;
-          }
-          case 'lrn':
-            return (a.lrn || '').localeCompare(b.lrn || '');
-          default:
-            return 0;
-        }
+    return gradesToShow.map((grade) => {
+      // 1. Get official sections defined in Manage Grade Sections for this grade
+      const officialSectionsForGrade = sections
+        .filter((s) => s.gradeLevel === grade)
+        .map((s) => s.name)
+        .sort();
+
+      // 2. Also check if there are voters in this grade with sections not in official list
+      const votersInGrade = searchFilteredVoters.filter((v) => v.gradeLevel === grade);
+      const voterSectionNames = [...new Set(votersInGrade.map((v) => v.section).filter(Boolean))];
+      
+      // Combine official sections + any extra section names from voters
+      const combinedSectionNames = [...new Set([...officialSectionsForGrade, ...voterSectionNames])].sort();
+
+      // Filter sections if section filter is active
+      const finalSectionNames = filterSection === 'all'
+        ? combinedSectionNames
+        : combinedSectionNames.filter((sec) => sec === filterSection);
+
+      const sectionGroups = finalSectionNames.map((sectionName) => {
+        const sectionVoters = votersInGrade
+          .filter((v) => (v.section || '').trim().toLowerCase() === sectionName.trim().toLowerCase())
+          .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+        return {
+          sectionName,
+          voters: sectionVoters,
+          isOfficial: officialSectionsForGrade.includes(sectionName),
+        };
       });
-  }, [voters, searchQuery, filterGrade, filterSection, filterStatus, filterVoted, sortBy]);
 
-  // Pagination calculation
-  const totalPages = Math.max(1, Math.ceil(filteredVoters.length / itemsPerPage));
-  const paginatedVoters = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return filteredVoters.slice(start, start + itemsPerPage);
-  }, [filteredVoters, currentPage, itemsPerPage]);
+      // Also check if there are voters with no section specified
+      const unassignedVoters = votersInGrade.filter((v) => !v.section || v.section.trim() === '');
+      if (unassignedVoters.length > 0 && filterSection === 'all') {
+        sectionGroups.push({
+          sectionName: 'Unassigned Section',
+          voters: unassignedVoters,
+          isOfficial: false,
+        });
+      }
+
+      const totalGradeVoters = votersInGrade.length;
+
+      return {
+        grade,
+        sectionGroups,
+        totalGradeVoters,
+        totalGradeSections: officialSectionsForGrade.length,
+      };
+    });
+  }, [allGrades, sections, searchFilteredVoters, filterGrade, filterSection]);
 
   const hasActiveFilters =
     searchQuery !== '' ||
     filterGrade !== 'all' ||
     filterSection !== 'all' ||
     filterStatus !== 'all' ||
-    filterVoted !== 'all' ||
-    sortBy !== 'name_asc';
+    filterVoted !== 'all';
 
   const clearAllFilters = () => {
     setSearchQuery('');
@@ -137,42 +155,7 @@ export default function VotersPage() {
     setFilterSection('all');
     setFilterStatus('all');
     setFilterVoted('all');
-    setSortBy('name_asc');
-    setCurrentPage(1);
   };
-
-  // Summary Metrics
-  const totalVotersCount = voters.length;
-  const approvedCount = voters.filter((v) => v.status === 'approved').length;
-  const votedCount = voters.filter((v) => v.hasVoted).length;
-  const pendingCount = voters.filter((v) => v.status === 'pending').length;
-
-  if (!isAdmin) {
-    return (
-      <div className="min-h-screen flex flex-col bg-slate-50">
-        <Header />
-        <main className="flex-1 flex items-center justify-center p-4">
-          <Card className="max-w-md w-full text-center p-8 border-slate-100 shadow-lg bg-white rounded-2xl">
-            <CardContent className="pt-6">
-              <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
-                <Shield className="h-7 w-7 text-slate-400" />
-              </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-1">Access Restricted</h2>
-              <p className="text-sm text-gray-500 mb-6">
-                The registered voters directory is accessible only to administrators.
-              </p>
-              <Link to="/">
-                <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg h-10 text-sm">
-                  Return Home
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        </main>
-        <Footer />
-      </div>
-    );
-  }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -213,6 +196,33 @@ export default function VotersPage() {
     });
   };
 
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        <Header />
+        <main className="flex-1 flex items-center justify-center p-4">
+          <Card className="max-w-md w-full text-center p-8 border-slate-100 shadow-lg bg-white rounded-2xl">
+            <CardContent className="pt-6">
+              <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                <Shield className="h-7 w-7 text-slate-400" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-900 mb-1">Access Restricted</h2>
+              <p className="text-sm text-gray-500 mb-6">
+                The registered voters directory is accessible only to administrators.
+              </p>
+              <Link to="/">
+                <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg h-10 text-sm">
+                  Return Home
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50/70">
       <Header />
@@ -220,154 +230,150 @@ export default function VotersPage() {
       <main className="flex-1 py-6 sm:py-8">
         <div className="container mx-auto px-4 max-w-6xl">
 
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          {/* Top Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 animate-slide-up">
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
+              <div className="flex items-center gap-2.5 mb-1">
+                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
                   Registered Voters
                 </h1>
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                  Grade 7 – 12 Directory
+                  Connected to Manage Sections
                 </span>
               </div>
-              <p className="text-xs sm:text-sm text-gray-500">
-                Complete roster of registered students across all grade levels and sections
+              <p className="text-xs sm:text-sm text-slate-500">
+                Organized tables for every grade level and section linked directly to your grade sections settings
               </p>
             </div>
 
             <div className="flex items-center gap-2">
-              <Link to="/registrations">
+              <Link to="/sections">
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-9 gap-1.5 text-xs sm:text-sm border-blue-200 text-blue-700 hover:bg-blue-50 font-medium"
+                  className="h-9 gap-1.5 text-xs sm:text-sm border-purple-200 text-purple-700 hover:bg-purple-50 font-medium rounded-xl"
                 >
-                  <UserCheck className="h-4 w-4 text-blue-600" />
-                  Pending Approvals ({pendingCount})
+                  <LayoutGrid className="h-4 w-4 text-purple-600" />
+                  Manage Grade Sections ({totalSectionsCount})
                 </Button>
               </Link>
             </div>
           </div>
 
-          {/* Summary Cards */}
+          {/* Metric Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
-            <Card className="border border-gray-200/80 shadow-sm bg-white rounded-xl">
+            <Card className="border border-slate-200/80 shadow-sm bg-white rounded-xl">
               <CardContent className="p-4 sm:p-5">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-gray-500">Total Registered</span>
+                  <span className="text-xs font-medium text-slate-500">Total Registered</span>
                   <div className="p-2 rounded-lg bg-blue-50">
                     <Users className="h-4 w-4 text-blue-600" />
                   </div>
                 </div>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">{totalVotersCount.toLocaleString()}</p>
-                <p className="text-[11px] text-gray-400 mt-0.5">Grades 7 to 12 combined</p>
+                <p className="text-xl sm:text-2xl font-bold text-slate-900">{totalVotersCount.toLocaleString()}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Across all grade levels</p>
               </CardContent>
             </Card>
 
-            <Card className="border border-gray-200/80 shadow-sm bg-white rounded-xl">
+            <Card className="border border-slate-200/80 shadow-sm bg-white rounded-xl">
               <CardContent className="p-4 sm:p-5">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-gray-500">Approved Voters</span>
+                  <span className="text-xs font-medium text-slate-500">Approved Voters</span>
                   <div className="p-2 rounded-lg bg-emerald-50">
                     <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                   </div>
                 </div>
                 <p className="text-xl sm:text-2xl font-bold text-emerald-700">{approvedCount.toLocaleString()}</p>
-                <p className="text-[11px] text-gray-400 mt-0.5">Eligible to cast ballots</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Eligible to cast ballots</p>
               </CardContent>
             </Card>
 
-            <Card className="border border-gray-200/80 shadow-sm bg-white rounded-xl">
+            <Card className="border border-slate-200/80 shadow-sm bg-white rounded-xl">
               <CardContent className="p-4 sm:p-5">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-gray-500">Ballots Cast</span>
+                  <span className="text-xs font-medium text-slate-500">Ballots Cast</span>
                   <div className="p-2 rounded-lg bg-indigo-50">
                     <Vote className="h-4 w-4 text-indigo-600" />
                   </div>
                 </div>
                 <p className="text-xl sm:text-2xl font-bold text-indigo-700">{votedCount.toLocaleString()}</p>
-                <p className="text-[11px] text-gray-400 mt-0.5">
-                  {approvedCount > 0 ? `${Math.round((votedCount / approvedCount) * 100)}% turnout` : '0% turnout'}
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {approvedCount > 0 ? `${Math.round((votedCount / approvedCount) * 100)}% voter turnout` : '0% turnout'}
                 </p>
               </CardContent>
             </Card>
 
-            <Card className="border border-gray-200/80 shadow-sm bg-white rounded-xl">
+            <Card className="border border-slate-200/80 shadow-sm bg-white rounded-xl">
               <CardContent className="p-4 sm:p-5">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-gray-500">Pending Approval</span>
-                  <div className="p-2 rounded-lg bg-amber-50">
-                    <Clock className="h-4 w-4 text-amber-600" />
+                  <span className="text-xs font-medium text-slate-500">Active Sections</span>
+                  <div className="p-2 rounded-lg bg-purple-50">
+                    <LayoutGrid className="h-4 w-4 text-purple-600" />
                   </div>
                 </div>
-                <p className="text-xl sm:text-2xl font-bold text-amber-700">{pendingCount.toLocaleString()}</p>
-                <p className="text-[11px] text-gray-400 mt-0.5">Awaiting verification</p>
+                <p className="text-xl sm:text-2xl font-bold text-purple-700">{totalSectionsCount.toLocaleString()}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Configured in Grade Sections</p>
               </CardContent>
             </Card>
           </div>
 
-          {/* Search, Filter & Sort Controls */}
-          <Card className="border border-gray-200/80 shadow-sm bg-white rounded-xl mb-6">
+          {/* Search & Dynamic Filter Controls */}
+          <Card className="border border-slate-200/80 shadow-sm bg-white rounded-xl mb-8">
             <CardContent className="p-4 sm:p-5">
               <div className="flex flex-col gap-3">
                 {/* Search Bar */}
                 <div className="relative w-full">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                   <Input
-                    placeholder="Search by student name, Student ID / LRN, or section..."
+                    placeholder="Search voter by name, Student ID / LRN, or section name..."
                     value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="pl-9 pr-8 h-9 text-xs sm:text-sm bg-slate-50/50 focus:bg-white"
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 pr-8 h-9 text-xs sm:text-sm bg-slate-50/60 focus:bg-white rounded-lg"
                   />
                   {searchQuery && (
                     <button
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                     >
                       <XCircle className="h-4 w-4" />
                     </button>
                   )}
                 </div>
 
-                {/* Filter and Sort Controls */}
+                {/* Filters Row */}
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium mr-1">
-                    <Filter className="h-3.5 w-3.5 text-gray-400" />
-                    <span>Filters:</span>
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold mr-1">
+                    <Filter className="h-3.5 w-3.5 text-slate-400" />
+                    <span>Filter:</span>
                   </div>
 
                   {/* Grade Level Filter */}
                   <select
                     value={filterGrade}
-                    onChange={(e) => handleGradeChange(e.target.value)}
-                    className="h-8 px-2.5 text-xs rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    onChange={(e) => {
+                      setFilterGrade(e.target.value);
+                      setFilterSection('all');
+                    }}
+                    className="h-8 px-2.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer font-medium"
                   >
-                    <option value="all">All Grades (7–12)</option>
-                    <option value="7">Grade 7</option>
-                    <option value="8">Grade 8</option>
-                    <option value="9">Grade 9</option>
-                    <option value="10">Grade 10</option>
-                    <option value="11">Grade 11</option>
-                    <option value="12">Grade 12</option>
+                    <option value="all">All Grade Levels</option>
+                    {allGrades.map((g) => (
+                      <option key={g} value={g}>
+                        Grade {g}
+                      </option>
+                    ))}
                   </select>
 
-                  {/* Section Filter */}
+                  {/* Dynamic Section Filter based on Manage Grade Sections */}
                   <select
                     value={filterSection}
-                    onChange={(e) => {
-                      setFilterSection(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="h-8 px-2.5 text-xs rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    onChange={(e) => setFilterSection(e.target.value)}
+                    className="h-8 px-2.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer font-medium"
                   >
                     <option value="all">All Sections</option>
                     {availableSections.map((sec) => (
                       <option key={sec} value={sec}>
-                        {sec}
+                        Section: {sec}
                       </option>
                     ))}
                   </select>
@@ -375,13 +381,10 @@ export default function VotersPage() {
                   {/* Registration Status Filter */}
                   <select
                     value={filterStatus}
-                    onChange={(e) => {
-                      setFilterStatus(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="h-8 px-2.5 text-xs rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="h-8 px-2.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer font-medium"
                   >
-                    <option value="all">All Statuses</option>
+                    <option value="all">All Registration Statuses</option>
                     <option value="approved">Approved</option>
                     <option value="pending">Pending</option>
                     <option value="rejected">Rejected</option>
@@ -390,47 +393,23 @@ export default function VotersPage() {
                   {/* Voting Status Filter */}
                   <select
                     value={filterVoted}
-                    onChange={(e) => {
-                      setFilterVoted(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="h-8 px-2.5 text-xs rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    onChange={(e) => setFilterVoted(e.target.value)}
+                    className="h-8 px-2.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer font-medium"
                   >
-                    <option value="all">Voting Status (All)</option>
+                    <option value="all">All Voting Statuses</option>
                     <option value="voted">Has Voted</option>
                     <option value="not_voted">Not Voted</option>
                   </select>
 
-                  {/* Sort By Dropdown */}
-                  <div className="flex items-center gap-1.5 ml-auto">
-                    <ArrowUpDown className="h-3.5 w-3.5 text-gray-400" />
-                    <select
-                      value={sortBy}
-                      onChange={(e) => {
-                        setSortBy(e.target.value);
-                        setCurrentPage(1);
-                      }}
-                      className="h-8 px-2.5 text-xs rounded-lg border border-gray-200 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer font-medium"
-                    >
-                      <option value="name_asc">Name (A → Z)</option>
-                      <option value="name_desc">Name (Z → A)</option>
-                      <option value="grade_asc">Grade (7 → 12)</option>
-                      <option value="grade_desc">Grade (12 → 7)</option>
-                      <option value="date_newest">Date Registered (Newest)</option>
-                      <option value="date_oldest">Date Registered (Oldest)</option>
-                      <option value="lrn">Student ID / LRN</option>
-                    </select>
-                  </div>
-
-                  {/* Clear Filters Button */}
+                  {/* Clear Button */}
                   {hasActiveFilters && (
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={clearAllFilters}
-                      className="h-8 px-2 text-xs text-gray-500 hover:text-gray-700"
+                      className="h-8 px-2 text-xs text-slate-500 hover:text-slate-700 ml-auto"
                     >
-                      <XCircle className="h-3.5 w-3.5 mr-1 text-gray-400" /> Clear
+                      <XCircle className="h-3.5 w-3.5 mr-1 text-slate-400" /> Clear Filters
                     </Button>
                   )}
                 </div>
@@ -438,135 +417,177 @@ export default function VotersPage() {
             </CardContent>
           </Card>
 
-          {/* Unified Voters Table */}
-          <Card className="border border-gray-200/80 shadow-sm bg-white rounded-xl overflow-hidden mb-6">
-            {/* Table Header / Count Bar */}
-            <div className="px-5 py-3 bg-gray-50/70 border-b border-gray-100 flex items-center justify-between text-xs text-gray-500">
-              <span>
-                Showing <strong className="text-gray-900">{filteredVoters.length}</strong> of{' '}
-                <strong className="text-gray-900">{totalVotersCount}</strong> registered voters
-              </span>
-              <span>Page {currentPage} of {totalPages}</span>
-            </div>
+          {/* Render Grade Levels and their Individual Section Tables */}
+          <div className="space-y-10">
+            {gradeSectionGroups.map(({ grade, sectionGroups, totalGradeVoters, totalGradeSections }) => {
+              // If filtering by a specific section and this grade has no matching section, skip
+              if (sectionGroups.length === 0 && filterSection !== 'all') return null;
 
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50/40 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-                      <th className="py-3 px-4 w-12 text-center">#</th>
-                      <th className="py-3 px-4">Student Name</th>
-                      <th className="py-3 px-4">Student ID (LRN)</th>
-                      <th className="py-3 px-4">Grade Level</th>
-                      <th className="py-3 px-4">Section</th>
-                      <th className="py-3 px-4 text-center">Registration Status</th>
-                      <th className="py-3 px-4">Date Registered</th>
-                      <th className="py-3 px-4 text-right">Voting Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50 text-xs sm:text-sm">
-                    {paginatedVoters.length === 0 ? (
-                      <tr>
-                        <td colSpan={8} className="py-14 text-center text-gray-400">
-                          <Users className="h-9 w-9 mx-auto mb-2 text-gray-300" />
-                          <p className="font-semibold text-gray-600 text-sm">No registered voters found</p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            {hasActiveFilters
-                              ? 'Try adjusting or clearing your search and filters.'
-                              : 'No students have registered yet.'}
-                          </p>
-                        </td>
-                      </tr>
-                    ) : (
-                      paginatedVoters.map((voter, idx) => {
-                        const rowNumber = (currentPage - 1) * itemsPerPage + idx + 1;
-                        return (
-                          <tr
-                            key={voter.id}
-                            className="hover:bg-blue-50/30 transition-colors"
-                          >
-                            <td className="py-3 px-4 text-xs text-gray-400 font-mono text-center">
-                              {rowNumber}
-                            </td>
-                            <td className="py-3 px-4 font-semibold text-gray-900">
-                              {voter.name}
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className="font-mono text-xs text-gray-700 bg-gray-100 px-2 py-0.5 rounded border border-gray-200/60">
-                                {voter.lrn || 'N/A'}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 font-medium text-gray-800">
-                              Grade {voter.gradeLevel}
-                            </td>
-                            <td className="py-3 px-4 text-gray-600">
-                              {voter.section || '—'}
-                            </td>
-                            <td className="py-3 px-4 text-center">
-                              {getStatusBadge(voter.status)}
-                            </td>
-                            <td className="py-3 px-4 text-gray-500 text-xs">
-                              {formatDate(voter.createdAt)}
-                            </td>
-                            <td className="py-3 px-4 text-right">
-                              {voter.hasVoted ? (
-                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
-                                  <CheckCircle2 className="h-3 w-3" /> Voted
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center text-xs font-medium text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full border border-gray-100">
-                                  Not Voted
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Pagination Controls */}
-              {totalPages > 1 && (
-                <div className="p-4 border-t border-gray-100 flex items-center justify-between flex-wrap gap-2 text-xs">
-                  <span className="text-gray-500">
-                    Showing {(currentPage - 1) * itemsPerPage + 1} to{' '}
-                    {Math.min(currentPage * itemsPerPage, filteredVoters.length)} of{' '}
-                    {filteredVoters.length} voters
-                  </span>
-
-                  <div className="flex items-center gap-1.5">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="h-8 px-2.5 text-xs"
-                    >
-                      <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Prev
-                    </Button>
-
-                    <div className="flex items-center gap-1 px-2">
-                      <span className="font-semibold text-gray-800">{currentPage}</span>
-                      <span className="text-gray-400">/</span>
-                      <span className="text-gray-500">{totalPages}</span>
+              return (
+                <div key={grade} className="animate-fade-in">
+                  
+                  {/* Grade Level Banner */}
+                  <div className="flex items-center justify-between pb-3 mb-5 border-b-2 border-slate-200">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-base shadow-sm">
+                        {grade}
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                          Grade {grade}
+                        </h2>
+                        <p className="text-xs text-slate-500">
+                          {totalGradeSections} {totalGradeSections === 1 ? 'section' : 'sections'} configured in Manage Sections • {totalGradeVoters} registered {totalGradeVoters === 1 ? 'voter' : 'voters'}
+                        </p>
+                      </div>
                     </div>
 
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={currentPage === totalPages}
-                      className="h-8 px-2.5 text-xs"
+                    <Link
+                      to="/sections"
+                      className="text-xs text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1 hover:underline"
                     >
-                      Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
-                    </Button>
+                      + Add Grade {grade} Section <ExternalLink className="h-3 w-3" />
+                    </Link>
                   </div>
+
+                  {/* Section Tables under this Grade */}
+                  {sectionGroups.length === 0 ? (
+                    <div className="bg-white rounded-xl border border-dashed border-slate-200 p-8 text-center">
+                      <LayoutGrid className="h-8 w-8 text-slate-300 mx-auto mb-2" />
+                      <p className="text-sm font-semibold text-slate-600">No sections found for Grade {grade}</p>
+                      <p className="text-xs text-slate-400 mt-1 mb-4">
+                        Add sections in "Manage Grade Sections" to start organizing Grade {grade} registered voters.
+                      </p>
+                      <Link to="/sections">
+                        <Button size="sm" variant="outline" className="text-xs h-8">
+                          Configure Grade {grade} Sections
+                        </Button>
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-6">
+                      {sectionGroups.map(({ sectionName, voters: secVoters, isOfficial }) => {
+                        const secApproved = secVoters.filter((v) => v.status === 'approved').length;
+                        const secVoted = secVoters.filter((v) => v.hasVoted).length;
+
+                        return (
+                          <Card
+                            key={sectionName}
+                            className="border border-slate-200/80 shadow-sm bg-white rounded-xl overflow-hidden"
+                          >
+                            {/* Section Header */}
+                            <div className="px-5 py-3.5 bg-slate-50/80 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <div className="flex items-center gap-2.5">
+                                <div className="p-1.5 rounded-lg bg-blue-100/70 text-blue-700">
+                                  <GraduationCap className="h-4 w-4" />
+                                </div>
+                                <div>
+                                  <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
+                                    Grade {grade} – {sectionName}
+                                    {!isOfficial && (
+                                      <span className="text-[10px] font-normal text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded">
+                                        Legacy / Custom
+                                      </span>
+                                    )}
+                                  </h3>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold">
+                                  {secVoters.length} {secVoters.length === 1 ? 'Student' : 'Students'}
+                                </span>
+                                <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200/60">
+                                  {secApproved} Approved
+                                </span>
+                                <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200/60">
+                                  {secVoted} Voted
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Section Table Content */}
+                            <CardContent className="p-0">
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-left">
+                                  <thead>
+                                    <tr className="border-b border-slate-100 bg-slate-50/30 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                                      <th className="py-2.5 px-4 w-12 text-center">#</th>
+                                      <th className="py-2.5 px-4">Student Name</th>
+                                      <th className="py-2.5 px-4">Student ID (LRN)</th>
+                                      <th className="py-2.5 px-4">Grade & Section</th>
+                                      <th className="py-2.5 px-4 text-center">Registration Status</th>
+                                      <th className="py-2.5 px-4">Date Registered</th>
+                                      <th className="py-2.5 px-4 text-right">Voting Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-50 text-xs sm:text-sm">
+                                    {secVoters.length === 0 ? (
+                                      <tr>
+                                        <td colSpan={7} className="py-8 text-center text-slate-400">
+                                          <Users className="h-6 w-6 mx-auto mb-1 text-slate-300" />
+                                          <p className="text-xs font-medium text-slate-500">
+                                            No registered voters in Grade {grade} – {sectionName}
+                                          </p>
+                                          <p className="text-[11px] text-slate-400 mt-0.5">
+                                            Students who register under this section will automatically appear here.
+                                          </p>
+                                        </td>
+                                      </tr>
+                                    ) : (
+                                      secVoters.map((voter, idx) => (
+                                        <tr
+                                          key={voter.id}
+                                          className="hover:bg-blue-50/30 transition-colors"
+                                        >
+                                          <td className="py-3 px-4 text-xs text-slate-400 font-mono text-center">
+                                            {idx + 1}
+                                          </td>
+                                          <td className="py-3 px-4 font-semibold text-slate-900">
+                                            {voter.name}
+                                          </td>
+                                          <td className="py-3 px-4">
+                                            <span className="font-mono text-xs text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200/60">
+                                              {voter.lrn || 'N/A'}
+                                            </span>
+                                          </td>
+                                          <td className="py-3 px-4 text-slate-700 font-medium text-xs">
+                                            Grade {voter.gradeLevel} – {voter.section}
+                                          </td>
+                                          <td className="py-3 px-4 text-center">
+                                            {getStatusBadge(voter.status)}
+                                          </td>
+                                          <td className="py-3 px-4 text-slate-500 text-xs">
+                                            {formatDate(voter.createdAt)}
+                                          </td>
+                                          <td className="py-3 px-4 text-right">
+                                            {voter.hasVoted ? (
+                                              <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                                                <CheckCircle2 className="h-3 w-3" /> Voted
+                                              </span>
+                                            ) : (
+                                              <span className="inline-flex items-center text-xs font-medium text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-100">
+                                                Not Voted
+                                              </span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      ))
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
+
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              );
+            })}
+          </div>
 
         </div>
       </main>
