@@ -545,7 +545,7 @@ export default function ResultsPage() {
 
           {/* Finalized Banner */}
           {election?.resultsFinalized && (
-            <div className="mb-6 p-4 rounded-xl border border-emerald-200 bg-emerald-50/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-fade-in">
+            <div className="mb-6 p-4 rounded-xl border border-emerald-200 bg-emerald-50/90 flex items-center justify-between gap-3 shadow-xs animate-fade-in">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700">
                   <CheckCircle2 className="h-5 w-5" />
@@ -557,13 +557,6 @@ export default function ResultsPage() {
                   </p>
                 </div>
               </div>
-              <Button
-                onClick={() => setShowPrintReport(true)}
-                size="sm"
-                className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs h-8 gap-1.5 self-start sm:self-auto rounded-lg shadow-xs"
-              >
-                <Printer className="h-3.5 w-3.5" /> Print Official Report
-              </Button>
             </div>
           )}
 
