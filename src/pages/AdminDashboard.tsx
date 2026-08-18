@@ -512,10 +512,16 @@ export default function AdminDashboard() {
 
       {/* Signatories Summary */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
-        <h4 className="text-sm font-bold text-slate-800">Signatories</h4>
-        <div className="space-y-1 text-xs">
-          <div className="flex justify-between"><span className="text-slate-500">Prepared by:</span><span className="font-semibold text-slate-800">{preparedByName || '—'} ({preparedByPosition || 'Election Committee Chairman'})</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Approved by:</span><span className="font-semibold text-slate-800">{approvedByName || '—'} ({approvedByPosition || 'School Principal'})</span></div>
+        <h4 className="text-sm font-bold text-slate-800">Signatories (Signature Over Printed Name)</h4>
+        <div className="space-y-1.5 text-xs">
+          <div className="flex justify-between items-center py-1 border-b border-slate-100">
+            <span className="text-slate-500 font-medium">Prepared by:</span>
+            <span className="font-bold text-slate-900 uppercase">{preparedByName || '—'} <span className="font-normal text-slate-500 normal-case">({preparedByPosition || 'Election Committee Chairman'})</span></span>
+          </div>
+          <div className="flex justify-between items-center py-1">
+            <span className="text-slate-500 font-medium">Approved by:</span>
+            <span className="font-bold text-slate-900 uppercase">{approvedByName || '—'} <span className="font-normal text-slate-500 normal-case">({approvedByPosition || 'School Principal'})</span></span>
+          </div>
         </div>
       </div>
 

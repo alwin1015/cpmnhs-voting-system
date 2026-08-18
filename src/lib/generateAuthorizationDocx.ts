@@ -11,6 +11,7 @@ import {
   Packer,
   convertInchesToTwip,
   ShadingType,
+  UnderlineType,
 } from 'docx';
 
 export interface AuthorizationDocData {
@@ -29,24 +30,27 @@ export interface AuthorizationDocData {
 }
 
 function signatureBlock(role: string, name: string, position: string): Paragraph[] {
+  const upperName = (name || '').trim().toUpperCase();
+
   return [
-    new Paragraph({ spacing: { before: 400 }, children: [] }),
+    new Paragraph({ spacing: { before: 300 }, children: [] }),
     new Paragraph({
-      spacing: { after: 40 },
+      spacing: { after: 60 },
       children: [
         new TextRun({ text: `${role}:`, bold: true, size: 22, font: 'Times New Roman' }),
       ],
     }),
-    new Paragraph({ spacing: { before: 300, after: 40 }, children: [] }),
+    // Space for physical handwritten signature above printed name
+    new Paragraph({ spacing: { before: 400, after: 60 }, children: [] }),
     new Paragraph({
       spacing: { after: 20 },
       children: [
         new TextRun({
-          text: name || '____________________________________',
-          bold: !!name,
+          text: upperName || '__________________________________________',
+          bold: true,
           size: 22,
           font: 'Times New Roman',
-          underline: name ? {} : undefined,
+          underline: upperName ? { type: UnderlineType.SINGLE } : undefined,
         }),
       ],
     }),
@@ -54,8 +58,7 @@ function signatureBlock(role: string, name: string, position: string): Paragraph
       spacing: { after: 20 },
       children: [
         new TextRun({
-          text: position || 'Position/Designation',
-          italics: !position,
+          text: position || 'Position / Designation',
           size: 20,
           font: 'Times New Roman',
           color: position ? '000000' : '666666',
@@ -65,11 +68,17 @@ function signatureBlock(role: string, name: string, position: string): Paragraph
     new Paragraph({
       spacing: { after: 20 },
       children: [
-        new TextRun({ text: 'Signature: ________________________________', size: 20, font: 'Times New Roman' }),
+        new TextRun({
+          text: '(Signature Over Printed Name)',
+          size: 18,
+          font: 'Times New Roman',
+          italics: true,
+          color: '555555',
+        }),
       ],
     }),
     new Paragraph({
-      spacing: { after: 80 },
+      spacing: { after: 100 },
       children: [
         new TextRun({ text: 'Date: _____________________________________', size: 20, font: 'Times New Roman' }),
       ],
@@ -249,7 +258,7 @@ export async function generateAuthorizationDocx(data: AuthorizationDocData): Pro
             ],
           }),
 
-          // --- Election Details Table (Cleaned up as requested) ---
+          // --- Election Details Table ---
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
             rows: [
@@ -304,7 +313,7 @@ export async function generateAuthorizationDocx(data: AuthorizationDocData): Pro
             ],
           }),
 
-          // --- SIGNATURES (Prepared by and Approved by ONLY) ---
+          // --- SIGNATURES (Prepared by and Approved by ONLY with UPPERCASE name & Signature Over Printed Name format) ---
           ...signatureBlock('Prepared by', data.preparedByName, data.preparedByPosition || 'Election Committee Chairman'),
           ...signatureBlock('Approved by', data.approvedByName, data.approvedByPosition || 'School Principal'),
         ],
