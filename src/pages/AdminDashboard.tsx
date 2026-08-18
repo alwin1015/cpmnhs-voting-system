@@ -241,14 +241,6 @@ export default function AdminDashboard() {
       onClick: handleOpenMappings,
     },
     {
-      title: 'Reset Data',
-      description: 'Delete all election data',
-      icon: AlertTriangle,
-      iconColor: '#dc2626',
-      iconBg: '#fef2f2',
-      onClick: () => setIsResetDialogOpen(true),
-    },
-    {
       title: 'Results',
       description: 'View election results',
       icon: BarChart3,
@@ -369,6 +361,24 @@ export default function AdminDashboard() {
         )}
 
         <div className="container mx-auto px-4 max-w-6xl">
+
+          {/* Top Admin Action Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 animate-slide-up">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Admin Dashboard</h1>
+              <p className="text-xs sm:text-sm text-slate-500">Welcome back, {user?.name || 'Administrator'}. Manage elections and student voting.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={() => setIsResetDialogOpen(true)}
+                variant="outline"
+                className="gap-2 h-10 px-4 text-red-600 border-red-200 bg-red-50/60 hover:bg-red-100 hover:text-red-700 hover:border-red-300 font-semibold shadow-xs transition-all duration-200 rounded-xl"
+              >
+                <AlertTriangle className="h-4 w-4 text-red-600" />
+                Reset Data
+              </Button>
+            </div>
+          </div>
 
           {/* Election Status Banner */}
           <div className="mb-8 relative overflow-hidden rounded-2xl shadow-xl border-0 animate-fade-in group">
