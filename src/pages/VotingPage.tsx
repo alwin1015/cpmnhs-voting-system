@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Vote, CheckCircle, ArrowRight, ArrowLeft, Send, Clock, LogOut } from 'lucide-react';
+import { Vote, CheckCircle, ArrowRight, ArrowLeft, Send, Clock, User, Check } from 'lucide-react';
 
 export default function VotingPage() {
   const { candidates, positions, votes, setVote, submitVotes, hasVoted, isLoggedIn, user, election, logout } = useVoting();
@@ -30,22 +30,23 @@ export default function VotingPage() {
   // Redirect if not logged in or not a voter
   if (!isLoggedIn || user?.role !== 'voter') {
     return (
-      <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
-                {isLoggedIn && (
-          <div className="absolute top-4 right-4 z-50">
-            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-800 hover:bg-transparent active:bg-transparent focus:bg-transparent">Logout</Button>
-          </div>
-        )}
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        <Header />
         <main className="flex-1 flex items-center justify-center p-4">
-          <Card className="glass-card max-w-md w-full text-center p-8">
-            <CardContent className="pt-6">
-              <Vote className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <h2 className="font-display text-2xl font-bold mb-2">Login Required</h2>
-              <p className="text-muted-foreground mb-6">
-                Please login as a student to cast your vote.
+          <Card className="max-w-md w-full text-center p-6 sm:p-8 bg-white border border-slate-200/80 shadow-lg rounded-2xl">
+            <CardContent className="pt-4 sm:pt-6">
+              <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
+                <Vote className="h-7 w-7" />
+              </div>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-1.5">Login Required</h2>
+              <p className="text-xs sm:text-sm text-slate-500 mb-6">
+                Please login with your student credentials to cast your ballot.
               </p>
-              <Button variant="hero" onClick={() => navigate('/login')}>
-                Go to Login
+              <Button 
+                onClick={() => navigate('/login')}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-11 text-sm font-semibold"
+              >
+                Go to Student Login
               </Button>
             </CardContent>
           </Card>
@@ -58,23 +59,23 @@ export default function VotingPage() {
   // Check if election is active
   if (election && !election.isActive) {
     return (
-      <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
-                {isLoggedIn && (
-          <div className="absolute top-4 right-4 z-50">
-            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-800 hover:bg-transparent active:bg-transparent focus:bg-transparent">Logout</Button>
-          </div>
-        )}
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        <Header />
         <main className="flex-1 flex items-center justify-center p-4">
-          <Card className="glass-card max-w-md w-full text-center p-8">
-            <CardContent className="pt-6">
-              <div className="w-20 h-20 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-6">
-                <Clock className="h-10 w-10 text-orange-500" />
+          <Card className="max-w-md w-full text-center p-6 sm:p-8 bg-white border border-slate-200/80 shadow-lg rounded-2xl">
+            <CardContent className="pt-4 sm:pt-6">
+              <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4">
+                <Clock className="h-7 w-7" />
               </div>
-              <h2 className="font-display text-2xl font-bold mb-2">Election Has Not Started</h2>
-              <p className="text-muted-foreground mb-6">
-                The election is currently not active. Please wait for the administrator to launch the election.
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-1.5">Election Not Active</h2>
+              <p className="text-xs sm:text-sm text-slate-500 mb-6">
+                The voting period has not started yet or has concluded. Please check with your election administrator.
               </p>
-              <Button variant="outline" onClick={() => navigate('/')}>
+              <Button 
+                variant="outline" 
+                onClick={() => navigate('/')}
+                className="w-full rounded-xl h-11 text-sm font-medium"
+              >
                 Return Home
               </Button>
             </CardContent>
@@ -88,31 +89,24 @@ export default function VotingPage() {
   // Show thank you page if already voted
   if (hasVoted) {
     return (
-      <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
-                {isLoggedIn && (
-          <div className="absolute top-4 right-4 z-50">
-            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-800 hover:bg-transparent active:bg-transparent focus:bg-transparent">Logout</Button>
-          </div>
-        )}
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        <Header />
         <main className="flex-1 flex items-center justify-center p-4">
-          <Card className="glass-card max-w-md w-full text-center p-8 animate-scale-in">
-            <CardContent className="pt-6">
-              <div className="w-20 h-20 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-6">
-                <CheckCircle className="h-10 w-10 text-success" />
+          <Card className="max-w-md w-full text-center p-6 sm:p-8 bg-white border border-slate-200/80 shadow-xl rounded-2xl animate-scale-in">
+            <CardContent className="pt-4 sm:pt-6">
+              <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4 shadow-xs">
+                <CheckCircle className="h-8 w-8 stroke-[2.5]" />
               </div>
-              <h2 className="font-display text-3xl font-bold mb-2">Vote Submitted Successfully!</h2>
-              <p className="text-muted-foreground mb-6">
-                Your vote has been recorded. Thank you for participating in the SSG Election!
+              <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-1">Vote Submitted Successfully!</h2>
+              <p className="text-xs sm:text-sm text-slate-500 mb-6 leading-relaxed">
+                Thank you, <strong>{user?.name}</strong>! Your official ballot has been securely counted and recorded for this election.
               </p>
-              <div className="flex flex-col gap-3">
-                <Button 
-                  size="lg"
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-12 text-md shadow-md"
-                  onClick={() => navigate('/')}
-                >
-                  Return Home
-                </Button>
-              </div>
+              <Button 
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-11 text-sm font-semibold shadow-xs"
+                onClick={() => navigate('/')}
+              >
+                Return to Home
+              </Button>
             </CardContent>
           </Card>
         </main>
@@ -125,20 +119,16 @@ export default function VotingPage() {
 
   if (votablePositions.length === 0) {
     return (
-      <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
-                {isLoggedIn && (
-          <div className="absolute top-4 right-4 z-50">
-            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-800 hover:bg-transparent active:bg-transparent focus:bg-transparent">Logout</Button>
-          </div>
-        )}
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        <Header />
         <main className="flex-1 flex items-center justify-center p-4">
-          <Card className="glass-card max-w-md w-full text-center p-8">
-            <CardContent className="pt-6">
-              <h2 className="font-display text-2xl font-bold mb-2">No Positions Available</h2>
-              <p className="text-muted-foreground mb-6">
-                There are currently no positions available to vote on.
+          <Card className="max-w-md w-full text-center p-6 sm:p-8 bg-white border border-slate-200/80 shadow-lg rounded-2xl">
+            <CardContent className="pt-4 sm:pt-6">
+              <h2 className="text-xl font-bold text-slate-900 mb-1.5">No Positions Configured</h2>
+              <p className="text-xs sm:text-sm text-slate-500 mb-6">
+                There are currently no active positions configured for this election.
               </p>
-              <Button variant="outline" onClick={() => navigate('/')}>
+              <Button variant="outline" onClick={() => navigate('/')} className="w-full rounded-xl h-11">
                 Return Home
               </Button>
             </CardContent>
@@ -158,26 +148,21 @@ export default function VotingPage() {
       positionCandidates = positionCandidates.filter(c => c.gradeLevel === targetGrade);
     }
   }
+
   const selectedCandidate = votes[currentPosition.id];
-  const allPositionsVoted = votablePositions.every(p => {
-    let pCands = candidates.filter(c => c.position === p.id);
-    if (p.strictGradeMapping && election?.gradeMappings && user?.gradeLevel) {
-      const targetGrade = election.gradeMappings[user.gradeLevel];
-      if (targetGrade) pCands = pCands.filter(c => c.gradeLevel === targetGrade);
-    }
-    const hasCandidates = pCands.length > 0;
-    return !hasCandidates || votes[p.id];
-  });
+  const votedCount = Object.keys(votes).length;
 
   const handleNext = () => {
     if (currentPositionIndex < votablePositions.length - 1) {
       setCurrentPositionIndex(currentPositionIndex + 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
   const handlePrevious = () => {
     if (currentPositionIndex > 0) {
       setCurrentPositionIndex(currentPositionIndex - 1);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -187,20 +172,20 @@ export default function VotingPage() {
       const success = await submitVotes();
       if (success) {
         toast({
-          title: 'Vote Submitted!',
-          description: 'Your vote has been successfully recorded.',
+          title: 'Ballot Submitted Successfully!',
+          description: 'Your votes have been recorded.',
         });
       } else {
         toast({
-          title: 'Vote Failed',
-          description: 'Failed to record your vote. Please check your selections.',
+          title: 'Submission Failed',
+          description: 'Failed to record your vote. Please try again.',
           variant: 'destructive',
         });
       }
     } catch (error) {
       toast({
         title: 'Error',
-        description: 'Failed to submit your vote. Please try again.',
+        description: 'Failed to submit your vote. Please check your connection.',
         variant: 'destructive',
       });
     } finally {
@@ -210,76 +195,77 @@ export default function VotingPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 relative overflow-hidden">
-      {/* Decorative background blobs */}
-      <div className="absolute top-0 right-0 w-96 h-96 bg-blue-100 rounded-full mix-blend-multiply filter blur-3xl opacity-50 -z-10 translate-x-1/3 -translate-y-1/3"></div>
-      <div className="absolute bottom-0 left-0 w-96 h-96 bg-indigo-100 rounded-full mix-blend-multiply filter blur-3xl opacity-50 -z-10 -translate-x-1/3 translate-y-1/3"></div>
+    <div className="min-h-screen flex flex-col bg-slate-50/80">
+      <Header />
       
-              {isLoggedIn && (
-          <div className="absolute top-4 right-4 z-50">
-            <Button variant="ghost" size="sm" onClick={() => { logout(); navigate('/'); }} className="text-slate-500 hover:text-slate-800 hover:bg-transparent active:bg-transparent focus:bg-transparent">Logout</Button>
-          </div>
-        )}
-      
-      <main className="flex-1 py-8">
-        <div className="container mx-auto px-4">
-          {/* Progress */}
-          <div className="mb-10 max-w-2xl mx-auto">
-            <div className="flex flex-col items-center justify-center mb-4 gap-2 text-center">
-              <span className="text-sm font-semibold tracking-wider text-indigo-600 uppercase">
+      <main className="flex-1 py-4 sm:py-8">
+        <div className="container mx-auto px-3 sm:px-4 max-w-3xl">
+          
+          {/* Progress Tracker Card */}
+          <div className="bg-white border border-slate-200/80 shadow-xs rounded-xl p-3 sm:p-4 mb-5 sm:mb-6">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-xs sm:text-sm font-bold text-indigo-700 uppercase tracking-wide">
                 Position {currentPositionIndex + 1} of {votablePositions.length}
               </span>
-              <span className="text-sm font-medium text-slate-500 bg-white px-3 py-1 rounded-full shadow-sm border border-slate-100">
-                <span className="text-slate-800 font-bold">{Object.keys(votes).length}</span> / {votablePositions.length} Selected
+              <span className="text-[11px] sm:text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200/60">
+                <span className="font-bold text-indigo-600">{votedCount}</span> / {votablePositions.length} Selected
               </span>
             </div>
-            <div className="h-3 bg-white border border-slate-100 rounded-full overflow-hidden shadow-inner">
+
+            {/* Continuous Progress Bar */}
+            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden mb-3">
               <div 
-                className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 transition-all duration-500 ease-out relative"
+                className="h-full bg-gradient-to-r from-blue-600 to-indigo-600 transition-all duration-300 rounded-full"
                 style={{ width: `${((currentPositionIndex + 1) / votablePositions.length) * 100}%` }}
-              >
-                <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
-              </div>
+              />
+            </div>
+
+            {/* Position Dots Navigation */}
+            <div className="flex items-center justify-center gap-1.5 sm:gap-2 flex-wrap">
+              {votablePositions.map((position, index) => {
+                const isSelected = votes[position.id];
+                const isCurrent = index === currentPositionIndex;
+
+                return (
+                  <button
+                    key={position.id}
+                    type="button"
+                    onClick={() => {
+                      setCurrentPositionIndex(index);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className={`transition-all duration-200 h-2.5 sm:h-3 rounded-full cursor-pointer touch-manipulation ${
+                      isCurrent 
+                        ? 'w-7 sm:w-8 bg-indigo-600 shadow-xs ring-2 ring-indigo-300' 
+                        : isSelected
+                        ? 'w-2.5 sm:w-3 bg-emerald-500 hover:bg-emerald-600' 
+                        : 'w-2.5 sm:w-3 bg-slate-300 hover:bg-slate-400'
+                    }`}
+                    title={`${position.name} (${isSelected ? 'Selected' : 'Pending'})`}
+                  />
+                );
+              })}
             </div>
           </div>
 
-          {/* Position Progress Dots */}
-          <div className="flex justify-center gap-3 mb-10 max-w-2xl mx-auto flex-wrap">
-            {votablePositions.map((position, index) => (
-              <button
-                key={position.id}
-                onClick={() => setCurrentPositionIndex(index)}
-                className={`transition-all duration-300 relative ${
-                  index === currentPositionIndex 
-                    ? 'w-10 h-3 rounded-full bg-indigo-600 shadow-md shadow-indigo-200 scale-105' 
-                    : votes[position.id] 
-                      ? 'w-3 h-3 rounded-full bg-green-500 hover:bg-green-600 hover:scale-110' 
-                      : 'w-3 h-3 rounded-full bg-slate-300 hover:bg-slate-400 hover:scale-110'
-                }`}
-                title={position.name}
-              />
-            ))}
-          </div>
-
-          {/* Current Position */}
-          <div className="text-center mb-10 animate-fade-in">
-            <span className="inline-block px-4 py-1.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-sm font-bold tracking-widest uppercase mb-4 shadow-sm">
-              Cast your vote for
+          {/* Current Position Title */}
+          <div className="text-center mb-6 animate-fade-in px-2">
+            <span className="inline-block px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-2">
+              Select Your Choice
             </span>
-            <h1 className="font-display text-4xl md:text-5xl font-black text-slate-800 tracking-tight">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
               {currentPosition.name}
             </h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              Choose 1 candidate for this position
+            </p>
           </div>
 
-          {/* Candidates */}
-          <div className="grid md:grid-cols-2 gap-5 max-w-2xl mx-auto mb-8">
+          {/* Responsive Candidates Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4 mb-6">
             {positionCandidates.length > 0 ? (
-              positionCandidates.map((candidate, index) => (
-                <div 
-                  key={candidate.id}
-                  className="animate-fade-in"
-                  style={{ animationDelay: `${index * 100}ms` }}
-                >
+              positionCandidates.map((candidate) => (
+                <div key={candidate.id} className="animate-fade-in">
                   <CandidateCard
                     candidate={candidate}
                     position={currentPosition}
@@ -289,72 +275,79 @@ export default function VotingPage() {
                 </div>
               ))
             ) : (
-              <div className="col-span-full text-center py-12 bg-white/50 rounded-xl border border-dashed border-gray-300">
-                <p className="text-gray-500 font-medium">No candidates registered for this position yet.</p>
-                <p className="text-sm text-gray-400 mt-1">You may skip to the next position.</p>
+              <div className="col-span-full text-center py-10 px-4 bg-white rounded-xl border border-dashed border-slate-300">
+                <p className="text-sm font-medium text-slate-600">No candidates available for this position.</p>
+                <p className="text-xs text-slate-400 mt-0.5">You can proceed to the next position.</p>
               </div>
             )}
           </div>
 
-          {/* Navigation */}
-          <div className="flex justify-between items-center max-w-3xl mx-auto mt-4">
+          {/* Step Navigation Controls */}
+          <div className="flex items-center justify-between gap-3 mb-8">
             <Button
               variant="outline"
-              size="lg"
+              size="sm"
               onClick={handlePrevious}
               disabled={currentPositionIndex === 0}
-              className="bg-white/80 backdrop-blur-sm border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-white shadow-sm transition-all rounded-xl px-6 h-12"
+              className="h-10 sm:h-11 px-4 sm:px-6 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-100 text-xs sm:text-sm font-semibold touch-manipulation"
             >
-              <ArrowLeft className="h-4 w-4 mr-2" />
+              <ArrowLeft className="h-4 w-4 mr-1 sm:mr-1.5" />
               Previous
             </Button>
 
             {currentPositionIndex === votablePositions.length - 1 ? (
               <Button
-                size="lg"
+                size="sm"
                 onClick={() => setShowConfirmDialog(true)}
-                className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white shadow-lg hover:shadow-xl transition-all rounded-xl px-8 h-12 border-0"
+                className="h-10 sm:h-11 px-5 sm:px-7 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold shadow-sm touch-manipulation"
               >
-                <Send className="h-4 w-4 mr-2" />
-                Submit Votes
+                <Send className="h-4 w-4 mr-1.5" />
+                Submit Ballot
               </Button>
             ) : (
               <Button
-                size="lg"
+                size="sm"
                 onClick={handleNext}
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-md hover:shadow-lg transition-all rounded-xl px-8 h-12 border-0"
+                className="h-10 sm:h-11 px-5 sm:px-7 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-bold shadow-sm touch-manipulation"
               >
                 Next Position
-                <ArrowRight className="h-4 w-4 ml-2" />
+                <ArrowRight className="h-4 w-4 ml-1.5" />
               </Button>
             )}
           </div>
 
-          {/* Vote Summary */}
-          <Card className="mt-16 max-w-3xl mx-auto bg-white/80 backdrop-blur-md border border-slate-100 shadow-xl rounded-2xl overflow-hidden">
-            <div className="h-2 w-full bg-gradient-to-r from-blue-400 to-indigo-500"></div>
-            <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4">
-              <CardTitle className="font-display text-xl text-slate-800 flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-indigo-500" /> Your Selections Overview
+          {/* Real-time Selections Summary */}
+          <Card className="bg-white border border-slate-200/80 shadow-xs rounded-xl overflow-hidden mb-8">
+            <CardHeader className="bg-slate-50/70 border-b border-slate-100 p-3 sm:p-4">
+              <CardTitle className="text-sm sm:text-base font-bold text-slate-800 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <CheckCircle className="w-4 h-4 text-indigo-600" />
+                  Your Ballot Summary
+                </span>
+                <span className="text-xs font-semibold text-slate-500">
+                  {votedCount} of {votablePositions.length} Voted
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="divide-y divide-slate-100">
-                {votablePositions.map((position) => {
-                  const selected = candidates.find(c => c.id === votes[position.id]);
+              <div className="divide-y divide-slate-100 text-xs sm:text-sm">
+                {votablePositions.map((pos) => {
+                  const chosen = candidates.find(c => c.id === votes[pos.id]);
                   return (
                     <div 
-                      key={position.id}
-                      className="flex items-center justify-between p-4 hover:bg-slate-50/50 transition-colors"
+                      key={pos.id}
+                      className="flex items-center justify-between p-3 sm:px-4 sm:py-2.5 hover:bg-slate-50/50 transition-colors gap-2"
                     >
-                      <span className="text-sm font-semibold text-slate-700 w-1/2">{position.name}</span>
-                      {selected ? (
-                        <div className="flex items-center gap-2 text-sm text-indigo-600 font-bold bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 w-1/2 justify-end">
-                          <span>{selected.name}</span>
-                          <CheckCircle className="h-4 w-4 flex-shrink-0" />
-                        </div>
+                      <span className="font-semibold text-slate-700 truncate">{pos.name}</span>
+                      {chosen ? (
+                        <span className="inline-flex items-center gap-1 font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100 text-xs shrink-0 max-w-[55%] truncate">
+                          <Check className="h-3 w-3 text-indigo-600 shrink-0 stroke-[3]" />
+                          <span className="truncate">{chosen.name}</span>
+                        </span>
                       ) : (
-                        <span className="text-sm text-slate-400 italic w-1/2 text-right">No candidate selected</span>
+                        <span className="text-slate-400 italic text-[11px] sm:text-xs shrink-0">
+                          Not selected
+                        </span>
                       )}
                     </div>
                   );
@@ -362,24 +355,31 @@ export default function VotingPage() {
               </div>
             </CardContent>
           </Card>
+
         </div>
       </main>
 
       {/* Confirmation Dialog */}
       <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-md w-[92vw] sm:w-full rounded-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle className="font-display text-2xl">Confirm Your Votes</AlertDialogTitle>
+            <AlertDialogTitle className="text-lg sm:text-xl font-bold text-slate-900">
+              Confirm & Submit Ballot?
+            </AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div>
-                <p className="mb-4">You are about to submit your votes. This action cannot be undone.</p>
-                <div className="bg-secondary/50 rounded-lg p-4 space-y-2">
-                  {votablePositions.map((position) => {
-                    const selected = candidates.find(c => c.id === votes[position.id]);
+              <div className="space-y-3 pt-1">
+                <p className="text-xs sm:text-sm text-slate-600">
+                  Please review your selections below. Once submitted, your vote is final and cannot be changed.
+                </p>
+                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 max-h-48 overflow-y-auto divide-y divide-slate-200/60 text-xs">
+                  {votablePositions.map((pos) => {
+                    const chosen = candidates.find(c => c.id === votes[pos.id]);
                     return (
-                      <div key={position.id} className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">{position.name}:</span>
-                        <span className="font-medium text-foreground">{selected?.name}</span>
+                      <div key={pos.id} className="flex justify-between py-1.5 gap-2">
+                        <span className="text-slate-600 font-medium truncate">{pos.name}:</span>
+                        <strong className={chosen ? "text-indigo-700 truncate" : "text-slate-400 italic"}>
+                          {chosen ? chosen.name : 'Skipped'}
+                        </strong>
                       </div>
                     );
                   })}
@@ -387,12 +387,17 @@ export default function VotingPage() {
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="flex-row sm:justify-end gap-2 pt-2">
+            <AlertDialogCancel disabled={isSubmitting} className="flex-1 sm:flex-initial h-10 rounded-xl text-xs sm:text-sm">
+              Review Again
+            </AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleSubmit}
+              onClick={(e) => {
+                e.preventDefault();
+                handleSubmit();
+              }}
               disabled={isSubmitting}
-              className="gradient-primary"
+              className="flex-1 sm:flex-initial h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold shadow-xs"
             >
               {isSubmitting ? 'Submitting...' : 'Confirm & Submit'}
             </AlertDialogAction>
@@ -404,10 +409,3 @@ export default function VotingPage() {
     </div>
   );
 }
-
-
-
-
-
-
-
