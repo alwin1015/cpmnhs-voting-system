@@ -218,9 +218,15 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           refreshData();
         })
         .subscribe();
+
+      // Background heartbeat to guarantee fresh real-time sync across all devices
+      const pollInterval = setInterval(() => {
+        refreshData();
+      }, 5000);
       
       return () => {
         supabase.removeChannel(channel);
+        clearInterval(pollInterval);
       };
     }
   }, [refreshData]);
