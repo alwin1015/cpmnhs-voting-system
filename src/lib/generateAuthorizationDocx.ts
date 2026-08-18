@@ -29,55 +29,147 @@ export interface AuthorizationDocData {
   approvedByPosition: string;
 }
 
-function signatureBlock(role: string, name: string, position: string): Paragraph[] {
-  const upperName = (name || '').trim().toUpperCase();
+function makeSignatureTable(
+  preparedByName: string,
+  preparedByPosition: string,
+  approvedByName: string,
+  approvedByPosition: string
+): Table {
+  const upperPrepared = (preparedByName || '').trim().toUpperCase();
+  const upperApproved = (approvedByName || '').trim().toUpperCase();
 
-  return [
-    new Paragraph({ spacing: { before: 300 }, children: [] }),
-    new Paragraph({
-      spacing: { after: 60 },
-      children: [
-        new TextRun({ text: `${role}:`, bold: true, size: 22, font: 'Times New Roman' }),
-      ],
-    }),
-    // Space for physical handwritten signature above printed name
-    new Paragraph({ spacing: { before: 400, after: 60 }, children: [] }),
-    new Paragraph({
-      spacing: { after: 15 },
-      children: [
-        new TextRun({
-          text: upperName || '__________________________________________',
-          bold: true,
-          size: 22,
-          font: 'Times New Roman',
-          underline: upperName ? { type: UnderlineType.SINGLE } : undefined,
-        }),
-      ],
-    }),
-    new Paragraph({
-      spacing: { after: 15 },
-      children: [
-        new TextRun({
-          text: '(Signature Over Printed Name)',
-          size: 18,
-          font: 'Times New Roman',
-          italics: true,
-          color: '555555',
-        }),
-      ],
-    }),
-    new Paragraph({
-      spacing: { after: 100 },
-      children: [
-        new TextRun({
-          text: position || 'Position / Designation',
-          size: 20,
-          font: 'Times New Roman',
-          color: position ? '000000' : '666666',
-        }),
-      ],
-    }),
-  ];
+  const borderlessCell = {
+    top: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+    bottom: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+    left: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+    right: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+  };
+
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: {
+      top: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+      bottom: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+      left: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+      right: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+      insideVertical: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+    },
+    rows: [
+      new TableRow({
+        children: [
+          // Left Column: Prepared by
+          new TableCell({
+            width: { size: 48, type: WidthType.PERCENTAGE },
+            borders: borderlessCell,
+            children: [
+              new Paragraph({
+                spacing: { before: 200, after: 60 },
+                children: [
+                  new TextRun({ text: 'Prepared by:', bold: true, size: 22, font: 'Times New Roman' }),
+                ],
+              }),
+              // Signature space
+              new Paragraph({ spacing: { before: 400, after: 60 }, children: [] }),
+              new Paragraph({
+                spacing: { after: 15 },
+                children: [
+                  new TextRun({
+                    text: upperPrepared || '__________________________________',
+                    bold: true,
+                    size: 22,
+                    font: 'Times New Roman',
+                    underline: upperPrepared ? { type: UnderlineType.SINGLE } : undefined,
+                  }),
+                ],
+              }),
+              new Paragraph({
+                spacing: { after: 15 },
+                children: [
+                  new TextRun({
+                    text: '(Signature Over Printed Name)',
+                    size: 18,
+                    font: 'Times New Roman',
+                    italics: true,
+                    color: '555555',
+                  }),
+                ],
+              }),
+              new Paragraph({
+                spacing: { after: 40 },
+                children: [
+                  new TextRun({
+                    text: preparedByPosition || 'Election Committee Chairman',
+                    size: 20,
+                    font: 'Times New Roman',
+                    color: '000000',
+                  }),
+                ],
+              }),
+            ],
+          }),
+
+          // Middle spacer column
+          new TableCell({
+            width: { size: 4, type: WidthType.PERCENTAGE },
+            borders: borderlessCell,
+            children: [new Paragraph({ children: [] })],
+          }),
+
+          // Right Column: Approved by
+          new TableCell({
+            width: { size: 48, type: WidthType.PERCENTAGE },
+            borders: borderlessCell,
+            children: [
+              new Paragraph({
+                spacing: { before: 200, after: 60 },
+                children: [
+                  new TextRun({ text: 'Approved by:', bold: true, size: 22, font: 'Times New Roman' }),
+                ],
+              }),
+              // Signature space
+              new Paragraph({ spacing: { before: 400, after: 60 }, children: [] }),
+              new Paragraph({
+                spacing: { after: 15 },
+                children: [
+                  new TextRun({
+                    text: upperApproved || '__________________________________',
+                    bold: true,
+                    size: 22,
+                    font: 'Times New Roman',
+                    underline: upperApproved ? { type: UnderlineType.SINGLE } : undefined,
+                  }),
+                ],
+              }),
+              new Paragraph({
+                spacing: { after: 15 },
+                children: [
+                  new TextRun({
+                    text: '(Signature Over Printed Name)',
+                    size: 18,
+                    font: 'Times New Roman',
+                    italics: true,
+                    color: '555555',
+                  }),
+                ],
+              }),
+              new Paragraph({
+                spacing: { after: 40 },
+                children: [
+                  new TextRun({
+                    text: approvedByPosition || 'School Principal',
+                    size: 20,
+                    font: 'Times New Roman',
+                    color: '000000',
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+    ],
+  });
 }
 
 export async function generateAuthorizationDocx(data: AuthorizationDocData): Promise<void> {
@@ -301,15 +393,19 @@ export async function generateAuthorizationDocx(data: AuthorizationDocData): Pro
             ],
           }),
           new Paragraph({
-            spacing: { before: 100, after: 100 },
+            spacing: { before: 100, after: 80 },
             children: [
               new TextRun({ text: 'Respectfully yours,', size: 22, font: 'Times New Roman' }),
             ],
           }),
 
-          // --- SIGNATURES (Prepared by and Approved by ONLY with UPPERCASE name & Signature Over Printed Name format) ---
-          ...signatureBlock('Prepared by', data.preparedByName, data.preparedByPosition || 'Election Committee Chairman'),
-          ...signatureBlock('Approved by', data.approvedByName, data.approvedByPosition || 'School Principal'),
+          // --- SIGNATURES (Prepared by on the LEFT, Approved by on the RIGHT side-by-side) ---
+          makeSignatureTable(
+            data.preparedByName,
+            data.preparedByPosition,
+            data.approvedByName,
+            data.approvedByPosition
+          ),
         ],
       },
     ],
