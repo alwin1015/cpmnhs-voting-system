@@ -49,6 +49,21 @@ export interface Election {
   resultsFinalized?: boolean;
   finalizedBy?: string;
   finalizedAt?: Date;
+  scheduleStatus?: 'draft' | 'pending_authorization' | 'authorized' | 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
+  authorizationDocGenerated?: boolean;
+  authorizationConfirmedAt?: string;
+  signatories?: {
+    preparedBy?: Signatory;
+    reviewedBy?: Signatory;
+    notedBy?: Signatory;
+    approvedBy?: Signatory;
+  };
+}
+
+export interface Signatory {
+  name: string;
+  position: string;
+  date?: string;
 }
 
 export interface ElectionResult {

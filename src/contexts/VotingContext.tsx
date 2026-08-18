@@ -178,6 +178,10 @@ export function VotingProvider({ children }: { children: ReactNode }) {
                   return b ? new Date(JSON.parse(b).finalized_at) : null;
                 } catch (_) { return null; }
               })(),
+          scheduleStatus: eData.schedule_status ?? eData.scheduleStatus ?? 'draft',
+          authorizationDocGenerated: Boolean(eData.authorization_doc_generated ?? eData.authorizationDocGenerated ?? false),
+          authorizationConfirmedAt: eData.authorization_confirmed_at ?? eData.authorizationConfirmedAt ?? null,
+          signatories: eData.signatories ? (typeof eData.signatories === 'string' ? JSON.parse(eData.signatories) : eData.signatories) : null,
         });
       } else {
         // Fallback: compute from voters even without election data
@@ -423,6 +427,10 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         if (updates.gradeMappings !== undefined) {
           mapped.grade_mappings = JSON.stringify(updates.gradeMappings);
         }
+        if (updates.scheduleStatus !== undefined) mapped.schedule_status = updates.scheduleStatus;
+        if (updates.authorizationDocGenerated !== undefined) mapped.authorization_doc_generated = updates.authorizationDocGenerated;
+        if (updates.authorizationConfirmedAt !== undefined) mapped.authorization_confirmed_at = updates.authorizationConfirmedAt;
+        if (updates.signatories !== undefined) mapped.signatories = updates.signatories;
         
         await api.updateElection(mapped);
         await refreshData();

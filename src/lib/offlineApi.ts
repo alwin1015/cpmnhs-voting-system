@@ -122,11 +122,15 @@ function seedDefaults() {
       school_year: '2026-2027',
       start_date: new Date().toISOString(),
       end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      is_active: true,
+      is_active: false,
       grade_mappings: {},
       results_finalized: false,
       finalized_by: null,
       finalized_at: null,
+      schedule_status: 'draft',
+      authorization_doc_generated: false,
+      authorization_confirmed_at: null,
+      signatories: null,
     });
   }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useVoting } from '@/contexts/VotingContext';
 import { useToast } from '@/hooks/use-toast';
+import { generateAuthorizationDocx } from '@/lib/generateAuthorizationDocx';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,32 +31,80 @@ import {
   CalendarClock,
   Rocket,
   ArrowRight,
+  ArrowLeft,
   LayoutGrid,
   MapPin,
   ClipboardList,
   AlertTriangle,
-  Settings
+  Settings,
+  FileText,
+  Download,
+  Lock,
+  Unlock,
+  ChevronRight,
+  X,
+  Check,
+  FileCheck,
+  Pen,
 } from 'lucide-react';
 
+type ScheduleStep = 'details' | 'signatories' | 'authorization' | 'activate';
+
+const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+  draft: { label: 'Draft', color: 'text-slate-600', bg: 'bg-slate-100' },
+  pending_authorization: { label: 'Pending Authorization', color: 'text-amber-700', bg: 'bg-amber-50' },
+  authorized: { label: 'Authorized', color: 'text-blue-700', bg: 'bg-blue-50' },
+  scheduled: { label: 'Scheduled', color: 'text-indigo-700', bg: 'bg-indigo-50' },
+  ongoing: { label: 'Ongoing', color: 'text-green-700', bg: 'bg-green-50' },
+  completed: { label: 'Completed', color: 'text-emerald-700', bg: 'bg-emerald-50' },
+  cancelled: { label: 'Cancelled', color: 'text-red-700', bg: 'bg-red-50' },
+};
+
+const STEP_LABELS: { key: ScheduleStep; label: string; icon: any }[] = [
+  { key: 'details', label: 'Schedule Details', icon: CalendarClock },
+  { key: 'signatories', label: 'Signatories', icon: Pen },
+  { key: 'authorization', label: 'Authorization', icon: FileCheck },
+  { key: 'activate', label: 'Activate', icon: Rocket },
+];
+
 export default function AdminDashboard() {
-  const { user, isLoggedIn, election, candidates, positions, getResults, voters, updateElection, resetSystem } = useVoting();
+  const { user, isLoggedIn, election, candidates, positions, getResults, voters, sections, updateElection, resetSystem } = useVoting();
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Schedule panel state
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [scheduleStep, setScheduleStep] = useState<ScheduleStep>('details');
   const [isMappingsOpen, setIsMappingsOpen] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [isLaunchDialogOpen, setIsLaunchDialogOpen] = useState(false);
+  const [isGeneratingDoc, setIsGeneratingDoc] = useState(false);
+
+  // Schedule detail fields
   const [editName, setEditName] = useState('');
   const [editSchoolYear, setEditSchoolYear] = useState('');
   const [editStartDate, setEditStartDate] = useState('');
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndDate, setEditEndDate] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
-  
+
+  // Signatory fields
+  const [preparedByName, setPreparedByName] = useState('');
+  const [preparedByPosition, setPreparedByPosition] = useState('');
+  const [reviewedByName, setReviewedByName] = useState('');
+  const [reviewedByPosition, setReviewedByPosition] = useState('');
+  const [notedByName, setNotedByName] = useState('');
+  const [notedByPosition, setNotedByPosition] = useState('');
+  const [approvedByName, setApprovedByName] = useState('');
+  const [approvedByPosition, setApprovedByPosition] = useState('School Principal');
+
   // Grade Mappings state
   const GRADES = ['7', '8', '9', '10', '11', '12'];
   const [editMappings, setEditMappings] = useState<Record<string, string>>({});
+
+  const scheduleStatus = election?.scheduleStatus || 'draft';
+  const statusInfo = STATUS_LABELS[scheduleStatus] || STATUS_LABELS.draft;
 
   const handleOpenSchedule = () => {
     setEditName(election?.name || '');
@@ -65,7 +114,6 @@ export default function AdminDashboard() {
       if (!d || isNaN(d.getTime())) return '';
       return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
     };
-
     const formatTime = (d?: Date) => {
       if (!d || isNaN(d.getTime())) return '';
       return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[1].slice(0, 5);
@@ -75,10 +123,35 @@ export default function AdminDashboard() {
     setEditStartTime(formatTime(election?.startDate));
     setEditEndDate(formatDate(election?.endDate));
     setEditEndTime(formatTime(election?.endDate));
+
+    // Load signatories if they exist
+    const sigs = election?.signatories;
+    setPreparedByName(sigs?.preparedBy?.name || '');
+    setPreparedByPosition(sigs?.preparedBy?.position || '');
+    setReviewedByName(sigs?.reviewedBy?.name || '');
+    setReviewedByPosition(sigs?.reviewedBy?.position || '');
+    setNotedByName(sigs?.notedBy?.name || '');
+    setNotedByPosition(sigs?.notedBy?.position || '');
+    setApprovedByName(sigs?.approvedBy?.name || '');
+    setApprovedByPosition(sigs?.approvedBy?.position || 'School Principal');
+
+    // Determine which step to show based on status
+    if (scheduleStatus === 'authorized' || scheduleStatus === 'scheduled') {
+      setScheduleStep('activate');
+    } else if (scheduleStatus === 'pending_authorization') {
+      setScheduleStep('authorization');
+    } else {
+      setScheduleStep('details');
+    }
+
     setIsScheduleOpen(true);
   };
 
   const handleSaveSchedule = async () => {
+    if (!editName.trim()) {
+      toast({ title: 'Error', description: 'Please enter an election name.', variant: 'destructive' });
+      return;
+    }
     const parseDateTime = (d: string, t: string) => {
       if (!d) return new Date('');
       return new Date(`${d}T${t || '00:00'}`);
@@ -88,8 +161,94 @@ export default function AdminDashboard() {
       name: editName,
       schoolYear: editSchoolYear,
       startDate: parseDateTime(editStartDate, editStartTime),
-      endDate: parseDateTime(editEndDate, editEndTime)
+      endDate: parseDateTime(editEndDate, editEndTime),
+      scheduleStatus: 'draft',
     });
+
+    toast({ title: 'Schedule Saved', description: 'Election details saved as Draft.' });
+    setScheduleStep('signatories');
+  };
+
+  const handleSaveSignatories = async () => {
+    await updateElection({
+      signatories: {
+        preparedBy: { name: preparedByName, position: preparedByPosition },
+        reviewedBy: { name: reviewedByName, position: reviewedByPosition },
+        notedBy: { name: notedByName, position: notedByPosition },
+        approvedBy: { name: approvedByName, position: approvedByPosition },
+      },
+    });
+    toast({ title: 'Signatories Saved', description: 'Signatory details have been recorded.' });
+    setScheduleStep('authorization');
+  };
+
+  const handleGenerateDocx = async () => {
+    setIsGeneratingDoc(true);
+    try {
+      const parseDateTime = (d: string, t: string) => {
+        if (!d) return null;
+        return new Date(`${d}T${t || '00:00'}`);
+      };
+
+      const startDt = parseDateTime(editStartDate, editStartTime);
+      const endDt = parseDateTime(editEndDate, editEndTime);
+
+      const allSections = sections.map(s => `Grade ${s.gradeLevel} - ${s.name}`);
+      const allPositions = positions.map(p => p.name);
+
+      await generateAuthorizationDocx({
+        schoolName: 'CONGRESSMAN PABLO MALASARTE NATIONAL HIGH SCHOOL',
+        schoolAddress: 'Banaba, Tanauan City, Batangas',
+        electionTitle: editName || 'SSG General Election',
+        schoolYear: editSchoolYear || '2026-2027',
+        electionDate: startDt ? startDt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : '(To be determined)',
+        startTime: startDt ? startDt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '',
+        endTime: endDt ? endDt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '',
+        gradeLevels: GRADES,
+        sections: allSections,
+        positions: allPositions,
+        preparedByName,
+        preparedByPosition,
+        reviewedByName,
+        reviewedByPosition,
+        notedByName,
+        notedByPosition,
+        approvedByName,
+        approvedByPosition,
+      });
+
+      await updateElection({
+        authorizationDocGenerated: true,
+        scheduleStatus: 'pending_authorization',
+        signatories: {
+          preparedBy: { name: preparedByName, position: preparedByPosition },
+          reviewedBy: { name: reviewedByName, position: reviewedByPosition },
+          notedBy: { name: notedByName, position: notedByPosition },
+          approvedBy: { name: approvedByName, position: approvedByPosition },
+        },
+      });
+
+      toast({ title: 'Document Generated', description: 'The authorization letter (.docx) has been downloaded. Open it in Microsoft Word to edit and print.' });
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Error', description: 'Failed to generate the document.', variant: 'destructive' });
+    } finally {
+      setIsGeneratingDoc(false);
+    }
+  };
+
+  const handleConfirmAuthorization = async () => {
+    await updateElection({
+      scheduleStatus: 'authorized',
+      authorizationConfirmedAt: new Date().toISOString(),
+    });
+    toast({ title: 'Authorization Confirmed', description: 'The election schedule has been authorized. You can now activate it.' });
+    setScheduleStep('activate');
+  };
+
+  const handleActivateSchedule = async () => {
+    await updateElection({ scheduleStatus: 'scheduled' });
+    toast({ title: 'Schedule Activated', description: 'The election is now scheduled. Use "Launch Election" to start voting.' });
     setIsScheduleOpen(false);
   };
 
@@ -103,9 +262,23 @@ export default function AdminDashboard() {
     setIsMappingsOpen(false);
   };
 
+  const canLaunchElection = scheduleStatus === 'authorized' || scheduleStatus === 'scheduled';
+
   const handleToggleElection = async () => {
-    if (election) {
-      await updateElection({ isActive: !election.isActive });
+    if (!election) return;
+
+    if (election.isActive) {
+      // End election
+      await updateElection({ isActive: false, scheduleStatus: 'completed' });
+      toast({ title: 'Election Ended', description: 'Voting has been closed.' });
+    } else {
+      // Check if schedule is authorized before launching
+      if (!canLaunchElection) {
+        setIsLaunchDialogOpen(true);
+        return;
+      }
+      await updateElection({ isActive: true, scheduleStatus: 'ongoing' });
+      toast({ title: 'Election Launched!', description: 'Students can now cast their votes.' });
     }
   };
 
@@ -250,51 +423,286 @@ export default function AdminDashboard() {
     }
   ];
 
+  // ------ STEP RENDERERS ------
+
+  const renderStepDetails = () => (
+    <div className="space-y-4 animate-fade-in">
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Election Name</Label>
+        <Input value={editName} onChange={e => setEditName(e.target.value)} className="bg-white" placeholder="SSG General Election" />
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">School Year</Label>
+        <Input value={editSchoolYear} onChange={e => setEditSchoolYear(e.target.value)} className="bg-white" placeholder="2026-2027" />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Start Date</Label>
+          <Input type="date" value={editStartDate} onChange={e => setEditStartDate(e.target.value)} className="bg-white" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Start Time</Label>
+          <Input type="time" value={editStartTime} onChange={e => setEditStartTime(e.target.value)} className="bg-white" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">End Date</Label>
+          <Input type="date" value={editEndDate} onChange={e => setEditEndDate(e.target.value)} className="bg-white" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">End Time</Label>
+          <Input type="time" value={editEndTime} onChange={e => setEditEndTime(e.target.value)} className="bg-white" />
+        </div>
+      </div>
+
+      {/* Read-only info: Positions & Sections auto-linked */}
+      <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Auto-linked from your settings</p>
+        <div className="text-xs text-slate-600">
+          <span className="font-semibold">Positions:</span> {positions.length > 0 ? positions.map(p => p.name).join(', ') : 'None configured'}
+        </div>
+        <div className="text-xs text-slate-600">
+          <span className="font-semibold">Grade Levels:</span> {GRADES.map(g => `Grade ${g}`).join(', ')}
+        </div>
+        <div className="text-xs text-slate-600">
+          <span className="font-semibold">Sections:</span> {sections.length > 0 ? sections.map(s => `${s.name} (G${s.gradeLevel})`).join(', ') : 'None configured'}
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2 pt-2">
+        <Button variant="outline" onClick={() => setIsScheduleOpen(false)} className="text-xs">Cancel</Button>
+        <Button onClick={handleSaveSchedule} className="text-xs bg-blue-600 hover:bg-blue-700 text-white">
+          Save & Continue <ChevronRight className="h-3.5 w-3.5 ml-1" />
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderSignatoryInput = (label: string, name: string, setName: (v: string) => void, position: string, setPosition: (v: string) => void) => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-lg bg-white border border-slate-200">
+      <div className="sm:col-span-2">
+        <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">{label}</p>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-[11px] text-slate-500">Full Name</Label>
+        <Input value={name} onChange={e => setName(e.target.value)} className="h-9 text-sm bg-slate-50" placeholder="e.g. Juan Dela Cruz" />
+      </div>
+      <div className="space-y-1">
+        <Label className="text-[11px] text-slate-500">Position / Designation</Label>
+        <Input value={position} onChange={e => setPosition(e.target.value)} className="h-9 text-sm bg-slate-50" placeholder="e.g. Election Committee Chairman" />
+      </div>
+    </div>
+  );
+
+  const renderStepSignatories = () => (
+    <div className="space-y-3 animate-fade-in">
+      <p className="text-xs text-slate-500 leading-relaxed">
+        Enter the names and designations of school personnel who will sign the official election authorization letter.
+      </p>
+      {renderSignatoryInput('Prepared by', preparedByName, setPreparedByName, preparedByPosition, setPreparedByPosition)}
+      {renderSignatoryInput('Reviewed by', reviewedByName, setReviewedByName, reviewedByPosition, setReviewedByPosition)}
+      {renderSignatoryInput('Noted by', notedByName, setNotedByName, notedByPosition, setNotedByPosition)}
+      {renderSignatoryInput('Approved by', approvedByName, setApprovedByName, approvedByPosition, setApprovedByPosition)}
+
+      <div className="flex justify-between gap-2 pt-2">
+        <Button variant="outline" onClick={() => setScheduleStep('details')} className="text-xs">
+          <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Back
+        </Button>
+        <Button onClick={handleSaveSignatories} className="text-xs bg-blue-600 hover:bg-blue-700 text-white">
+          Save & Continue <ChevronRight className="h-3.5 w-3.5 ml-1" />
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderStepAuthorization = () => (
+    <div className="space-y-4 animate-fade-in">
+      {/* Summary Card */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+        <h4 className="text-sm font-bold text-slate-800">Election Summary</h4>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+          <span className="text-slate-500 font-medium">Title:</span>
+          <span className="text-slate-800 font-semibold">{editName || election?.name || '—'}</span>
+          <span className="text-slate-500 font-medium">School Year:</span>
+          <span className="text-slate-800">{editSchoolYear || election?.schoolYear || '—'}</span>
+          <span className="text-slate-500 font-medium">Date:</span>
+          <span className="text-slate-800">{editStartDate || '—'}</span>
+          <span className="text-slate-500 font-medium">Time:</span>
+          <span className="text-slate-800">{editStartTime || '—'} – {editEndTime || '—'}</span>
+          <span className="text-slate-500 font-medium">Positions:</span>
+          <span className="text-slate-800">{positions.length}</span>
+          <span className="text-slate-500 font-medium">Sections:</span>
+          <span className="text-slate-800">{sections.length}</span>
+        </div>
+      </div>
+
+      {/* Signatories Summary */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
+        <h4 className="text-sm font-bold text-slate-800">Signatories</h4>
+        <div className="space-y-1 text-xs">
+          <div className="flex justify-between"><span className="text-slate-500">Prepared by:</span><span className="font-semibold text-slate-800">{preparedByName || '—'}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Reviewed by:</span><span className="font-semibold text-slate-800">{reviewedByName || '—'}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Noted by:</span><span className="font-semibold text-slate-800">{notedByName || '—'}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Approved by:</span><span className="font-semibold text-slate-800">{approvedByName || '—'}</span></div>
+        </div>
+      </div>
+
+      {/* Generate Document */}
+      <div className="rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/30 p-4 text-center space-y-2">
+        <FileText className="h-8 w-8 text-blue-500 mx-auto" />
+        <p className="text-sm font-bold text-slate-800">Official Authorization Letter</p>
+        <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+          Generate an editable Word document (.docx) with the election details and signature blocks. Open and edit in Microsoft Word before printing.
+        </p>
+        <Button 
+          onClick={handleGenerateDocx} 
+          disabled={isGeneratingDoc}
+          className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-9 px-5 mx-auto"
+        >
+          <Download className="h-3.5 w-3.5 mr-1.5" />
+          {isGeneratingDoc ? 'Generating...' : 'Generate Word Document (.docx)'}
+        </Button>
+        {election?.authorizationDocGenerated && (
+          <p className="text-[11px] text-green-600 font-semibold flex items-center justify-center gap-1 mt-1">
+            <Check className="h-3 w-3" /> Document previously generated
+          </p>
+        )}
+      </div>
+
+      {/* Confirm Authorization */}
+      <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-2">
+        <p className="text-xs text-amber-800 font-semibold flex items-center gap-1.5">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          Important: Confirm only after obtaining all required physical signatures.
+        </p>
+        <p className="text-[11px] text-amber-700 leading-relaxed">
+          By confirming, you attest that the printed authorization letter has been signed by all designated school personnel.
+        </p>
+      </div>
+
+      <div className="flex justify-between gap-2 pt-1">
+        <Button variant="outline" onClick={() => setScheduleStep('signatories')} className="text-xs">
+          <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Back
+        </Button>
+        <Button 
+          onClick={handleConfirmAuthorization} 
+          className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+          disabled={!election?.authorizationDocGenerated}
+        >
+          <Lock className="h-3.5 w-3.5 mr-1" />
+          Confirm Authorization
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderStepActivate = () => {
+    const isAuthorized = scheduleStatus === 'authorized' || scheduleStatus === 'scheduled';
+    return (
+      <div className="space-y-4 animate-fade-in text-center">
+        <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center ${isAuthorized ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+          {isAuthorized ? <CheckCircle className="h-8 w-8 stroke-[2]" /> : <Clock className="h-8 w-8" />}
+        </div>
+        <h3 className="text-lg font-bold text-slate-900">
+          {isAuthorized ? 'Schedule is Authorized!' : 'Authorization Required'}
+        </h3>
+        <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+          {isAuthorized
+            ? 'The election schedule has been authorized. You can now activate it and launch the election from the dashboard.'
+            : 'Complete the authorization process before activating the schedule.'}
+        </p>
+        {election?.authorizationConfirmedAt && (
+          <p className="text-[11px] text-slate-400">
+            Authorized on: {new Date(election.authorizationConfirmedAt).toLocaleString()}
+          </p>
+        )}
+
+        <div className="flex justify-between gap-2 pt-2">
+          <Button variant="outline" onClick={() => setScheduleStep('authorization')} className="text-xs">
+            <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Back
+          </Button>
+          {isAuthorized && scheduleStatus !== 'scheduled' && (
+            <Button onClick={handleActivateSchedule} className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white">
+              <Rocket className="h-3.5 w-3.5 mr-1" />
+              Activate Schedule
+            </Button>
+          )}
+          {scheduleStatus === 'scheduled' && (
+            <Button onClick={() => setIsScheduleOpen(false)} className="text-xs bg-slate-700 hover:bg-slate-800 text-white">
+              Close — Ready to Launch
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #f0f7ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
       <Header />
       
       <main className="flex-1 py-6 relative">
-        {/* Schedule Modal Overlay */}
+        {/* ===== SET SCHEDULE OVERLAY ===== */}
         {isScheduleOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in">
-            <Card className="w-full max-w-md mx-4 animate-in zoom-in-95">
-              <CardContent className="pt-6 space-y-4">
-                <h2 className="text-xl font-bold">Election Schedule</h2>
-                <div className="space-y-2">
-                  <Label>Election Name</Label>
-                  <Input value={editName} onChange={e => setEditName(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>School Year</Label>
-                  <Input value={editSchoolYear} onChange={e => setEditSchoolYear(e.target.value)} />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Start Date</Label>
-                      <Input type="date" value={editStartDate} onChange={e => setEditStartDate(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Start Time</Label>
-                      <Input type="time" value={editStartTime} onChange={e => setEditStartTime(e.target.value)} />
-                    </div>
+          <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm animate-in fade-in overflow-y-auto py-8">
+            <Card className="w-full max-w-lg mx-4 animate-in zoom-in-95 shadow-2xl border-0 overflow-hidden">
+              {/* Header with gradient */}
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-5 text-white relative overflow-hidden">
+                <div className="relative z-10">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-bold flex items-center gap-2">
+                      <CalendarClock className="w-5 h-5 text-blue-200" />
+                      Set Election Schedule
+                    </h2>
+                    <button onClick={() => setIsScheduleOpen(false)} className="p-1 rounded-lg hover:bg-white/20 transition-colors">
+                      <X className="h-5 w-5" />
+                    </button>
                   </div>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>End Date</Label>
-                      <Input type="date" value={editEndDate} onChange={e => setEditEndDate(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>End Time</Label>
-                      <Input type="time" value={editEndTime} onChange={e => setEditEndTime(e.target.value)} />
-                    </div>
+                  {/* Status badge */}
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${statusInfo.bg} ${statusInfo.color}`}>
+                      {statusInfo.label}
+                    </span>
                   </div>
                 </div>
-                <div className="flex justify-end gap-2 mt-6">
-                  <Button variant="outline" onClick={() => setIsScheduleOpen(false)}>Cancel</Button>
-                  <Button onClick={handleSaveSchedule} style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: 'white' }}>Save</Button>
+                <CalendarClock className="w-28 h-28 absolute -bottom-8 -right-8 text-white opacity-10 rotate-12" />
+              </div>
+
+              {/* Step Indicator */}
+              <div className="border-b border-slate-100 bg-slate-50/50 px-5 py-3">
+                <div className="flex items-center justify-between gap-1">
+                  {STEP_LABELS.map((step, i) => {
+                    const StepIcon = step.icon;
+                    const isActive = scheduleStep === step.key;
+                    const stepIdx = STEP_LABELS.findIndex(s => s.key === scheduleStep);
+                    const isPast = i < stepIdx;
+                    return (
+                      <button
+                        key={step.key}
+                        onClick={() => setScheduleStep(step.key)}
+                        className={`flex-1 flex flex-col items-center gap-1 py-1.5 rounded-lg transition-all text-center ${
+                          isActive
+                            ? 'bg-blue-50 border border-blue-200'
+                            : isPast
+                            ? 'opacity-70 hover:bg-slate-100'
+                            : 'opacity-40 hover:opacity-60'
+                        }`}
+                      >
+                        <StepIcon className={`h-4 w-4 ${isActive ? 'text-blue-600' : isPast ? 'text-green-600' : 'text-slate-400'}`} />
+                        <span className={`text-[10px] font-semibold leading-tight ${isActive ? 'text-blue-700' : 'text-slate-500'}`}>
+                          {step.label}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
+              </div>
+
+              {/* Step Content */}
+              <CardContent className="p-5 max-h-[60vh] overflow-y-auto">
+                {scheduleStep === 'details' && renderStepDetails()}
+                {scheduleStep === 'signatories' && renderStepSignatories()}
+                {scheduleStep === 'authorization' && renderStepAuthorization()}
+                {scheduleStep === 'activate' && renderStepActivate()}
               </CardContent>
             </Card>
           </div>
@@ -401,18 +809,22 @@ export default function AdminDashboard() {
                 <p className="text-sm md:text-base text-white/80 font-medium max-w-xl leading-relaxed ml-11">
                   {election?.isActive 
                     ? 'Students can currently log in and cast their votes. Monitor the turnout and results in real-time.' 
-                    : 'The election is currently closed. Configure the schedule or manage candidates before launching.'}
+                    : 'The election is currently closed. Set the schedule and complete authorization before launching.'}
                 </p>
-                {election && (
-                  <div className="mt-4 flex items-center gap-2 text-sm text-white/70 bg-black/10 w-fit px-4 py-1.5 rounded-full backdrop-blur-md border border-white/10 ml-11">
-                    <CalendarClock className="h-4 w-4" />
-                    <span>
+                {/* Schedule Status Badge */}
+                <div className="mt-3 flex items-center gap-2 ml-11 flex-wrap">
+                  <span className={`text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${statusInfo.bg} ${statusInfo.color} border`}>
+                    Schedule: {statusInfo.label}
+                  </span>
+                  {election && (
+                    <span className="text-xs text-white/60 flex items-center gap-1.5 bg-black/10 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">
+                      <CalendarClock className="h-3.5 w-3.5" />
                       {election.startDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })} 
-                      <span className="mx-2 opacity-50">—</span>
+                      <span className="mx-1 opacity-50">—</span>
                       {election.endDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     </span>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
               <div className="flex flex-wrap md:flex-col lg:flex-row gap-3 flex-shrink-0 justify-end w-full md:w-auto mt-4 md:mt-0">
                 <Button 
@@ -520,6 +932,46 @@ export default function AdminDashboard() {
                 className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
               >
                 {isResetting ? 'Resetting...' : 'Yes, Delete Everything'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Launch Blocked Dialog */}
+        <AlertDialog open={isLaunchDialogOpen} onOpenChange={setIsLaunchDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2 text-amber-600">
+                <Lock className="h-5 w-5" />
+                Authorization Required
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                The election cannot be launched because the schedule has not been properly authorized yet.
+                <br /><br />
+                Please complete the following steps first:
+                <br />
+                1. Set the election schedule details
+                <br />
+                2. Enter signatory names
+                <br />
+                3. Generate the official authorization letter (.docx)
+                <br />
+                4. Confirm authorization after obtaining physical signatures
+                <br />
+                5. Activate the schedule
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Close</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={() => {
+                  setIsLaunchDialogOpen(false);
+                  handleOpenSchedule();
+                }}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <CalendarClock className="h-4 w-4 mr-1.5" />
+                Open Set Schedule
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
