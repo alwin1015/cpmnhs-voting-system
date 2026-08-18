@@ -261,66 +261,66 @@ export default function VotersPage() {
           </div>
 
           {/* Metric Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
-            <Card className="border border-slate-200/80 shadow-sm bg-white rounded-xl">
-              <CardContent className="p-4 sm:p-5">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-slate-500">Total Registered</span>
-                  <div className="p-2 rounded-lg bg-blue-50">
-                    <Users className="h-4 w-4 text-blue-600" />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-5">
+            <Card className="border border-slate-200/80 shadow-xs bg-white rounded-lg">
+              <CardContent className="p-3 sm:p-3.5">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] sm:text-xs font-semibold text-slate-500">Total Registered</span>
+                  <div className="p-1.5 rounded-md bg-blue-50">
+                    <Users className="h-3.5 w-3.5 text-blue-600" />
                   </div>
                 </div>
-                <p className="text-xl sm:text-2xl font-bold text-slate-900">{totalVotersCount.toLocaleString()}</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">Across all grade levels</p>
+                <p className="text-lg sm:text-xl font-bold text-slate-900 leading-none">{totalVotersCount.toLocaleString()}</p>
+                <p className="text-[10px] text-slate-400 mt-1">Across all grade levels</p>
               </CardContent>
             </Card>
 
-            <Card className="border border-slate-200/80 shadow-sm bg-white rounded-xl">
-              <CardContent className="p-4 sm:p-5">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-slate-500">Approved Voters</span>
-                  <div className="p-2 rounded-lg bg-emerald-50">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            <Card className="border border-slate-200/80 shadow-xs bg-white rounded-lg">
+              <CardContent className="p-3 sm:p-3.5">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] sm:text-xs font-semibold text-slate-500">Approved Voters</span>
+                  <div className="p-1.5 rounded-md bg-emerald-50">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                   </div>
                 </div>
-                <p className="text-xl sm:text-2xl font-bold text-emerald-700">{approvedCount.toLocaleString()}</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">Eligible to cast ballots</p>
+                <p className="text-lg sm:text-xl font-bold text-emerald-700 leading-none">{approvedCount.toLocaleString()}</p>
+                <p className="text-[10px] text-slate-400 mt-1">Eligible to cast ballots</p>
               </CardContent>
             </Card>
 
-            <Card className="border border-slate-200/80 shadow-sm bg-white rounded-xl">
-              <CardContent className="p-4 sm:p-5">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-slate-500">Ballots Cast</span>
-                  <div className="p-2 rounded-lg bg-indigo-50">
-                    <Vote className="h-4 w-4 text-indigo-600" />
+            <Card className="border border-slate-200/80 shadow-xs bg-white rounded-lg">
+              <CardContent className="p-3 sm:p-3.5">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] sm:text-xs font-semibold text-slate-500">Ballots Cast</span>
+                  <div className="p-1.5 rounded-md bg-indigo-50">
+                    <Vote className="h-3.5 w-3.5 text-indigo-600" />
                   </div>
                 </div>
-                <p className="text-xl sm:text-2xl font-bold text-indigo-700">{votedCount.toLocaleString()}</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  {approvedCount > 0 ? `${Math.round((votedCount / approvedCount) * 100)}% voter turnout` : '0% turnout'}
+                <p className="text-lg sm:text-xl font-bold text-indigo-700 leading-none">{votedCount.toLocaleString()}</p>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {approvedCount > 0 ? `${Math.round((votedCount / approvedCount) * 100)}% turnout` : '0% turnout'}
                 </p>
               </CardContent>
             </Card>
 
-            <Card className="border border-slate-200/80 shadow-sm bg-white rounded-xl">
-              <CardContent className="p-4 sm:p-5">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-medium text-slate-500">Active Sections</span>
-                  <div className="p-2 rounded-lg bg-purple-50">
-                    <LayoutGrid className="h-4 w-4 text-purple-600" />
+            <Card className="border border-slate-200/80 shadow-xs bg-white rounded-lg">
+              <CardContent className="p-3 sm:p-3.5">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] sm:text-xs font-semibold text-slate-500">Active Sections</span>
+                  <div className="p-1.5 rounded-md bg-purple-50">
+                    <LayoutGrid className="h-3.5 w-3.5 text-purple-600" />
                   </div>
                 </div>
-                <p className="text-xl sm:text-2xl font-bold text-purple-700">{totalSectionsCount.toLocaleString()}</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">Configured in Grade Sections</p>
+                <p className="text-lg sm:text-xl font-bold text-purple-700 leading-none">{totalSectionsCount.toLocaleString()}</p>
+                <p className="text-[10px] text-slate-400 mt-1">Configured in Sections</p>
               </CardContent>
             </Card>
           </div>
 
           {/* Search & Dynamic Filter Controls */}
-          <Card className="border border-slate-200/80 shadow-sm bg-white rounded-xl mb-8">
-            <CardContent className="p-4 sm:p-5">
-              <div className="flex flex-col gap-3">
+          <Card className="border border-slate-200/80 shadow-xs bg-white rounded-lg mb-6">
+            <CardContent className="p-3 sm:p-3.5">
+              <div className="flex flex-col gap-2.5">
                 {/* Search Bar */}
                 <div className="relative w-full">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
