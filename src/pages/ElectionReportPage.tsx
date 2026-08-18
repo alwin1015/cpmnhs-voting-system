@@ -477,11 +477,10 @@ export default function ElectionReportPage() {
               {election?.resultsFinalized && (
                 <Button
                   onClick={() => setShowOfficialReport(true)}
-                  className="gap-2 text-white"
-                  style={{ background: 'linear-gradient(135deg, #059669, #047857)' }}
+                  className="gap-2 text-white bg-emerald-600 hover:bg-emerald-700"
                 >
-                  <FileText className="h-4 w-4" />
-                  Generate Official Results
+                  <Printer className="h-4 w-4" />
+                  Print Final Results
                 </Button>
               )}
             </div>
