@@ -67,7 +67,7 @@ function signatureBlock(role: string, name: string, position: string): Paragraph
       ],
     }),
     new Paragraph({
-      spacing: { after: 20 },
+      spacing: { after: 100 },
       children: [
         new TextRun({
           text: position || 'Position / Designation',
@@ -75,12 +75,6 @@ function signatureBlock(role: string, name: string, position: string): Paragraph
           font: 'Times New Roman',
           color: position ? '000000' : '666666',
         }),
-      ],
-    }),
-    new Paragraph({
-      spacing: { after: 100 },
-      children: [
-        new TextRun({ text: 'Date: _____________________________________', size: 20, font: 'Times New Roman' }),
       ],
     }),
   ];
