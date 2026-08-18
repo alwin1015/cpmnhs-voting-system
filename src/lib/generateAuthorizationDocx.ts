@@ -43,7 +43,7 @@ function signatureBlock(role: string, name: string, position: string): Paragraph
     // Space for physical handwritten signature above printed name
     new Paragraph({ spacing: { before: 400, after: 60 }, children: [] }),
     new Paragraph({
-      spacing: { after: 20 },
+      spacing: { after: 15 },
       children: [
         new TextRun({
           text: upperName || '__________________________________________',
@@ -55,18 +55,7 @@ function signatureBlock(role: string, name: string, position: string): Paragraph
       ],
     }),
     new Paragraph({
-      spacing: { after: 20 },
-      children: [
-        new TextRun({
-          text: position || 'Position / Designation',
-          size: 20,
-          font: 'Times New Roman',
-          color: position ? '000000' : '666666',
-        }),
-      ],
-    }),
-    new Paragraph({
-      spacing: { after: 20 },
+      spacing: { after: 15 },
       children: [
         new TextRun({
           text: '(Signature Over Printed Name)',
@@ -74,6 +63,17 @@ function signatureBlock(role: string, name: string, position: string): Paragraph
           font: 'Times New Roman',
           italics: true,
           color: '555555',
+        }),
+      ],
+    }),
+    new Paragraph({
+      spacing: { after: 20 },
+      children: [
+        new TextRun({
+          text: position || 'Position / Designation',
+          size: 20,
+          font: 'Times New Roman',
+          color: position ? '000000' : '666666',
         }),
       ],
     }),
