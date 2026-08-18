@@ -320,13 +320,57 @@ export const api = {
   },
   
   resetSystem: async () => {
-    // Clean up all election and voter data safely
-    try { await supabase.from('tie_resolutions').delete().neq('id', 0); } catch (_) {}
-    try { await supabase.from('vote_verifications').delete().neq('id', 0); } catch (_) {}
-    try { await supabase.from('votes').delete().neq('id', 0); } catch (_) {}
-    try { await supabase.from('candidates').update({ votes: 0 }).neq('id', 0); } catch (_) {}
-    try { await supabase.from('voters').delete().neq('id', 0); } catch (_) {}
+    // 1. Delete all tie resolutions
+    try {
+      const { data: resolutions } = await supabase.from('tie_resolutions').select('id');
+      if (resolutions && resolutions.length > 0) {
+        await supabase.from('tie_resolutions').delete().in('id', resolutions.map((r: any) => r.id));
+      }
+    } catch (_) {}
+
+    // 2. Delete all vote verifications
+    try {
+      const { data: verifications } = await supabase.from('vote_verifications').select('id');
+      if (verifications && verifications.length > 0) {
+        await supabase.from('vote_verifications').delete().in('id', verifications.map((v: any) => v.id));
+      }
+    } catch (_) {}
+
+    // 3. Delete all votes ledger entries
+    try {
+      const { data: votesList } = await supabase.from('votes').select('id');
+      if (votesList && votesList.length > 0) {
+        await supabase.from('votes').delete().in('id', votesList.map((v: any) => v.id));
+      }
+    } catch (_) {}
+
+    // 4. Reset candidate vote tallies to 0
+    try {
+      const { data: candidatesList } = await supabase.from('candidates').select('id');
+      if (candidatesList && candidatesList.length > 0) {
+        await supabase.from('candidates').update({ votes: 0 }).in('id', candidatesList.map((c: any) => c.id));
+      }
+    } catch (_) {}
+
+    // 5. Delete all registered voters
+    try {
+      const { data: votersList } = await supabase.from('voters').select('id');
+      if (votersList && votersList.length > 0) {
+        const voterIds = votersList.map((v: any) => v.id);
+        const { error: vErr } = await supabase.from('voters').delete().in('id', voterIds);
+        if (vErr) {
+          console.error('Error deleting voters during reset:', vErr.message);
+          const { data: lrnList } = await supabase.from('voters').select('lrn');
+          if (lrnList && lrnList.length > 0) {
+            await supabase.from('voters').delete().in('lrn', lrnList.map((v: any) => v.lrn));
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to delete voters:', e);
+    }
     
+    // 6. Reset election status and finalization
     try {
       await supabase.from('election_settings').update({ 
         is_active: false, 
