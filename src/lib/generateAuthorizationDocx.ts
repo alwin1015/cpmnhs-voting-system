@@ -3,15 +3,12 @@ import {
   Paragraph,
   TextRun,
   AlignmentType,
-  HeadingLevel,
   BorderStyle,
   Table,
   TableRow,
   TableCell,
   WidthType,
   Packer,
-  TabStopPosition,
-  TabStopType,
   convertInchesToTwip,
   ShadingType,
 } from 'docx';
@@ -25,14 +22,8 @@ export interface AuthorizationDocData {
   startTime: string;
   endTime: string;
   gradeLevels: string[];
-  sections: string[];
-  positions: string[];
   preparedByName: string;
   preparedByPosition: string;
-  reviewedByName: string;
-  reviewedByPosition: string;
-  notedByName: string;
-  notedByPosition: string;
   approvedByName: string;
   approvedByPosition: string;
 }
@@ -95,11 +86,7 @@ export async function generateAuthorizationDocx(data: AuthorizationDocData): Pro
 
   const gradeListStr = data.gradeLevels.length > 0
     ? data.gradeLevels.map(g => `Grade ${g}`).join(', ')
-    : 'All Grade Levels (Grade 7 – Grade 12)';
-
-  const positionListStr = data.positions.length > 0
-    ? data.positions.join(', ')
-    : 'All SSG Positions';
+    : 'Grade 7, Grade 8, Grade 9, Grade 10, Grade 11, Grade 12';
 
   const doc = new Document({
     styles: {
@@ -141,14 +128,14 @@ export async function generateAuthorizationDocx(data: AuthorizationDocData): Pro
             alignment: AlignmentType.CENTER,
             spacing: { after: 0 },
             children: [
-              new TextRun({ text: 'Region IV-A CALABARZON', size: 20, font: 'Times New Roman' }),
+              new TextRun({ text: 'Region VII – Central Visayas', size: 20, font: 'Times New Roman' }),
             ],
           }),
           new Paragraph({
             alignment: AlignmentType.CENTER,
             spacing: { after: 0 },
             children: [
-              new TextRun({ text: 'Schools Division Office of Batangas', size: 20, font: 'Times New Roman' }),
+              new TextRun({ text: 'Schools Division of Bohol', size: 20, font: 'Times New Roman' }),
             ],
           }),
           new Paragraph({
@@ -168,7 +155,7 @@ export async function generateAuthorizationDocx(data: AuthorizationDocData): Pro
             spacing: { after: 80 },
             children: [
               new TextRun({
-                text: data.schoolAddress || 'Banaba, Tanauan City, Batangas',
+                text: data.schoolAddress || 'Cabad, Balilihan, Bohol',
                 size: 20,
                 font: 'Times New Roman',
                 italics: true,
@@ -194,19 +181,12 @@ export async function generateAuthorizationDocx(data: AuthorizationDocData): Pro
             ],
           }),
 
-          // --- TO ---
+          // --- TO / FROM / RE ---
           new Paragraph({
             spacing: { after: 40 },
             children: [
               new TextRun({ text: 'TO:', bold: true, size: 22, font: 'Times New Roman' }),
               new TextRun({ text: '          The School Principal', size: 22, font: 'Times New Roman' }),
-            ],
-          }),
-          new Paragraph({
-            spacing: { after: 40 },
-            children: [
-              new TextRun({ text: 'THRU:', bold: true, size: 22, font: 'Times New Roman' }),
-              new TextRun({ text: '     SSLG Adviser / Election Coordinator', size: 22, font: 'Times New Roman' }),
             ],
           }),
           new Paragraph({
@@ -269,7 +249,7 @@ export async function generateAuthorizationDocx(data: AuthorizationDocData): Pro
             ],
           }),
 
-          // --- Election Details Table ---
+          // --- Election Details Table (Cleaned up as requested) ---
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
             rows: [
@@ -278,9 +258,6 @@ export async function generateAuthorizationDocx(data: AuthorizationDocData): Pro
               makeDetailRow('Date of Election', data.electionDate || '(To be determined)'),
               makeDetailRow('Voting Period', `${data.startTime || '(Start Time)'} – ${data.endTime || '(End Time)'}`),
               makeDetailRow('Participating Grade Levels', gradeListStr),
-              makeDetailRow('Participating Sections', data.sections.length > 0 ? data.sections.join(', ') : 'All configured sections'),
-              makeDetailRow('Positions to be Elected', positionListStr),
-              makeDetailRow('Voting Method', 'Online Student Voting System (iVote)'),
             ],
           }),
 
@@ -327,10 +304,8 @@ export async function generateAuthorizationDocx(data: AuthorizationDocData): Pro
             ],
           }),
 
-          // --- SIGNATURES ---
-          ...signatureBlock('Prepared by', data.preparedByName, data.preparedByPosition),
-          ...signatureBlock('Reviewed by', data.reviewedByName, data.reviewedByPosition),
-          ...signatureBlock('Noted by', data.notedByName, data.notedByPosition),
+          // --- SIGNATURES (Prepared by and Approved by ONLY) ---
+          ...signatureBlock('Prepared by', data.preparedByName, data.preparedByPosition || 'Election Committee Chairman'),
           ...signatureBlock('Approved by', data.approvedByName, data.approvedByPosition || 'School Principal'),
         ],
       },

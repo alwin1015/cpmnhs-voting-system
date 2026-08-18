@@ -91,11 +91,7 @@ export default function AdminDashboard() {
 
   // Signatory fields
   const [preparedByName, setPreparedByName] = useState('');
-  const [preparedByPosition, setPreparedByPosition] = useState('');
-  const [reviewedByName, setReviewedByName] = useState('');
-  const [reviewedByPosition, setReviewedByPosition] = useState('');
-  const [notedByName, setNotedByName] = useState('');
-  const [notedByPosition, setNotedByPosition] = useState('');
+  const [preparedByPosition, setPreparedByPosition] = useState('Election Committee Chairman');
   const [approvedByName, setApprovedByName] = useState('');
   const [approvedByPosition, setApprovedByPosition] = useState('School Principal');
 
@@ -127,11 +123,7 @@ export default function AdminDashboard() {
     // Load signatories if they exist
     const sigs = election?.signatories;
     setPreparedByName(sigs?.preparedBy?.name || '');
-    setPreparedByPosition(sigs?.preparedBy?.position || '');
-    setReviewedByName(sigs?.reviewedBy?.name || '');
-    setReviewedByPosition(sigs?.reviewedBy?.position || '');
-    setNotedByName(sigs?.notedBy?.name || '');
-    setNotedByPosition(sigs?.notedBy?.position || '');
+    setPreparedByPosition(sigs?.preparedBy?.position || 'Election Committee Chairman');
     setApprovedByName(sigs?.approvedBy?.name || '');
     setApprovedByPosition(sigs?.approvedBy?.position || 'School Principal');
 
@@ -173,8 +165,6 @@ export default function AdminDashboard() {
     await updateElection({
       signatories: {
         preparedBy: { name: preparedByName, position: preparedByPosition },
-        reviewedBy: { name: reviewedByName, position: reviewedByPosition },
-        notedBy: { name: notedByName, position: notedByPosition },
         approvedBy: { name: approvedByName, position: approvedByPosition },
       },
     });
@@ -193,26 +183,17 @@ export default function AdminDashboard() {
       const startDt = parseDateTime(editStartDate, editStartTime);
       const endDt = parseDateTime(editEndDate, editEndTime);
 
-      const allSections = sections.map(s => `Grade ${s.gradeLevel} - ${s.name}`);
-      const allPositions = positions.map(p => p.name);
-
       await generateAuthorizationDocx({
         schoolName: 'CONGRESSMAN PABLO MALASARTE NATIONAL HIGH SCHOOL',
-        schoolAddress: 'Banaba, Tanauan City, Batangas',
+        schoolAddress: 'Cabad, Balilihan, Bohol',
         electionTitle: editName || 'SSG General Election',
         schoolYear: editSchoolYear || '2026-2027',
         electionDate: startDt ? startDt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : '(To be determined)',
         startTime: startDt ? startDt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '',
         endTime: endDt ? endDt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '',
         gradeLevels: GRADES,
-        sections: allSections,
-        positions: allPositions,
         preparedByName,
         preparedByPosition,
-        reviewedByName,
-        reviewedByPosition,
-        notedByName,
-        notedByPosition,
         approvedByName,
         approvedByPosition,
       });
@@ -222,8 +203,6 @@ export default function AdminDashboard() {
         scheduleStatus: 'pending_authorization',
         signatories: {
           preparedBy: { name: preparedByName, position: preparedByPosition },
-          reviewedBy: { name: reviewedByName, position: reviewedByPosition },
-          notedBy: { name: notedByName, position: notedByPosition },
           approvedBy: { name: approvedByName, position: approvedByPosition },
         },
       });
@@ -496,11 +475,9 @@ export default function AdminDashboard() {
   const renderStepSignatories = () => (
     <div className="space-y-3 animate-fade-in">
       <p className="text-xs text-slate-500 leading-relaxed">
-        Enter the names and designations of school personnel who will sign the official election authorization letter.
+        Enter the names and designations of the school personnel who will prepare and approve the official election authorization letter.
       </p>
       {renderSignatoryInput('Prepared by', preparedByName, setPreparedByName, preparedByPosition, setPreparedByPosition)}
-      {renderSignatoryInput('Reviewed by', reviewedByName, setReviewedByName, reviewedByPosition, setReviewedByPosition)}
-      {renderSignatoryInput('Noted by', notedByName, setNotedByName, notedByPosition, setNotedByPosition)}
       {renderSignatoryInput('Approved by', approvedByName, setApprovedByName, approvedByPosition, setApprovedByPosition)}
 
       <div className="flex justify-between gap-2 pt-2">
@@ -528,10 +505,8 @@ export default function AdminDashboard() {
           <span className="text-slate-800">{editStartDate || '—'}</span>
           <span className="text-slate-500 font-medium">Time:</span>
           <span className="text-slate-800">{editStartTime || '—'} – {editEndTime || '—'}</span>
-          <span className="text-slate-500 font-medium">Positions:</span>
-          <span className="text-slate-800">{positions.length}</span>
-          <span className="text-slate-500 font-medium">Sections:</span>
-          <span className="text-slate-800">{sections.length}</span>
+          <span className="text-slate-500 font-medium">Grade Levels:</span>
+          <span className="text-slate-800">{GRADES.map(g => `G${g}`).join(', ')}</span>
         </div>
       </div>
 
@@ -539,10 +514,8 @@ export default function AdminDashboard() {
       <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
         <h4 className="text-sm font-bold text-slate-800">Signatories</h4>
         <div className="space-y-1 text-xs">
-          <div className="flex justify-between"><span className="text-slate-500">Prepared by:</span><span className="font-semibold text-slate-800">{preparedByName || '—'}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Reviewed by:</span><span className="font-semibold text-slate-800">{reviewedByName || '—'}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Noted by:</span><span className="font-semibold text-slate-800">{notedByName || '—'}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Approved by:</span><span className="font-semibold text-slate-800">{approvedByName || '—'}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Prepared by:</span><span className="font-semibold text-slate-800">{preparedByName || '—'} ({preparedByPosition || 'Election Committee Chairman'})</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">Approved by:</span><span className="font-semibold text-slate-800">{approvedByName || '—'} ({approvedByPosition || 'School Principal'})</span></div>
         </div>
       </div>
 
