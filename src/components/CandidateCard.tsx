@@ -46,7 +46,7 @@ export function CandidateCard({
         <div className="flex flex-col items-center text-center">
           {/* Responsive Photo Container */}
           <div className={cn(
-            "relative w-48 h-48 sm:w-64 sm:h-64 rounded-full mb-5 flex items-center justify-center overflow-hidden transition-transform duration-300 group-hover:scale-105 shadow-md mx-auto shrink-0 border-4",
+            "relative w-[220px] h-[220px] sm:w-[280px] sm:h-[280px] rounded-full mb-6 flex items-center justify-center overflow-hidden transition-transform duration-300 group-hover:scale-105 shadow-md mx-auto shrink-0 border-4",
             isSelected ? "bg-indigo-50 border-indigo-500 ring-4 ring-indigo-500/20" : "bg-slate-100 border-white shadow-slate-200/50"
           )}>
             {candidate.photo ? (
@@ -58,47 +58,47 @@ export function CandidateCard({
               />
             ) : (
               <User className={cn(
-                "h-24 w-24 sm:h-32 sm:w-32",
+                "h-28 w-28 sm:h-36 sm:w-36",
                 isSelected ? "text-indigo-600" : "text-slate-400"
               )} />
             )}
             {isSelected && (
               <div className="absolute inset-0 bg-indigo-600/60 flex items-center justify-center backdrop-blur-[2px] animate-in zoom-in duration-200">
-                <Check className="h-10 w-10 sm:h-14 sm:w-14 text-white stroke-[3]" />
+                <Check className="h-16 w-16 text-white stroke-[3]" />
               </div>
             )}
           </div>
 
           {/* Candidate Name */}
-          <h3 className="font-sans text-base sm:text-lg font-bold tracking-tight text-slate-900 mb-1 group-hover:text-indigo-600 transition-colors line-clamp-2 px-1">
+          <h3 className="font-sans text-lg sm:text-xl font-bold tracking-tight text-slate-900 mb-1 group-hover:text-indigo-600 transition-colors line-clamp-2 px-1">
             {candidate.name}
           </h3>
 
           {/* Party Badge */}
           <Badge 
             variant="secondary" 
-            className="mb-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide max-w-full truncate"
+            className="mb-3 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide max-w-full truncate"
           >
             {candidate.party || 'Independent'}
           </Badge>
 
           {/* Info Pill */}
-          <p className="text-xs sm:text-sm font-medium text-slate-500 mb-2 bg-slate-50 px-2.5 py-0.5 rounded-full border border-slate-200/60 max-w-full truncate">
+          <p className="text-sm font-medium text-slate-500 mb-2 bg-slate-50 px-3 py-1 rounded-full border border-slate-200/60 max-w-full truncate">
             Grade {candidate.gradeLevel || '—'} {candidate.section ? `• ${candidate.section}` : ''}
           </p>
 
           {/* Motto */}
           {candidate.motto && (
-            <p className="text-xs sm:text-sm italic text-slate-500 leading-snug px-2 line-clamp-2 mt-0.5">
+            <p className="text-sm italic text-slate-500 leading-snug px-3 line-clamp-2 mt-1">
               "{candidate.motto}"
             </p>
           )}
 
           {/* Votes if applicable */}
           {showVotes && (
-            <div className="mt-3 pt-3 border-t border-slate-100 w-full">
-              <p className="text-xl sm:text-2xl font-bold text-indigo-700 leading-none">{candidate.votes}</p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-1">Votes</p>
+            <div className="mt-4 pt-4 border-t border-slate-100 w-full">
+              <p className="text-2xl sm:text-3xl font-bold text-indigo-700 leading-none">{candidate.votes}</p>
+              <p className="text-xs text-slate-400 uppercase tracking-wider mt-1">Votes</p>
             </div>
           )}
 
@@ -108,9 +108,9 @@ export function CandidateCard({
               type="button"
               variant={isSelected ? "default" : "outline"}
               className={cn(
-                "mt-4 w-full sm:w-auto min-w-[140px] rounded-xl h-10 text-xs sm:text-sm font-semibold transition-all duration-200 active:scale-95 touch-manipulation",
+                "mt-5 min-w-[120px] px-8 rounded-full h-11 text-sm font-bold transition-all duration-200 active:scale-95 touch-manipulation shadow-sm",
                 isSelected 
-                  ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm" 
+                  ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md" 
                   : "bg-white hover:bg-slate-50 border-slate-200 text-slate-700 group-hover:border-indigo-300 group-hover:text-indigo-600"
               )}
               onClick={(e) => {
@@ -120,11 +120,11 @@ export function CandidateCard({
             >
               {isSelected ? (
                 <>
-                  <Check className="h-4 w-4 mr-1.5 stroke-[2.5]" />
+                  <Check className="h-4 w-4 mr-1.5 stroke-[3]" />
                   Selected
                 </>
               ) : (
-                "Vote for Candidate"
+                "Vote"
               )}
             </Button>
           )}
