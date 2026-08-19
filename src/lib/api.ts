@@ -153,13 +153,34 @@ export const api = {
   },
   
   addCandidate: async (data: any) => {
-    const { error } = await supabase.from('candidates').insert(data);
+    const payload: any = {
+      name: (data.name || '').trim(),
+      party: (data.party || '').trim() || 'Independent',
+      motto: (data.motto || '').trim(),
+      photo_url: data.photo_url || '',
+      grade_level: String(data.grade_level || ''),
+      section: String(data.section || ''),
+    };
+    if (data.position_id !== undefined && data.position_id !== '') {
+      payload.position_id = isNaN(Number(data.position_id)) ? data.position_id : Number(data.position_id);
+    }
+    const { error } = await supabase.from('candidates').insert(payload);
     if (error) throw new Error(error.message);
     return { success: true };
   },
   
   updateCandidate: async (data: any) => {
-    const { error } = await supabase.from('candidates').update(data).eq('id', data.id);
+    const payload: any = {};
+    if (data.name !== undefined) payload.name = data.name.trim();
+    if (data.party !== undefined) payload.party = data.party.trim() || 'Independent';
+    if (data.motto !== undefined) payload.motto = data.motto.trim();
+    if (data.photo_url !== undefined) payload.photo_url = data.photo_url;
+    if (data.grade_level !== undefined) payload.grade_level = String(data.grade_level);
+    if (data.section !== undefined) payload.section = String(data.section);
+    if (data.position_id !== undefined && data.position_id !== '') {
+      payload.position_id = isNaN(Number(data.position_id)) ? data.position_id : Number(data.position_id);
+    }
+    const { error } = await supabase.from('candidates').update(payload).eq('id', data.id);
     if (error) throw new Error(error.message);
     return { success: true };
   },

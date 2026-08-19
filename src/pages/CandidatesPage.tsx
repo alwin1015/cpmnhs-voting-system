@@ -93,37 +93,49 @@ export default function CandidatesPage() {
     }
   };
 
-  const handleSubmit = () => {
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSubmit = async () => {
     if (!form.name.trim() || !form.position || !form.gradeLevel.trim() || !form.section.trim()) {
       alert('Please fill in all required fields: Name, Position, Grade Level, and Section.');
       return;
     }
 
-    if (editingId) {
-      updateCandidate(editingId, {
-        name: form.name,
-        party: form.party,
-        position: form.position,
-        gradeLevel: form.gradeLevel,
-        section: form.section,
-        motto: form.motto,
-        photo: form.photo,
-      });
-    } else {
-      addCandidate({
-        name: form.name,
-        position: form.position,
-        party: formattedParty,
-        gradeLevel: form.gradeLevel,
-        section: form.section,
-        motto: form.motto,
-        photo: form.photo,
-      });
-    }
+    const partyValue = form.party.trim() || 'Independent';
 
-    setForm(emptyForm);
-    setShowForm(false);
-    setEditingId(null);
+    setIsSaving(true);
+    try {
+      if (editingId) {
+        await updateCandidate(editingId, {
+          name: form.name.trim(),
+          party: partyValue,
+          position: form.position,
+          gradeLevel: form.gradeLevel.trim(),
+          section: form.section.trim(),
+          motto: form.motto.trim(),
+          photo: form.photo,
+        });
+      } else {
+        await addCandidate({
+          name: form.name.trim(),
+          position: form.position,
+          party: partyValue,
+          gradeLevel: form.gradeLevel.trim(),
+          section: form.section.trim(),
+          motto: form.motto.trim(),
+          photo: form.photo,
+        });
+      }
+
+      setForm(emptyForm);
+      setShowForm(false);
+      setEditingId(null);
+    } catch (err: any) {
+      console.error('Save candidate error:', err);
+      alert('Failed to save candidate: ' + (err?.message || 'Please check your database connection or try again.'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleEdit = (candidateId: string) => {
@@ -326,11 +338,12 @@ export default function CandidatesPage() {
                   </Button>
                   <Button 
                     onClick={handleSubmit}
-                    className="gap-2 text-white px-8 shadow-md hover:shadow-lg transition-all"
+                    disabled={isSaving}
+                    className="gap-2 text-white px-8 shadow-md hover:shadow-lg transition-all disabled:opacity-50"
                     style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)' }}
                   >
                     <Save className="h-4 w-4" />
-                    {editingId ? 'Update' : 'Save'} Candidate
+                    {isSaving ? 'Saving...' : editingId ? 'Update Candidate' : 'Save Candidate'}
                   </Button>
                 </div>
               </CardContent>
@@ -376,13 +389,13 @@ export default function CandidatesPage() {
                                   {candidate.party && candidate.party !== 'Independent' && (
                                     <>
                                       <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wide">{candidate.party}</span>
-                                      <span className="text-gray-300 text-[10px]">•</span>
+                                      <span className="text-gray-300 text-[10px]">ï¿½</span>
                                     </>
                                   )}
                                   <span className="text-[11px] font-medium text-gray-500">Grade {candidate.gradeLevel} - {candidate.section}</span>
                                   {candidate.motto && (
                                     <>
-                                      <span className="text-gray-300 text-[10px]">•</span>
+                                      <span className="text-gray-300 text-[10px]">ï¿½</span>
                                       <span className="text-[11px] text-gray-400 italic truncate max-w-xs">"{candidate.motto}"</span>
                                     </>
                                   )}

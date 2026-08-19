@@ -34,9 +34,9 @@ interface VotingContextType {
   unfinalizeResults: () => Promise<void>;
   updateElection: (updates: Partial<Election>) => Promise<void>;
   resetSystem: () => Promise<void>;
-  addCandidate: (candidate: Omit<Candidate, 'id' | 'votes'>) => void;
-  updateCandidate: (id: string, candidate: Partial<Candidate>) => void;
-  deleteCandidate: (id: string) => void;
+  addCandidate: (candidate: Omit<Candidate, 'id' | 'votes'>) => Promise<void>;
+  updateCandidate: (id: string, candidate: Partial<Candidate>) => Promise<void>;
+  deleteCandidate: (id: string) => Promise<void>;
   addPosition: (position: Omit<Position, 'id'>) => Promise<void>;
   deletePosition: (id: string) => void;
   cleanupDuplicatePositions: () => Promise<{ success: boolean; count: number }>;
@@ -475,7 +475,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   // Candidate CRUD
   const addCandidate = useCallback(
-    (candidateData: Omit<Candidate, 'id' | 'votes'>) => {
+    async (candidateData: Omit<Candidate, 'id' | 'votes'>) => {
       const mapped = {
         name: candidateData.name,
         position_id: candidateData.position,
@@ -485,16 +485,19 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         grade_level: candidateData.gradeLevel,
         section: candidateData.section,
       };
-      api
-        .addCandidate(mapped)
-        .then(() => refreshData())
-        .catch((error) => console.error('Add candidate failed:', error));
+      try {
+        await api.addCandidate(mapped);
+        await refreshData();
+      } catch (error) {
+        console.error('Add candidate failed:', error);
+        throw error;
+      }
     },
     [refreshData]
   );
 
   const updateCandidate = useCallback(
-    (id: string, updates: Partial<Candidate>) => {
+    async (id: string, updates: Partial<Candidate>) => {
       const mapped: any = { id };
       if (updates.name !== undefined) mapped.name = updates.name;
       if (updates.position !== undefined) mapped.position_id = updates.position;
@@ -503,20 +506,26 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       if (updates.motto !== undefined) mapped.motto = updates.motto;
       if (updates.gradeLevel !== undefined) mapped.grade_level = updates.gradeLevel;
       if (updates.section !== undefined) mapped.section = updates.section;
-      api
-        .updateCandidate(mapped)
-        .then(() => refreshData())
-        .catch((error) => console.error('Update candidate failed:', error));
+      try {
+        await api.updateCandidate(mapped);
+        await refreshData();
+      } catch (error) {
+        console.error('Update candidate failed:', error);
+        throw error;
+      }
     },
     [refreshData]
   );
 
   const deleteCandidate = useCallback(
-    (id: string) => {
-      api
-        .deleteCandidate(id)
-        .then(() => refreshData())
-        .catch((error) => console.error('Delete candidate failed:', error));
+    async (id: string) => {
+      try {
+        await api.deleteCandidate(id);
+        await refreshData();
+      } catch (error) {
+        console.error('Delete candidate failed:', error);
+        throw error;
+      }
     },
     [refreshData]
   );
