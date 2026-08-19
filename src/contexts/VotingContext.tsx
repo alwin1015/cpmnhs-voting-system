@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 // ⚡ OFFLINE MODE TOGGLE
 // Set to true to use localStorage (no internet needed)
 // Set to false to use Supabase (requires internet)
-const OFFLINE_MODE = true;
+const OFFLINE_MODE = false;
 
 const api = OFFLINE_MODE ? offlineApi : onlineApi;
 
@@ -178,10 +178,32 @@ export function VotingProvider({ children }: { children: ReactNode }) {
                   return b ? new Date(JSON.parse(b).finalized_at) : null;
                 } catch (_) { return null; }
               })(),
-          scheduleStatus: eData.schedule_status ?? eData.scheduleStatus ?? 'draft',
-          authorizationDocGenerated: Boolean(eData.authorization_doc_generated ?? eData.authorizationDocGenerated ?? false),
-          authorizationConfirmedAt: eData.authorization_confirmed_at ?? eData.authorizationConfirmedAt ?? null,
-          signatories: eData.signatories ? (typeof eData.signatories === 'string' ? JSON.parse(eData.signatories) : eData.signatories) : null,
+          scheduleStatus: eData.schedule_status ?? eData.scheduleStatus ?? (() => {
+            try {
+              const b = localStorage.getItem('election_schedule_backup');
+              return b ? JSON.parse(b).schedule_status || 'draft' : 'draft';
+            } catch (_) { return 'draft'; }
+          })(),
+          authorizationDocGenerated: Boolean(eData.authorization_doc_generated ?? eData.authorizationDocGenerated ?? (() => {
+            try {
+              const b = localStorage.getItem('election_schedule_backup');
+              return b ? JSON.parse(b).authorization_doc_generated : false;
+            } catch (_) { return false; }
+          })()),
+          authorizationConfirmedAt: eData.authorization_confirmed_at ?? eData.authorizationConfirmedAt ?? (() => {
+            try {
+              const b = localStorage.getItem('election_schedule_backup');
+              return b ? JSON.parse(b).authorization_confirmed_at : null;
+            } catch (_) { return null; }
+          })(),
+          signatories: eData.signatories 
+            ? (typeof eData.signatories === 'string' ? JSON.parse(eData.signatories) : eData.signatories) 
+            : (() => {
+                try {
+                  const b = localStorage.getItem('election_schedule_backup');
+                  return b ? JSON.parse(b).signatories || null : null;
+                } catch (_) { return null; }
+              })(),
         });
       } else {
         // Fallback: compute from voters even without election data

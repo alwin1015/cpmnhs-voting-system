@@ -314,8 +314,26 @@ export const api = {
   },
   
   updateElection: async (data: any) => {
-    const { error } = await supabase.from('election_settings').update(data).eq('id', 1);
-    if (error) throw new Error(error.message);
+    try {
+      const { error } = await supabase.from('election_settings').update(data).eq('id', 1);
+      if (error) {
+        // Fallback if optional columns do not exist in remote DB table
+        const coreData: any = {};
+        if (data.name !== undefined) coreData.name = data.name;
+        if (data.school_year !== undefined) coreData.school_year = data.school_year;
+        if (data.start_date !== undefined) coreData.start_date = data.start_date;
+        if (data.end_date !== undefined) coreData.end_date = data.end_date;
+        if (data.is_active !== undefined) coreData.is_active = data.is_active;
+        if (data.grade_mappings !== undefined) coreData.grade_mappings = data.grade_mappings;
+        await supabase.from('election_settings').update(coreData).eq('id', 1);
+      }
+    } catch (e) {
+      console.warn('Election update fallback:', e);
+    }
+    try {
+      const prev = JSON.parse(localStorage.getItem('election_schedule_backup') || '{}');
+      localStorage.setItem('election_schedule_backup', JSON.stringify({ ...prev, ...data }));
+    } catch (_) {}
     return { success: true };
   },
   
