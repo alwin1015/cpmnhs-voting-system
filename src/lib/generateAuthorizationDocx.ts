@@ -38,32 +38,34 @@ function makeSignatureTable(
   const upperPrepared = (preparedByName || '').trim().toUpperCase();
   const upperApproved = (approvedByName || '').trim().toUpperCase();
 
-  const borderlessCell = {
-    top: { style: BorderStyle.NONE, size: 0, color: 'auto' },
-    bottom: { style: BorderStyle.NONE, size: 0, color: 'auto' },
-    left: { style: BorderStyle.NONE, size: 0, color: 'auto' },
-    right: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+  const borderNone = { style: BorderStyle.NONE, size: 0, color: 'auto' };
+  const cellBorders = {
+    top: borderNone,
+    bottom: borderNone,
+    left: borderNone,
+    right: borderNone,
   };
 
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: {
-      top: { style: BorderStyle.NONE, size: 0, color: 'auto' },
-      bottom: { style: BorderStyle.NONE, size: 0, color: 'auto' },
-      left: { style: BorderStyle.NONE, size: 0, color: 'auto' },
-      right: { style: BorderStyle.NONE, size: 0, color: 'auto' },
-      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: 'auto' },
-      insideVertical: { style: BorderStyle.NONE, size: 0, color: 'auto' },
+      top: borderNone,
+      bottom: borderNone,
+      left: borderNone,
+      right: borderNone,
+      insideHorizontal: borderNone,
+      insideVertical: borderNone,
     },
     rows: [
       new TableRow({
         children: [
-          // Left Column: Prepared by
+          // Left Column: Prepared by (Left Aligned)
           new TableCell({
-            width: { size: 48, type: WidthType.PERCENTAGE },
-            borders: borderlessCell,
+            width: { size: 45, type: WidthType.PERCENTAGE },
+            borders: cellBorders,
             children: [
               new Paragraph({
+                alignment: AlignmentType.LEFT,
                 spacing: { before: 200, after: 60 },
                 children: [
                   new TextRun({ text: 'Prepared by:', bold: true, size: 22, font: 'Times New Roman' }),
@@ -72,6 +74,7 @@ function makeSignatureTable(
               // Signature space
               new Paragraph({ spacing: { before: 400, after: 60 }, children: [] }),
               new Paragraph({
+                alignment: AlignmentType.LEFT,
                 spacing: { after: 15 },
                 children: [
                   new TextRun({
@@ -84,6 +87,7 @@ function makeSignatureTable(
                 ],
               }),
               new Paragraph({
+                alignment: AlignmentType.LEFT,
                 spacing: { after: 15 },
                 children: [
                   new TextRun({
@@ -96,6 +100,7 @@ function makeSignatureTable(
                 ],
               }),
               new Paragraph({
+                alignment: AlignmentType.LEFT,
                 spacing: { after: 40 },
                 children: [
                   new TextRun({
@@ -111,17 +116,18 @@ function makeSignatureTable(
 
           // Middle spacer column
           new TableCell({
-            width: { size: 4, type: WidthType.PERCENTAGE },
-            borders: borderlessCell,
+            width: { size: 10, type: WidthType.PERCENTAGE },
+            borders: cellBorders,
             children: [new Paragraph({ children: [] })],
           }),
 
-          // Right Column: Approved by
+          // Right Column: Approved by (Corner Right Aligned)
           new TableCell({
-            width: { size: 48, type: WidthType.PERCENTAGE },
-            borders: borderlessCell,
+            width: { size: 45, type: WidthType.PERCENTAGE },
+            borders: cellBorders,
             children: [
               new Paragraph({
+                alignment: AlignmentType.RIGHT,
                 spacing: { before: 200, after: 60 },
                 children: [
                   new TextRun({ text: 'Approved by:', bold: true, size: 22, font: 'Times New Roman' }),
@@ -130,6 +136,7 @@ function makeSignatureTable(
               // Signature space
               new Paragraph({ spacing: { before: 400, after: 60 }, children: [] }),
               new Paragraph({
+                alignment: AlignmentType.RIGHT,
                 spacing: { after: 15 },
                 children: [
                   new TextRun({
@@ -142,6 +149,7 @@ function makeSignatureTable(
                 ],
               }),
               new Paragraph({
+                alignment: AlignmentType.RIGHT,
                 spacing: { after: 15 },
                 children: [
                   new TextRun({
@@ -154,6 +162,7 @@ function makeSignatureTable(
                 ],
               }),
               new Paragraph({
+                alignment: AlignmentType.RIGHT,
                 spacing: { after: 40 },
                 children: [
                   new TextRun({
@@ -399,7 +408,7 @@ export async function generateAuthorizationDocx(data: AuthorizationDocData): Pro
             ],
           }),
 
-          // --- SIGNATURES (Prepared by on the LEFT, Approved by on the RIGHT side-by-side) ---
+          // --- SIGNATURES (Prepared by on the LEFT, Approved by on the RIGHT corner) ---
           makeSignatureTable(
             data.preparedByName,
             data.preparedByPosition,

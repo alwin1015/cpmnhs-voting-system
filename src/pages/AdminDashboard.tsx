@@ -526,7 +526,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Generate Document */}
-      <div className="rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/30 p-4 text-center space-y-2">
+      <div className="rounded-xl border border-blue-200 bg-blue-50/30 p-4 text-center space-y-2">
         <FileText className="h-8 w-8 text-blue-500 mx-auto" />
         <p className="text-sm font-bold text-slate-800">Official Authorization Letter</p>
         <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
