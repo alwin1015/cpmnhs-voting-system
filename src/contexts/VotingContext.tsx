@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 // ⚡ OFFLINE MODE TOGGLE
 // Set to true to use localStorage (no internet needed)
 // Set to false to use Supabase (requires internet)
-const OFFLINE_MODE = true;
+const OFFLINE_MODE = false;
 
 const api = OFFLINE_MODE ? offlineApi : onlineApi;
 
