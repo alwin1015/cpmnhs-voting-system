@@ -270,7 +270,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             gradeLevel: data.user.gradeLevel,
           });
           setHasVoted(Boolean(data.hasVoted ?? data.has_voted ?? false));
-          await refreshData();
+          refreshData(); // Fire and forget
           return true;
         }
         return false;
@@ -293,7 +293,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             name: data.user.name ?? username,
             email: data.user.email,
           });
-          await refreshData();
+          refreshData(); // Fire and forget
           return true;
         }
         return false;
