@@ -69,32 +69,35 @@ export default function PositionsPage() {
       return;
     }
 
-    setIsAdding(true);
+    const maxVotes = parseInt(newMaxVotes) || 1;
+    const nameTrimmed = newPositionName.trim();
+    
+    // Instant UI dismissal
+    setNewPositionName('');
+    setNewMaxVotes('1');
+    setShowForm(false);
+    setIsAdding(false);
+
     try {
-      const maxVotes = parseInt(newMaxVotes) || 1;
-      await addPosition({
-        name: newPositionName.trim(),
+      addPosition({
+        name: nameTrimmed,
         maxVotes,
         order: positions.length + 1,
         strictGradeMapping: true,
+      }).then(() => {
+        toast({
+          title: 'Position Added',
+          description: `"${nameTrimmed}" was created successfully.`,
+        });
+      }).catch((error: any) => {
+        toast({
+          title: 'Failed to Add Position',
+          description: error.message || 'Could not create position.',
+          variant: 'destructive',
+        });
       });
-
-      toast({
-        title: 'Position Added',
-        description: `"${newPositionName.trim()}" was created successfully.`,
-      });
-
-      setNewPositionName('');
-      setNewMaxVotes('1');
-      setShowForm(false);
     } catch (error: any) {
-      toast({
-        title: 'Failed to Add Position',
-        description: error.message || 'Could not create position.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsAdding(false);
+      // Synchronous errors
     }
   };
 

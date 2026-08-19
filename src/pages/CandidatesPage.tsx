@@ -102,39 +102,41 @@ export default function CandidatesPage() {
     }
 
     const partyValue = form.party.trim() || 'Independent';
+    
+    // Capture data for background saving
+    const isEdit = !!editingId;
+    const currentEditingId = editingId;
+    const payload = {
+      name: form.name.trim(),
+      party: partyValue,
+      position: form.position,
+      gradeLevel: form.gradeLevel.trim(),
+      section: form.section.trim(),
+      motto: form.motto.trim(),
+      photo: form.photo,
+    };
 
-    setIsSaving(true);
+    // Instant UI dismissal
+    setForm(emptyForm);
+    setShowForm(false);
+    setEditingId(null);
+    setIsSaving(false);
+
+    // Background save
     try {
-      if (editingId) {
-        await updateCandidate(editingId, {
-          name: form.name.trim(),
-          party: partyValue,
-          position: form.position,
-          gradeLevel: form.gradeLevel.trim(),
-          section: form.section.trim(),
-          motto: form.motto.trim(),
-          photo: form.photo,
+      if (isEdit && currentEditingId) {
+        updateCandidate(currentEditingId, payload).catch(err => {
+          console.error('Save candidate error:', err);
+          alert('Failed to update candidate: ' + (err?.message || 'Please check your database connection or try again.'));
         });
       } else {
-        await addCandidate({
-          name: form.name.trim(),
-          position: form.position,
-          party: partyValue,
-          gradeLevel: form.gradeLevel.trim(),
-          section: form.section.trim(),
-          motto: form.motto.trim(),
-          photo: form.photo,
+        addCandidate(payload).catch(err => {
+          console.error('Save candidate error:', err);
+          alert('Failed to add candidate: ' + (err?.message || 'Please check your database connection or try again.'));
         });
       }
-
-      setForm(emptyForm);
-      setShowForm(false);
-      setEditingId(null);
     } catch (err: any) {
-      console.error('Save candidate error:', err);
-      alert('Failed to save candidate: ' + (err?.message || 'Please check your database connection or try again.'));
-    } finally {
-      setIsSaving(false);
+      console.error('Sync execution error:', err);
     }
   };
 

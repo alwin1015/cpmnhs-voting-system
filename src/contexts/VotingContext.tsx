@@ -479,6 +479,10 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   // Candidate CRUD
   const addCandidate = useCallback(
     async (candidateData: Omit<Candidate, 'id' | 'votes'>) => {
+      // Optimistic update
+      const tempId = `temp-${Date.now()}`;
+      setCandidates((prev) => [...prev, { ...candidateData, id: tempId, votes: 0 }]);
+
       const mapped = {
         name: candidateData.name,
         position_id: candidateData.position,
@@ -493,6 +497,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         await refreshData();
       } catch (error) {
         console.error('Add candidate failed:', error);
+        await refreshData(); // Revert on failure
         throw error;
       }
     },
@@ -540,6 +545,9 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   // Position CRUD
   const addPosition = useCallback(
     async (positionData: Omit<Position, 'id'>) => {
+      const tempId = `temp-${Date.now()}`;
+      setPositions((prev) => [...prev, { ...positionData, id: tempId }]);
+
       const mapped = {
         name: positionData.name,
         display_order: positionData.order,
@@ -551,6 +559,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         await refreshData();
       } catch (error) {
         console.error('Add position failed:', error);
+        await refreshData();
         throw error;
       }
     },
@@ -585,6 +594,9 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   // Section CRUD
   const addSection = useCallback(
     (sectionData: Omit<Section, 'id'>) => {
+      const tempId = `temp-${Date.now()}`;
+      setSections((prev) => [...prev, { ...sectionData, id: tempId }]);
+
       const mapped = {
         name: sectionData.name,
         grade_level: sectionData.gradeLevel,
@@ -592,7 +604,10 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       api
         .addSection(mapped)
         .then(() => refreshData())
-        .catch((error) => console.error('Add section failed:', error));
+        .catch((error) => {
+          console.error('Add section failed:', error);
+          refreshData();
+        });
     },
     [refreshData]
   );
