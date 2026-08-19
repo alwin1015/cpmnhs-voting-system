@@ -46,8 +46,8 @@ export function CandidateCard({
         <div className="flex flex-col items-center text-center">
           {/* Responsive Photo Container */}
           <div className={cn(
-            "relative w-28 h-28 xs:w-32 xs:h-32 sm:w-36 sm:h-36 md:w-40 md:h-40 rounded-full mb-3 flex items-center justify-center overflow-hidden transition-transform duration-300 group-hover:scale-105 shadow-sm mx-auto shrink-0 border-2",
-            isSelected ? "bg-indigo-50 border-indigo-500 ring-4 ring-indigo-500/15" : "bg-slate-100 border-slate-200"
+            "relative w-36 h-36 sm:w-48 sm:h-48 md:w-56 md:h-56 rounded-3xl mb-4 flex items-center justify-center overflow-hidden transition-transform duration-300 group-hover:scale-105 shadow-md mx-auto shrink-0 border-4",
+            isSelected ? "bg-indigo-50 border-indigo-500 ring-4 ring-indigo-500/20" : "bg-slate-100 border-white shadow-slate-200/50"
           )}>
             {candidate.photo ? (
               <img 
@@ -58,13 +58,13 @@ export function CandidateCard({
               />
             ) : (
               <User className={cn(
-                "h-12 w-12 sm:h-16 sm:w-16",
+                "h-16 w-16 sm:h-24 sm:w-24",
                 isSelected ? "text-indigo-600" : "text-slate-400"
               )} />
             )}
             {isSelected && (
-              <div className="absolute inset-0 bg-indigo-600/75 flex items-center justify-center backdrop-blur-2xs animate-in zoom-in duration-200">
-                <Check className="h-8 w-8 sm:h-10 sm:w-10 text-white stroke-[3]" />
+              <div className="absolute inset-0 bg-indigo-600/60 flex items-center justify-center backdrop-blur-[2px] animate-in zoom-in duration-200">
+                <Check className="h-10 w-10 sm:h-14 sm:w-14 text-white stroke-[3]" />
               </div>
             )}
           </div>
