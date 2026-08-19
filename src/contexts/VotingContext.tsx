@@ -42,8 +42,8 @@ interface VotingContextType {
   cleanupDuplicatePositions: () => Promise<{ success: boolean; count: number }>;
   addSection: (section: Omit<Section, 'id'>) => void;
   deleteSection: (id: string) => void;
-  approveVoter: (id: string) => void;
-  rejectVoter: (id: string) => void;
+  approveVoter: (id: string) => Promise<boolean>;
+  rejectVoter: (id: string) => Promise<boolean>;
 }
 
 const VotingContext = createContext<VotingContextType | undefined>(undefined);
@@ -628,29 +628,33 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   // Voter management
   const approveVoter = useCallback(
-    (id: string) => {
+    async (id: string) => {
       setVoters(prev => prev.map(v => v.id === id ? { ...v, status: 'approved' } : v));
-      api
-        .approveVoter(id)
-        .then(() => refreshData())
-        .catch((error) => {
-          console.error('Approve voter failed:', error);
-          refreshData();
-        });
+      try {
+        await api.approveVoter(id);
+        refreshData();
+        return true;
+      } catch (error) {
+        console.error('Approve voter failed:', error);
+        refreshData();
+        return false;
+      }
     },
     [refreshData]
   );
 
   const rejectVoter = useCallback(
-    (id: string) => {
+    async (id: string) => {
       setVoters(prev => prev.map(v => v.id === id ? { ...v, status: 'rejected' } : v));
-      api
-        .rejectVoter(id)
-        .then(() => refreshData())
-        .catch((error) => {
-          console.error('Reject voter failed:', error);
-          refreshData();
-        });
+      try {
+        await api.rejectVoter(id);
+        refreshData();
+        return true;
+      } catch (error) {
+        console.error('Reject voter failed:', error);
+        refreshData();
+        return false;
+      }
     },
     [refreshData]
   );
