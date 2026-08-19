@@ -431,6 +431,9 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   const updateElection = useCallback(
     async (updates: Partial<Election>) => {
       try {
+        // Immediate optimistic UI update - eliminates all lag and delay
+        setElection((prev) => (prev ? { ...prev, ...updates } : null));
+
         const mapped: any = {};
         if (updates.name !== undefined) mapped.name = updates.name;
         if (updates.schoolYear !== undefined) mapped.school_year = updates.schoolYear;
@@ -498,6 +501,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   const updateCandidate = useCallback(
     async (id: string, updates: Partial<Candidate>) => {
+      setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
       const mapped: any = { id };
       if (updates.name !== undefined) mapped.name = updates.name;
       if (updates.position !== undefined) mapped.position_id = updates.position;
@@ -511,6 +515,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         await refreshData();
       } catch (error) {
         console.error('Update candidate failed:', error);
+        await refreshData();
         throw error;
       }
     },
@@ -519,11 +524,13 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   const deleteCandidate = useCallback(
     async (id: string) => {
+      setCandidates(prev => prev.filter(c => c.id !== id));
       try {
         await api.deleteCandidate(id);
         await refreshData();
       } catch (error) {
         console.error('Delete candidate failed:', error);
+        await refreshData();
         throw error;
       }
     },
@@ -552,10 +559,14 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   const deletePosition = useCallback(
     (id: string) => {
+      setPositions(prev => prev.filter(p => p.id !== id));
       api
         .deletePosition(id)
         .then(() => refreshData())
-        .catch((error) => console.error('Delete position failed:', error));
+        .catch((error) => {
+          console.error('Delete position failed:', error);
+          refreshData();
+        });
     },
     [refreshData]
   );
@@ -588,10 +599,14 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   const deleteSection = useCallback(
     (id: string) => {
+      setSections(prev => prev.filter(s => s.id !== id));
       api
         .deleteSection(id)
         .then(() => refreshData())
-        .catch((error) => console.error('Delete section failed:', error));
+        .catch((error) => {
+          console.error('Delete section failed:', error);
+          refreshData();
+        });
     },
     [refreshData]
   );
@@ -599,20 +614,28 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   // Voter management
   const approveVoter = useCallback(
     (id: string) => {
+      setVoters(prev => prev.map(v => v.id === id ? { ...v, status: 'approved' } : v));
       api
         .approveVoter(id)
         .then(() => refreshData())
-        .catch((error) => console.error('Approve voter failed:', error));
+        .catch((error) => {
+          console.error('Approve voter failed:', error);
+          refreshData();
+        });
     },
     [refreshData]
   );
 
   const rejectVoter = useCallback(
     (id: string) => {
+      setVoters(prev => prev.map(v => v.id === id ? { ...v, status: 'rejected' } : v));
       api
         .rejectVoter(id)
         .then(() => refreshData())
-        .catch((error) => console.error('Reject voter failed:', error));
+        .catch((error) => {
+          console.error('Reject voter failed:', error);
+          refreshData();
+        });
     },
     [refreshData]
   );

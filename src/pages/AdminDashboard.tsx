@@ -149,27 +149,28 @@ export default function AdminDashboard() {
       return new Date(`${d}T${t || '00:00'}`);
     };
 
-    await updateElection({
+    setScheduleStep('signatories');
+    toast({ title: 'Schedule Saved', description: 'Election details saved as Draft.' });
+
+    updateElection({
       name: editName,
       schoolYear: editSchoolYear,
       startDate: parseDateTime(editStartDate, editStartTime),
       endDate: parseDateTime(editEndDate, editEndTime),
       scheduleStatus: 'draft',
-    });
-
-    toast({ title: 'Schedule Saved', description: 'Election details saved as Draft.' });
-    setScheduleStep('signatories');
+    }).catch(err => console.error('Schedule update error:', err));
   };
 
   const handleSaveSignatories = async () => {
-    await updateElection({
+    setScheduleStep('authorization');
+    toast({ title: 'Signatories Saved', description: 'Signatory details have been recorded.' });
+
+    updateElection({
       signatories: {
         preparedBy: { name: preparedByName, position: preparedByPosition },
         approvedBy: { name: approvedByName, position: approvedByPosition },
       },
-    });
-    toast({ title: 'Signatories Saved', description: 'Signatory details have been recorded.' });
-    setScheduleStep('authorization');
+    }).catch(err => console.error('Signatories update error:', err));
   };
 
   const handleGenerateDocx = async () => {
@@ -198,14 +199,14 @@ export default function AdminDashboard() {
         approvedByPosition,
       });
 
-      await updateElection({
+      updateElection({
         authorizationDocGenerated: true,
         scheduleStatus: 'pending_authorization',
         signatories: {
           preparedBy: { name: preparedByName, position: preparedByPosition },
           approvedBy: { name: approvedByName, position: approvedByPosition },
         },
-      });
+      }).catch(err => console.error('Docx election update error:', err));
 
       toast({ title: 'Document Generated', description: 'The authorization letter (.docx) has been downloaded. Open it in Microsoft Word to edit and print.' });
     } catch (err) {
@@ -217,18 +218,20 @@ export default function AdminDashboard() {
   };
 
   const handleConfirmAuthorization = async () => {
-    await updateElection({
+    setScheduleStep('activate');
+    toast({ title: 'Authorization Confirmed', description: 'The election schedule has been authorized. You can now activate it.' });
+
+    updateElection({
       scheduleStatus: 'authorized',
       authorizationConfirmedAt: new Date().toISOString(),
-    });
-    toast({ title: 'Authorization Confirmed', description: 'The election schedule has been authorized. You can now activate it.' });
-    setScheduleStep('activate');
+    }).catch(err => console.error('Confirm authorization error:', err));
   };
 
   const handleActivateSchedule = async () => {
-    await updateElection({ scheduleStatus: 'scheduled' });
-    toast({ title: 'Schedule Activated', description: 'The election is now scheduled. Use "Launch Election" to start voting.' });
     setIsScheduleOpen(false);
+    toast({ title: 'Schedule Activated', description: 'The election is now scheduled. Use "Launch Election" to start voting.' });
+
+    updateElection({ scheduleStatus: 'scheduled' }).catch(err => console.error('Activate schedule error:', err));
   };
 
   const handleOpenMappings = () => {
@@ -237,8 +240,9 @@ export default function AdminDashboard() {
   };
 
   const handleSaveMappings = async () => {
-    await updateElection({ gradeMappings: editMappings });
     setIsMappingsOpen(false);
+    toast({ title: 'Mappings Saved', description: 'Candidate grade mappings have been updated.' });
+    updateElection({ gradeMappings: editMappings }).catch(err => console.error('Save mappings error:', err));
   };
 
   const canLaunchElection = scheduleStatus === 'authorized' || scheduleStatus === 'scheduled';
@@ -830,15 +834,14 @@ export default function AdminDashboard() {
             {stats.map((stat, index) => (
               <Card 
                 key={index} 
-                className="border-0 shadow-md hover:shadow-xl transition-all duration-300 animate-fade-in group overflow-hidden relative bg-white"
-                style={{ animationDelay: `${index * 80}ms` }}
+                className="border-0 shadow-md hover:shadow-xl transition-all duration-200 group overflow-hidden relative bg-white"
               >
-                <div className="absolute top-0 right-0 w-32 h-32 opacity-[0.03] transform translate-x-8 -translate-y-8 group-hover:scale-110 transition-transform duration-500">
+                <div className="absolute top-0 right-0 w-32 h-32 opacity-[0.03] transform translate-x-8 -translate-y-8 group-hover:scale-110 transition-transform duration-300">
                   <stat.icon className="w-full h-full" style={{ color: stat.iconColor }} />
                 </div>
                 <CardContent className="p-4 sm:p-5">
                   <div className="flex items-center gap-4 relative z-10">
-                    <div className="p-3 rounded-2xl shadow-sm transition-transform group-hover:-translate-y-1 group-hover:scale-105 duration-300" style={{ background: stat.iconBg }}>
+                    <div className="p-3 rounded-2xl shadow-sm transition-transform group-hover:-translate-y-1 group-hover:scale-105 duration-200" style={{ background: stat.iconBg }}>
                       <stat.icon className="h-6 w-6" style={{ color: stat.iconColor }} />
                     </div>
                     <div>
@@ -861,8 +864,7 @@ export default function AdminDashboard() {
             {manageItems.map((item, index) => (
               <Card 
                 key={index} 
-                className="border border-slate-100 shadow-sm cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300 animate-fade-in group bg-white/80 backdrop-blur-sm overflow-hidden"
-                style={{ animationDelay: `${index * 50}ms` }}
+                className="border border-slate-100 shadow-sm cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-200 group bg-white/80 backdrop-blur-sm overflow-hidden"
                 onClick={item.onClick}
               >
                 <CardContent className="p-6 relative">
