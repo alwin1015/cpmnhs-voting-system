@@ -46,7 +46,7 @@ export function CandidateCard({
         <div className="flex flex-col items-center text-center">
           {/* Responsive Photo Container */}
           <div className={cn(
-            "relative w-36 h-36 sm:w-48 sm:h-48 md:w-56 md:h-56 rounded-3xl mb-4 flex items-center justify-center overflow-hidden transition-transform duration-300 group-hover:scale-105 shadow-md mx-auto shrink-0 border-4",
+            "relative w-48 h-48 sm:w-64 sm:h-64 rounded-full mb-5 flex items-center justify-center overflow-hidden transition-transform duration-300 group-hover:scale-105 shadow-md mx-auto shrink-0 border-4",
             isSelected ? "bg-indigo-50 border-indigo-500 ring-4 ring-indigo-500/20" : "bg-slate-100 border-white shadow-slate-200/50"
           )}>
             {candidate.photo ? (
@@ -58,7 +58,7 @@ export function CandidateCard({
               />
             ) : (
               <User className={cn(
-                "h-16 w-16 sm:h-24 sm:w-24",
+                "h-24 w-24 sm:h-32 sm:w-32",
                 isSelected ? "text-indigo-600" : "text-slate-400"
               )} />
             )}
