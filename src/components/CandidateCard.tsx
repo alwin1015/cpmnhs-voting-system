@@ -89,16 +89,16 @@ export function CandidateCard({
 
           {/* Motto */}
           {candidate.motto && (
-            <p className="text-sm italic text-slate-500 leading-snug px-3 line-clamp-2 mt-1">
+            <p className="text-sm italic text-slate-500 leading-snug px-3 line-clamp-2 mt-0 mb-1">
               "{candidate.motto}"
             </p>
           )}
 
           {/* Votes if applicable */}
           {showVotes && (
-            <div className="mt-4 pt-4 border-t border-slate-100 w-full">
+            <div className="mt-2 pt-2 border-t border-slate-100 w-full mb-1">
               <p className="text-2xl sm:text-3xl font-bold text-indigo-700 leading-none">{candidate.votes}</p>
-              <p className="text-xs text-slate-400 uppercase tracking-wider mt-1">Votes</p>
+              <p className="text-xs text-slate-400 uppercase tracking-wider mt-0.5">Votes</p>
             </div>
           )}
 
@@ -108,10 +108,10 @@ export function CandidateCard({
               type="button"
               variant={isSelected ? "default" : "outline"}
               className={cn(
-                "mt-5 min-w-[120px] px-8 rounded-full h-11 text-sm font-bold transition-all duration-200 active:scale-95 touch-manipulation shadow-sm",
+                "mt-2 min-w-[100px] px-8 rounded-xl h-11 text-base font-extrabold transition-all duration-200 active:scale-95 touch-manipulation shadow-sm border-2",
                 isSelected 
-                  ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md" 
-                  : "bg-white hover:bg-slate-50 border-slate-200 text-slate-700 group-hover:border-indigo-300 group-hover:text-indigo-600"
+                  ? "bg-emerald-600 hover:bg-emerald-700 border-emerald-600 text-white shadow-md ring-2 ring-emerald-300 ring-offset-1" 
+                  : "bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-700 group-hover:bg-indigo-600 group-hover:border-indigo-600 group-hover:text-white"
               )}
               onClick={(e) => {
                 e.stopPropagation();
@@ -120,7 +120,7 @@ export function CandidateCard({
             >
               {isSelected ? (
                 <>
-                  <Check className="h-4 w-4 mr-1.5 stroke-[3]" />
+                  <Check className="h-5 w-5 mr-1.5 stroke-[3]" />
                   Selected
                 </>
               ) : (
