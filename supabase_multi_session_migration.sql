@@ -50,26 +50,14 @@ BEGIN
 END $$;
 
 -- 4. Migrate legacy election_settings data into voting_sessions as Session 1
-INSERT INTO public.voting_sessions (id, name, school_year, start_date, end_date, is_active, status, grade_mappings, results_finalized, finalized_by, finalized_at, schedule_status, authorization_doc_generated, signatories)
+INSERT INTO public.voting_sessions (id, name, school_year, start_date, end_date, is_active)
 SELECT
     1,
     COALESCE(name, 'SSG General Election'),
     COALESCE(school_year, '2026-2027'),
     start_date,
     end_date,
-    COALESCE(is_active, false),
-    CASE
-        WHEN results_finalized = true THEN 'finalized'
-        WHEN is_active = true THEN 'active'
-        ELSE 'upcoming'
-    END,
-    COALESCE(grade_mappings, '{}'::jsonb),
-    COALESCE(results_finalized, false),
-    finalized_by,
-    finalized_at,
-    COALESCE(schedule_status, 'draft'),
-    COALESCE(authorization_doc_generated, false),
-    COALESCE(signatories, '{}'::jsonb)
+    COALESCE(is_active, false)
 FROM public.election_settings
 WHERE id = 1
 ON CONFLICT (id) DO NOTHING;
