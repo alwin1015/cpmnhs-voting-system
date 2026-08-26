@@ -12,6 +12,9 @@ const LS_KEYS = {
   session: 'voting_session',
   verifications: 'offline_verifications',
   tieResolutions: 'offline_tie_resolutions',
+  sessions: 'offline_sessions',
+  voterSessions: 'offline_voter_sessions',
+  systemSettings: 'offline_system_settings',
 };
 
 function getStore<T>(key: string, fallback: T[] = []): T[] {
@@ -137,6 +140,25 @@ function seedDefaults() {
   if (!localStorage.getItem(LS_KEYS.votes)) setStore(LS_KEYS.votes, []);
   if (!localStorage.getItem(LS_KEYS.verifications)) setStore(LS_KEYS.verifications, []);
   if (!localStorage.getItem(LS_KEYS.tieResolutions)) setStore(LS_KEYS.tieResolutions, []);
+
+  if (!localStorage.getItem(LS_KEYS.sessions)) {
+    setStore(LS_KEYS.sessions, [{
+      id: '1',
+      name: 'SSG General Election',
+      school_year: '2026-2027',
+      status: 'active',
+      is_active: true,
+      eligible_grade_levels: [],
+      eligible_sections: [],
+      start_date: new Date().toISOString(),
+      end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      created_at: new Date().toISOString(),
+    }]);
+  }
+  if (!localStorage.getItem(LS_KEYS.voterSessions)) setStore(LS_KEYS.voterSessions, []);
+  if (!localStorage.getItem(LS_KEYS.systemSettings)) {
+    setStore(LS_KEYS.systemSettings, [{ id: 1, current_school_year: '2026-2027', updated_at: new Date().toISOString() }]);
+  }
 }
 
 seedDefaults();
@@ -248,7 +270,11 @@ export const offlineApi = {
   },
 
   // Candidates
-  getCandidates: async () => getStore(LS_KEYS.candidates),
+  getCandidates: async (sessionId?: string) => {
+    let candidates = getStore<any>(LS_KEYS.candidates);
+    if (sessionId) candidates = candidates.filter((c: any) => String(c.session_id) === String(sessionId));
+    return candidates;
+  },
   addCandidate: async (data: any) => {
     const candidates = getStore<any>(LS_KEYS.candidates);
     candidates.push({ ...data, id: genId(), votes: 0 });
@@ -270,8 +296,9 @@ export const offlineApi = {
   },
 
   // Positions
-  getPositions: async () => {
-    const positions = getStore<any>(LS_KEYS.positions);
+  getPositions: async (sessionId?: string) => {
+    let positions = getStore<any>(LS_KEYS.positions);
+    if (sessionId) positions = positions.filter((p: any) => String(p.session_id) === String(sessionId));
     return positions.sort((a: any, b: any) => a.display_order - b.display_order);
   },
   addPosition: async (data: any) => {
@@ -318,18 +345,30 @@ export const offlineApi = {
   },
 
   // Votes
-  submitVotes: async (votes: { candidate_id: string; position_id: string }[]) => {
+  submitVotes: async (votes: { candidate_id: string; position_id: string }[], sessionId?: string) => {
     const sessionStr = localStorage.getItem(LS_KEYS.session);
     if (!sessionStr) throw new Error('Not authenticated');
     const session = JSON.parse(sessionStr);
 
     const allVotes = getStore<any>(LS_KEYS.votes);
     for (const v of votes) {
-      allVotes.push({ id: genId(), voter_id: session.user.id, ...v, timestamp: new Date().toISOString() });
+      allVotes.push({ id: genId(), voter_id: session.user.id, session_id: sessionId || '1', ...v, timestamp: new Date().toISOString() });
     }
     setStore(LS_KEYS.votes, allVotes);
 
-    // Mark voter as voted
+    // Mark voter as voted in the session
+    const voterSessions = getStore<any>(LS_KEYS.voterSessions);
+    let vs = voterSessions.find((vs: any) => String(vs.voter_id) === String(session.user.id) && String(vs.session_id) === String(sessionId || '1'));
+    if (!vs) {
+      vs = { id: genId(), voter_id: session.user.id, session_id: sessionId || '1', has_voted: true, voted_at: new Date().toISOString() };
+      voterSessions.push(vs);
+    } else {
+      vs.has_voted = true;
+      vs.voted_at = new Date().toISOString();
+    }
+    setStore(LS_KEYS.voterSessions, voterSessions);
+
+    // Legacy fallback
     const voters = getStore<any>(LS_KEYS.voters);
     const voter = voters.find((v: any) => String(v.id) === String(session.user.id));
     if (voter) {
@@ -351,7 +390,104 @@ export const offlineApi = {
     return { success: true };
   },
 
-  getResults: async () => getStore(LS_KEYS.candidates),
+  getResults: async (sessionId?: string) => {
+    let candidates = getStore<any>(LS_KEYS.candidates);
+    if (sessionId) {
+      candidates = candidates.filter((c: any) => String(c.session_id) === String(sessionId));
+    }
+    return candidates;
+  },
+
+  // Sessions
+  getSystemSettings: async () => {
+    return getStore<any>(LS_KEYS.systemSettings)[0] || { id: 1, current_school_year: '2026-2027', updated_at: new Date().toISOString() };
+  },
+  processYearRollover: async (newSchoolYear: string, voterUpdates: any[]) => {
+    const settings = getStore<any>(LS_KEYS.systemSettings);
+    if (settings[0]) settings[0].current_school_year = newSchoolYear;
+    setStore(LS_KEYS.systemSettings, settings);
+
+    const voters = getStore<any>(LS_KEYS.voters);
+    voterUpdates.forEach(update => {
+      const v = voters.find((vt: any) => String(vt.id) === String(update.id));
+      if (v) {
+        v.grade_level = update.grade_level;
+        v.section = update.section;
+        v.status = update.status;
+        v.academic_history = update.academic_history;
+      }
+    });
+    setStore(LS_KEYS.voters, voters);
+    return { success: true };
+  },
+  getSessions: async () => getStore<any>(LS_KEYS.sessions).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+  getSession: async (id: string) => {
+    const s = getStore<any>(LS_KEYS.sessions).find((s: any) => String(s.id) === String(id));
+    if (!s) throw new Error('Session not found');
+    return s;
+  },
+  createSession: async (data: any) => {
+    const sessions = getStore<any>(LS_KEYS.sessions);
+    const newSession = { ...data, id: genId(), created_at: new Date().toISOString() };
+    sessions.push(newSession);
+    setStore(LS_KEYS.sessions, sessions);
+    return newSession;
+  },
+  updateSession: async (id: string, data: any) => {
+    const sessions = getStore<any>(LS_KEYS.sessions);
+    const idx = sessions.findIndex((s: any) => String(s.id) === String(id));
+    if (idx !== -1) {
+      if (data.is_active) {
+        sessions.forEach((s: any) => s.is_active = false);
+      }
+      sessions[idx] = { ...sessions[idx], ...data };
+      setStore(LS_KEYS.sessions, sessions);
+    }
+    return { success: true };
+  },
+  deleteSession: async (id: string) => {
+    let sessions = getStore<any>(LS_KEYS.sessions);
+    sessions = sessions.filter((s: any) => String(s.id) !== String(id));
+    setStore(LS_KEYS.sessions, sessions);
+    return { success: true };
+  },
+  duplicateSession: async (id: string) => {
+    const sessions = getStore<any>(LS_KEYS.sessions);
+    const original = sessions.find((s: any) => String(s.id) === String(id));
+    if (!original) throw new Error('Not found');
+    sessions.push({ ...original, id: genId(), name: `${original.name} (Copy)`, is_active: false, status: 'upcoming', created_at: new Date().toISOString() });
+    setStore(LS_KEYS.sessions, sessions);
+    return { success: true };
+  },
+  resetSession: async (id: string) => {
+    let votes = getStore<any>(LS_KEYS.votes);
+    votes = votes.filter((v: any) => String(v.session_id) !== String(id));
+    setStore(LS_KEYS.votes, votes);
+
+    let voterSessions = getStore<any>(LS_KEYS.voterSessions);
+    voterSessions = voterSessions.filter((vs: any) => String(vs.session_id) !== String(id));
+    setStore(LS_KEYS.voterSessions, voterSessions);
+
+    const candidates = getStore<any>(LS_KEYS.candidates);
+    candidates.forEach((c: any) => { if (String(c.session_id) === String(id)) c.votes = 0; });
+    setStore(LS_KEYS.candidates, candidates);
+    return { success: true };
+  },
+  getEligibleSessions: async (gradeLevel: string, section: string) => {
+    const sessions = getStore<any>(LS_KEYS.sessions).filter((s: any) => s.isActive && s.status === 'active');
+    return sessions.filter((s: any) => {
+      const g = !s.eligible_grade_levels || s.eligible_grade_levels.length === 0 || s.eligible_grade_levels.includes(gradeLevel);
+      const sec = !s.eligible_sections || s.eligible_sections.length === 0 || s.eligible_sections.includes(section);
+      return g && sec;
+    });
+  },
+  getVoterSessions: async (sessionId: string) => {
+    return getStore<any>(LS_KEYS.voterSessions).filter((vs: any) => String(vs.session_id) === String(sessionId));
+  },
+  getVoterSessionStatus: async (voterId: string, sessionId: string) => {
+    const vs = getStore<any>(LS_KEYS.voterSessions).find((vs: any) => String(vs.voter_id) === String(voterId) && String(vs.session_id) === String(sessionId));
+    return vs ? { hasVoted: vs.has_voted, votedAt: vs.voted_at } : { hasVoted: false, votedAt: null };
+  },
 
   // Election
   getElection: async () => {
@@ -363,26 +499,34 @@ export const offlineApi = {
     setStore(LS_KEYS.election, { ...existing, ...data });
     return { success: true };
   },
-  finalizeResults: async () => {
-    const election = JSON.parse(localStorage.getItem(LS_KEYS.election) || '{}');
-    const session = JSON.parse(localStorage.getItem(LS_KEYS.session) || '{}');
-    election.results_finalized = true;
-    election.finalized_by = session?.user?.name || 'Administrator';
-    election.finalized_at = new Date().toISOString();
-    setStore(LS_KEYS.election, election);
+  finalizeResults: async (sessionId?: string) => {
+    const sessions = getStore<any>(LS_KEYS.sessions);
+    const s = sessions.find((s: any) => String(s.id) === String(sessionId || '1'));
+    if (s) {
+      const authSession = JSON.parse(localStorage.getItem(LS_KEYS.session) || '{}');
+      s.results_finalized = true;
+      s.finalized_by = authSession?.user?.name || 'Administrator';
+      s.finalized_at = new Date().toISOString();
+      setStore(LS_KEYS.sessions, sessions);
+    }
     return { success: true };
   },
-  unfinalizeResults: async () => {
-    const election = JSON.parse(localStorage.getItem(LS_KEYS.election) || '{}');
-    election.results_finalized = false;
-    election.finalized_by = null;
-    election.finalized_at = null;
-    setStore(LS_KEYS.election, election);
+  unfinalizeResults: async (sessionId?: string) => {
+    const sessions = getStore<any>(LS_KEYS.sessions);
+    const s = sessions.find((s: any) => String(s.id) === String(sessionId || '1'));
+    if (s) {
+      s.results_finalized = false;
+      s.finalized_by = null;
+      s.finalized_at = null;
+      setStore(LS_KEYS.sessions, sessions);
+    }
     return { success: true };
   },
 
   // Verifications & Tie Resolutions
-  getVerifications: async () => getStore(LS_KEYS.verifications),
+  getVerifications: async (sessionId?: string) => {
+    return getStore<any>(LS_KEYS.verifications);
+  },
   getTieResolutions: async () => getStore(LS_KEYS.tieResolutions),
   initiateVerification: async (positionId: string, tiedCandidateIds: string[], originalVoteCounts: Record<string, number>) => {
     const voters = getStore<any>(LS_KEYS.voters).filter((v: any) => v.has_voted);

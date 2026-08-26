@@ -9,7 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useVoting } from '@/contexts/VotingContext';
 import { useToast } from '@/hooks/use-toast';
 import schoolLogo from '@/assets/school-logo.png';
-import { Eye, EyeOff, LogIn, User, Lock, UserPlus, BookOpen, GraduationCap, FileDigit } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Eye, EyeOff, LogIn, User, Lock, UserPlus, BookOpen, GraduationCap, FileDigit, CheckCircle2 } from 'lucide-react';
 
 export default function LoginPage() {
   const [isRegisterMode, setIsRegisterMode] = useState(false);
@@ -19,6 +20,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showApprovalPopup, setShowApprovalPopup] = useState(false);
 
   // Register state
   const [regLrn, setRegLrn] = useState('');
@@ -31,7 +33,7 @@ export default function LoginPage() {
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
 
-  const { login, register, sections } = useVoting();
+  const { login, register, sections, sessions } = useVoting();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -47,17 +49,59 @@ export default function LoginPage() {
       return;
     }
 
+    if (!/^\d{12}$/.test(lrn)) {
+      toast({
+        title: 'Error',
+        description: 'LRN must be exactly 12 digits.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsLoading(true);
     
     try {
       const success = await login(lrn, password);
       
       if (success) {
-        toast({
-          title: 'Login Successful',
-          description: 'Welcome to the CPMNHS Voting System!',
-        });
-        navigate('/vote');
+        let shouldShowPopup = false;
+        
+        try {
+          const sessionDataStr = localStorage.getItem('voting_session');
+          if (sessionDataStr && sessions) {
+            const sessionData = JSON.parse(sessionDataStr);
+            const loggedUser = sessionData.user;
+            
+            if (loggedUser && loggedUser.role === 'voter') {
+              const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
+              const eligible = activeSessions.filter(s => {
+                const gradeOk = !s.eligibleGradeLevels || s.eligibleGradeLevels.length === 0 || s.eligibleGradeLevels.includes(loggedUser.gradeLevel || '');
+                const sectionOk = !s.eligibleSections || s.eligibleSections.length === 0 || s.eligibleSections.includes(loggedUser.section || '');
+                return gradeOk && sectionOk;
+              });
+
+              if (eligible.length > 0) {
+                const activeSessionId = eligible[0].id;
+                const popupKey = `approval_popup_seen_${loggedUser.id}_${activeSessionId}`;
+                
+                if (!localStorage.getItem(popupKey)) {
+                  localStorage.setItem(popupKey, 'true');
+                  shouldShowPopup = true;
+                }
+              }
+            }
+          }
+        } catch (e) {}
+
+        if (shouldShowPopup) {
+          setShowApprovalPopup(true);
+        } else {
+          toast({
+            title: 'Login Successful',
+            description: 'Welcome to the CPMNHS Voting System!',
+          });
+          navigate('/vote');
+        }
       } else {
         toast({
           title: 'Login Failed',
@@ -83,6 +127,15 @@ export default function LoginPage() {
       toast({
         title: 'Error',
         description: 'Please fill in all required fields.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!/^\d{12}$/.test(regLrn)) {
+      toast({
+        title: 'Error',
+        description: 'LRN must be exactly 12 digits.',
         variant: 'destructive',
       });
       return;
@@ -187,7 +240,8 @@ export default function LoginPage() {
                       <Input
                         id="reg-lrn"
                         value={regLrn}
-                        onChange={(e) => setRegLrn(e.target.value)}
+                        onChange={(e) => setRegLrn(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                        maxLength={12}
                         className="pl-9 bg-white/50"
                         disabled={isLoading}
                       />
@@ -352,7 +406,8 @@ export default function LoginPage() {
                       <Input
                         id="student-id"
                         value={lrn}
-                        onChange={(e) => setLrn(e.target.value)}
+                        onChange={(e) => setLrn(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                        maxLength={12}
                         className="pl-9 bg-white/50"
                         disabled={isLoading}
                       />
@@ -423,6 +478,44 @@ export default function LoginPage() {
       </main>
 
       <Footer />
+
+      <AlertDialog open={showApprovalPopup} onOpenChange={(open) => {
+        if (!open) {
+          setShowApprovalPopup(false);
+          toast({
+            title: 'Login Successful',
+            description: 'Welcome to the CPMNHS Voting System!',
+          });
+          navigate('/vote');
+        }
+      }}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader className="text-center sm:text-center flex flex-col items-center">
+            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4">
+              <CheckCircle2 className="w-10 h-10" />
+            </div>
+            <AlertDialogTitle className="text-2xl font-bold text-slate-900">Registration Approved!</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-600 text-base mt-2">
+              You've been approved and are ready to vote! Click the button below to proceed to the voting portal.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="sm:justify-center mt-6">
+            <AlertDialogAction 
+              onClick={() => {
+                setShowApprovalPopup(false);
+                toast({
+                  title: 'Login Successful',
+                  description: 'Welcome to the CPMNHS Voting System!',
+                });
+                navigate('/vote');
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 rounded-full h-11 text-base shadow-md"
+            >
+              Continue to Voting Portal
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
 
     </div>
