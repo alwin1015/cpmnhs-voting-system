@@ -177,6 +177,18 @@ export default function VotersPage() {
             <XCircle className="h-3 w-3" /> Rejected
           </span>
         );
+      case 'graduated':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+            <GraduationCap className="h-3 w-3" /> Graduated
+          </span>
+        );
+      case 'inactive':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-300">
+            <XCircle className="h-3 w-3" /> Inactive
+          </span>
+        );
       default:
         return (
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
@@ -543,8 +555,13 @@ export default function VotersPage() {
                                           <td className="py-3 px-4 text-xs text-slate-400 font-mono text-center">
                                             {idx + 1}
                                           </td>
-                                          <td className="py-3 px-4 font-semibold text-slate-900">
-                                            {voter.name}
+                                          <td className="py-3 px-4">
+                                            <div className="font-semibold text-slate-900">{voter.name}</div>
+                                            {voter.academicHistory && voter.academicHistory.length > 0 && (
+                                              <div className="text-[10px] text-slate-500 mt-0.5">
+                                                History: {voter.academicHistory.map(h => `G${h.gradeLevel} (${h.schoolYear})`).join(', ')}
+                                              </div>
+                                            )}
                                           </td>
                                           <td className="py-3 px-4">
                                             <span className="font-mono text-xs text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200/60">

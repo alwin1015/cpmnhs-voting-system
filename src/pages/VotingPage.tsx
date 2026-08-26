@@ -71,6 +71,35 @@ export default function VotingPage() {
     );
   }
 
+  const currentVoter = user ? voters.find(v => v.id === user.id) : null;
+  if (currentVoter && (currentVoter.status === 'graduated' || currentVoter.status === 'inactive')) {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        <Header />
+        <main className="flex-1 flex items-center justify-center p-4">
+          <Card className="max-w-md w-full text-center p-6 sm:p-8 bg-white border border-slate-200/80 shadow-lg rounded-2xl">
+            <CardContent className="pt-4 sm:pt-6">
+              <div className="w-14 h-14 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">
+                <User className="h-7 w-7" />
+              </div>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-1.5">Alumni / Inactive</h2>
+              <p className="text-xs sm:text-sm text-slate-500 mb-6">
+                Your account is marked as {currentVoter.status === 'graduated' ? 'Graduated (Alumni)' : 'Inactive'}. Thank you for your past participation, but you are not eligible to vote in current elections.
+              </p>
+              <Button 
+                onClick={() => navigate('/')}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-11 text-sm font-semibold"
+              >
+                Return to Home
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
   // Check if election is active
   if (election && !election.isActive) {
     return (

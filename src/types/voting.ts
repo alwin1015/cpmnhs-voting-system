@@ -28,8 +28,9 @@ export interface Voter {
   section: string;
   hasVoted: boolean;
   votedAt?: Date;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'graduated' | 'inactive';
   createdAt?: Date;
+  academicHistory?: { schoolYear: string; gradeLevel: string; section: string }[];
 }
 
 export interface VoterSession {
@@ -38,6 +39,11 @@ export interface VoterSession {
   sessionId: string;
   hasVoted: boolean;
   votedAt?: Date;
+}
+
+export interface SystemSettings {
+  id: number;
+  currentSchoolYear: string;
 }
 
 export interface Section {

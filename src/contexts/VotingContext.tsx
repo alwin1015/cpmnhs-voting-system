@@ -27,6 +27,9 @@ interface VotingContextType {
   deleteSession: (id: string) => Promise<void>;
   duplicateSession: (id: string) => Promise<VotingSession>;
   refreshSessions: () => Promise<void>;
+  // System
+  currentSchoolYear: string;
+  processRollover: (newSchoolYear: string, voterUpdates: any[]) => Promise<void>;
   // Auth
   login: (lrn: string, password: string) => Promise<boolean>;
   adminLogin: (username: string, password: string) => Promise<boolean>;
@@ -122,6 +125,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   const [election, setElection] = useState<Election | null>(null);
   const [sessions, setSessions] = useState<VotingSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [currentSchoolYear, setCurrentSchoolYear] = useState<string>('2026-2027');
 
   // Computed active session
   const activeSession = sessions.find(s => s.id === activeSessionId) || null;
@@ -152,17 +156,19 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     try {
       const sessionId = activeSessionId || undefined;
 
-      const [candidatesRes, positionsRes, sectionsRes, votersRes] = await Promise.all([
+      const [candidatesRes, positionsRes, sectionsRes, votersRes, settingsRes] = await Promise.all([
         api.getCandidates(sessionId).catch(() => []),
         api.getPositions(sessionId).catch(() => []),
         api.getSections().catch(() => []),
         api.getVoters().catch(() => []),
+        api.getSystemSettings().catch(() => ({ currentSchoolYear: '2026-2027' })),
       ]);
 
       const candidatesData = (candidatesRes as any)?.data ?? candidatesRes ?? [];
       const positionsData = (positionsRes as any)?.data ?? positionsRes ?? [];
       const sectionsData = (sectionsRes as any)?.data ?? sectionsRes ?? [];
       const votersData = (votersRes as any)?.data ?? votersRes ?? [];
+      setCurrentSchoolYear(settingsRes.currentSchoolYear || '2026-2027');
 
       // Map candidates
       setCandidates(
@@ -218,6 +224,11 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       // Map voters (global) + merge session-specific voting status
       const mappedVoters: Voter[] = (Array.isArray(votersData) ? votersData : []).map((v: any) => {
         const vs = voterSessionMap.get(String(v.id));
+        let academicHistory = [];
+        try {
+          academicHistory = v.academic_history ? (typeof v.academic_history === 'string' ? JSON.parse(v.academic_history) : v.academic_history) : [];
+        } catch (_) {}
+
         return {
           id: String(v.id),
           lrn: v.lrn,
@@ -228,6 +239,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           votedAt: vs && vs.voted_at ? new Date(vs.voted_at) : undefined,
           status: v.status ?? 'pending',
           createdAt: v.created_at ? new Date(v.created_at) : v.createdAt ? new Date(v.createdAt) : undefined,
+          academicHistory
         };
       });
       setVoters(mappedVoters);
@@ -572,6 +584,16 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     }
   }, [activeSessionId, refreshData]);
 
+  const processRollover = useCallback(async (newSchoolYear: string, voterUpdates: any[]) => {
+    try {
+      await api.processYearRollover(newSchoolYear, voterUpdates);
+      await refreshData();
+    } catch (error) {
+      console.error('Process rollover failed:', error);
+      throw error;
+    }
+  }, [refreshData]);
+
   // Candidate CRUD
   const addCandidate = useCallback(
     async (candidateData: Omit<Candidate, 'id' | 'votes'>) => {
@@ -776,6 +798,8 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         deleteSession: deleteSessionFn,
         duplicateSession: duplicateSessionFn,
         refreshSessions,
+        currentSchoolYear,
+        processRollover,
         login,
         adminLogin,
         register,

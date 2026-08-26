@@ -16,9 +16,9 @@ import VotersPage from "./pages/VotersPage";
 import SectionsPage from "./pages/SectionsPage";
 import PositionsPage from "./pages/PositionsPage";
 import ElectionReportPage from "./pages/ElectionReportPage";
-import SessionManagerPage from "@/pages/SessionManagerPage";
-
-import { ErrorBoundary } from "./components/ErrorBoundary";
+import SessionManagerPage from '@/pages/SessionManagerPage';
+import SchoolYearRolloverPage from '@/pages/SchoolYearRolloverPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const queryClient = new QueryClient();
 
@@ -40,6 +40,7 @@ const App = () => (
             <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/sessions" element={<SessionManagerPage />} />
             <Route path="/registrations" element={<RegistrationsPage />} />
+            <Route path="/rollover" element={<SchoolYearRolloverPage />} />
             <Route path="/voters" element={<VotersPage />} />
             <Route path="/sections" element={<SectionsPage />} />
             <Route path="/positions" element={<PositionsPage />} />

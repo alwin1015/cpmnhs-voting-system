@@ -47,6 +47,7 @@ import {
   FileCheck,
   Pen,
   Layers,
+  History,
 } from 'lucide-react';
 
 type ScheduleStep = 'details' | 'signatories' | 'authorization' | 'activate';
@@ -404,6 +405,14 @@ export default function AdminDashboard() {
       iconColor: '#0ea5e9',
       iconBg: '#f0f9ff',
       onClick: () => navigate('/sessions'),
+    },
+    {
+      title: 'SY Rollover',
+      description: 'Promote students to next year',
+      icon: History,
+      iconColor: '#eab308',
+      iconBg: '#fefce8',
+      onClick: () => navigate('/rollover'),
     },
     {
       title: 'Results',

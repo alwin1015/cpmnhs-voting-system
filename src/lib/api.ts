@@ -775,4 +775,41 @@ export const api = {
       return gradeOk && sectionOk;
     });
   },
+
+  // ==================== School Year Rollover ====================
+  getSystemSettings: async () => {
+    try {
+      const { data, error } = await supabase.from('system_settings').select('*').eq('id', 1).single();
+      if (error) return { currentSchoolYear: '2026-2027' };
+      return { currentSchoolYear: data.current_school_year || '2026-2027' };
+    } catch {
+      return { currentSchoolYear: '2026-2027' };
+    }
+  },
+
+  processYearRollover: async (newSchoolYear: string, voterUpdates: { id: string; grade_level: string; section: string; status: string; academic_history: any[] }[]) => {
+    // 1. Update system settings
+    const { error: sysError } = await supabase.from('system_settings').upsert({
+      id: 1,
+      current_school_year: newSchoolYear,
+      updated_at: new Date().toISOString()
+    });
+    if (sysError) throw new Error(sysError.message);
+
+    // 2. Batch update voters (Supabase requires multiple updates or a custom RPC)
+    // For simplicity, we'll run them sequentially or in batches.
+    const batchSize = 50;
+    for (let i = 0; i < voterUpdates.length; i += batchSize) {
+      const batch = voterUpdates.slice(i, i + batchSize);
+      await Promise.all(batch.map(async (v) => {
+        await supabase.from('voters').update({
+          grade_level: v.grade_level,
+          section: v.section,
+          status: v.status,
+          academic_history: v.academic_history
+        }).eq('id', v.id);
+      }));
+    }
+    return { success: true };
+  },
 };
