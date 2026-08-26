@@ -35,87 +35,23 @@ function genId(): string {
   return String(nextId);
 }
 
+import { offlineSeed } from './offlineSeed';
+
 // Seed default data if empty
 function seedDefaults() {
-  if (!localStorage.getItem(LS_KEYS.positions)) {
-    const defaultPositions = [
-      { id: '1', name: 'President', display_order: 1, max_votes: 1, strict_grade_mapping: false },
-      { id: '2', name: 'Vice President', display_order: 2, max_votes: 1, strict_grade_mapping: false },
-      { id: '3', name: 'Secretary', display_order: 3, max_votes: 1, strict_grade_mapping: false },
-      { id: '4', name: 'Treasurer', display_order: 4, max_votes: 1, strict_grade_mapping: false },
-      { id: '5', name: 'Auditor', display_order: 5, max_votes: 1, strict_grade_mapping: false },
-      { id: '6', name: 'Public Information Officer', display_order: 6, max_votes: 1, strict_grade_mapping: false },
-      { id: '7', name: 'Protocol Officer', display_order: 7, max_votes: 1, strict_grade_mapping: false },
-      { id: '8', name: 'Grade 7 Representative', display_order: 8, max_votes: 1, strict_grade_mapping: false },
-      { id: '9', name: 'Grade 8 Representative', display_order: 9, max_votes: 1, strict_grade_mapping: false },
-      { id: '10', name: 'Grade 9 Representative', display_order: 10, max_votes: 1, strict_grade_mapping: false },
-      { id: '11', name: 'Grade 10 Representative', display_order: 11, max_votes: 1, strict_grade_mapping: false },
-      { id: '12', name: 'Grade 11 Representative', display_order: 12, max_votes: 1, strict_grade_mapping: false },
-      { id: '13', name: 'Grade 12 Representative', display_order: 13, max_votes: 1, strict_grade_mapping: false },
-    ];
-    setStore(LS_KEYS.positions, defaultPositions);
-  }
-
-  if (!localStorage.getItem(LS_KEYS.sections)) {
-    const defaultSections = [
-      { id: '1', grade_level: '7', name: 'Diamond' },
-      { id: '2', grade_level: '7', name: 'Emerald' },
-      { id: '3', grade_level: '8', name: 'Ruby' },
-      { id: '4', grade_level: '8', name: 'Sapphire' },
-      { id: '5', grade_level: '9', name: 'Topaz' },
-      { id: '6', grade_level: '10', name: 'Garnet' },
-      { id: '7', grade_level: '11', name: 'STEM A' },
-      { id: '8', grade_level: '12', name: 'HUMSS A' },
-    ];
-    setStore(LS_KEYS.sections, defaultSections);
-  }
-
-  if (!localStorage.getItem(LS_KEYS.candidates)) {
-    const defaultCandidates = [
-      { id: '101', name: 'Juan Dela Cruz', position_id: '1', party: 'LAKAS PARTY', grade_level: '12', section: 'HUMSS A', motto: 'Service with Integrity', votes: 0 },
-      { id: '102', name: 'Maria Clara Santos', position_id: '1', party: 'PROGRESSIVE PARTY', grade_level: '11', section: 'STEM A', motto: 'Leadership for Tomorrow', votes: 0 },
-      { id: '103', name: 'Pedro Penduko', position_id: '2', party: 'LAKAS PARTY', grade_level: '11', section: 'STEM A', motto: 'Action above words', votes: 0 },
-      { id: '104', name: 'Gabriela Silang', position_id: '2', party: 'PROGRESSIVE PARTY', grade_level: '10', section: 'Garnet', motto: 'Empowering Student Voices', votes: 0 },
-      { id: '105', name: 'Jose Rizal', position_id: '3', party: 'LAKAS PARTY', grade_level: '10', section: 'Garnet', motto: 'Honesty and Dedication', votes: 0 },
-      { id: '106', name: 'Andres Bonifacio', position_id: '4', party: 'PROGRESSIVE PARTY', grade_level: '9', section: 'Topaz', motto: 'Transparent and Accountable', votes: 0 },
-    ];
-    setStore(LS_KEYS.candidates, defaultCandidates);
-  }
+  if (!localStorage.getItem(LS_KEYS.positions)) setStore(LS_KEYS.positions, offlineSeed.positions || []);
+  if (!localStorage.getItem(LS_KEYS.sections)) setStore(LS_KEYS.sections, offlineSeed.sections || []);
+  if (!localStorage.getItem(LS_KEYS.candidates)) setStore(LS_KEYS.candidates, offlineSeed.candidates || []);
+  if (!localStorage.getItem(LS_KEYS.voters)) setStore(LS_KEYS.voters, offlineSeed.voters || []);
+  if (!localStorage.getItem(LS_KEYS.votes)) setStore(LS_KEYS.votes, offlineSeed.votes || []);
+  if (!localStorage.getItem(LS_KEYS.sessions)) setStore(LS_KEYS.sessions, offlineSeed.sessions || []);
+  if (!localStorage.getItem(LS_KEYS.voterSessions)) setStore(LS_KEYS.voterSessions, offlineSeed.voterSessions || []);
+  if (!localStorage.getItem(LS_KEYS.systemSettings)) setStore(LS_KEYS.systemSettings, offlineSeed.settings || []);
 
   if (!localStorage.getItem(LS_KEYS.admins)) {
     setStore(LS_KEYS.admins, [
       { id: '1', username: 'admin', email: 'admin@cpmnhs.edu.ph', password_hash: 'admin123' }
     ]);
-  }
-
-  if (!localStorage.getItem(LS_KEYS.voters)) {
-    const defaultVoters = [
-      {
-        id: '201',
-        lrn: '123456789012',
-        name: 'Carlos Yulo',
-        grade_level: '12',
-        section: 'HUMSS A',
-        password_hash: 'student123',
-        status: 'approved',
-        has_voted: false,
-        voted_at: null,
-        created_at: new Date().toISOString(),
-      },
-      {
-        id: '202',
-        lrn: '123456789013',
-        name: 'Hidilyn Diaz',
-        grade_level: '11',
-        section: 'STEM A',
-        password_hash: 'student123',
-        status: 'approved',
-        has_voted: false,
-        voted_at: null,
-        created_at: new Date().toISOString(),
-      }
-    ];
-    setStore(LS_KEYS.voters, defaultVoters);
   }
 
   if (!localStorage.getItem(LS_KEYS.election)) {
@@ -137,28 +73,8 @@ function seedDefaults() {
     });
   }
 
-  if (!localStorage.getItem(LS_KEYS.votes)) setStore(LS_KEYS.votes, []);
   if (!localStorage.getItem(LS_KEYS.verifications)) setStore(LS_KEYS.verifications, []);
   if (!localStorage.getItem(LS_KEYS.tieResolutions)) setStore(LS_KEYS.tieResolutions, []);
-
-  if (!localStorage.getItem(LS_KEYS.sessions)) {
-    setStore(LS_KEYS.sessions, [{
-      id: '1',
-      name: 'SSG General Election',
-      school_year: '2026-2027',
-      status: 'active',
-      is_active: true,
-      eligible_grade_levels: [],
-      eligible_sections: [],
-      start_date: new Date().toISOString(),
-      end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      created_at: new Date().toISOString(),
-    }]);
-  }
-  if (!localStorage.getItem(LS_KEYS.voterSessions)) setStore(LS_KEYS.voterSessions, []);
-  if (!localStorage.getItem(LS_KEYS.systemSettings)) {
-    setStore(LS_KEYS.systemSettings, [{ id: 1, current_school_year: '2026-2027', updated_at: new Date().toISOString() }]);
-  }
 }
 
 seedDefaults();
