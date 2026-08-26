@@ -20,7 +20,7 @@ import {
 import { Vote, CheckCircle, ArrowRight, ArrowLeft, Send, Clock, User, Check } from 'lucide-react';
 
 export default function VotingPage() {
-  const { candidates, positions, votes, setVote, submitVotes, hasVoted, isLoggedIn, user, election, logout, sessions, activeSessionId, switchSession } = useVoting();
+  const { candidates, positions, votes, setVote, submitVotes, hasVoted, isLoggedIn, user, election, logout, sessions, activeSessionId, switchSession, voters } = useVoting();
   const [currentPositionIndex, setCurrentPositionIndex] = useState(0);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
