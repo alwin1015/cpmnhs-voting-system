@@ -76,7 +76,7 @@ export default function ResultsPage() {
   // Total votes & Turnout calculation
   const totalVotes = candidates.reduce((sum, c) => sum + c.votes, 0);
   const turnoutPercent = election && election.totalVoters > 0
-    ? Math.round((election.totalVoted / election.totalVoters) * 100)
+    ? Math.round(((election.totalVoted || 0) / election.totalVoters) * 100)
     : 0;
 
   // Detect unresolved ties

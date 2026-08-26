@@ -271,8 +271,8 @@ export default function AdminDashboard() {
     try {
       await resetSystem();
       toast({
-        title: "System Reset Successful",
-        description: "All votes, candidates, and voters have been permanently deleted.",
+        title: "Session Reset Successful",
+        description: "All votes and tallies for this session have been cleared. Voters and candidates remain intact.",
       });
       setIsResetDialogOpen(false);
     } catch (error) {
@@ -312,8 +312,8 @@ export default function AdminDashboard() {
 
   const results = getResults();
   const voterTurnoutStr = election && election.totalVoters > 0 
-    ? `${Math.round((election.totalVoted / election.totalVoters) * 100)}%` 
-    : 'Result';
+    ? `${Math.round(((election.totalVoted || 0) / election.totalVoters) * 100)}%` 
+    : '0%';
 
   const pendingRegistrations = voters.filter(v => v.status === 'pending').length;
 
@@ -919,12 +919,12 @@ export default function AdminDashboard() {
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2 text-red-600">
                 <AlertTriangle className="h-5 w-5" />
-                Reset Entire System?
+                Reset Session Data?
               </AlertDialogTitle>
               <AlertDialogDescription>
-                This action is <strong>permanent and cannot be undone</strong>. This will delete all cast votes, remove all candidates, and delete all registered voters from the system.
+                This action is <strong>permanent and cannot be undone</strong>. This will delete all cast votes, verifications, and clear the candidate tallies for the <strong>currently selected session</strong>.
                 <br /><br />
-                The election will also be paused. Only do this if you are preparing for a new school year or a brand new election.
+                The session will be set back to 'upcoming'. Candidates and Voters will NOT be deleted.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -937,7 +937,7 @@ export default function AdminDashboard() {
                 disabled={isResetting}
                 className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
               >
-                {isResetting ? 'Resetting...' : 'Yes, Delete Everything'}
+                {isResetting ? 'Resetting...' : 'Yes, Clear Votes'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

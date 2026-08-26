@@ -254,7 +254,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         setElection({
           ...s,
           totalVoters: voters.filter(v => v.status === 'approved').length,
-          totalVoted: undefined, // will be computed from voter_sessions
+          totalVoted: voters.filter(v => v.status === 'approved' && v.hasVoted).length,
         });
       }
     } else if (sessions.length > 0) {
@@ -263,6 +263,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       setElection({
         ...defaultSession,
         totalVoters: voters.filter(v => v.status === 'approved').length,
+        totalVoted: voters.filter(v => v.status === 'approved' && v.hasVoted).length,
       });
     }
   }, [activeSessionId, sessions, voters]);
