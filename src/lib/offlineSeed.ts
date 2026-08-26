@@ -385,6 +385,18 @@ export const offlineSeed = {
       "created_at": "2026-08-19T21:18:43.532698+00:00"
     },
     {
+      "id": "3991f1ed-ccb5-417b-bd34-0f63a8542895",
+      "lrn": "123456789000",
+      "name": "Ashley Grace",
+      "grade_level": "10",
+      "section": "Gold",
+      "password_hash": "$2b$10$UqQ6qToHLEvoSFrjwiOhRuF4SNMtZD95erqCLQDVZWjCuwMPCVLZq",
+      "status": "approved",
+      "has_voted": false,
+      "voted_at": null,
+      "created_at": "2026-08-26T13:47:37.970945+00:00"
+    },
+    {
       "id": "c06b4b05-78e4-4d24-b98b-cf0b5bd1a3bb",
       "lrn": "123456789",
       "name": "Rocelito  Amolo",
@@ -549,9 +561,9 @@ export const offlineSeed = {
       "id": 1,
       "name": "SSG General Election",
       "school_year": "2026-2027",
-      "start_date": "2026-08-20T05:23:00+00:00",
-      "end_date": "2026-09-30T20:40:00+00:00",
-      "is_active": false,
+      "start_date": "2026-08-20T13:23:00+00:00",
+      "end_date": "2026-10-01T04:40:00+00:00",
+      "is_active": true,
       "status": "upcoming",
       "grade_mappings": {},
       "eligible_grade_levels": [],
@@ -559,9 +571,9 @@ export const offlineSeed = {
       "results_finalized": false,
       "finalized_by": null,
       "finalized_at": null,
-      "schedule_status": "completed",
+      "schedule_status": "ongoing",
       "authorization_doc_generated": true,
-      "authorization_confirmed_at": "2026-08-26T11:50:37.941Z",
+      "authorization_confirmed_at": "2026-08-26T13:57:54.103Z",
       "signatories": {
         "approvedBy": {
           "name": "",
