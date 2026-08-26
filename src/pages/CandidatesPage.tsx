@@ -31,7 +31,7 @@ const emptyForm: CandidateForm = {
 };
 
 export default function CandidatesPage() {
-  const { candidates, positions, addCandidate, updateCandidate, deleteCandidate, user, isLoggedIn } = useVoting();
+  const { candidates, positions, addCandidate, updateCandidate, deleteCandidate, user, isLoggedIn, activeSession } = useVoting();
   const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -178,7 +178,7 @@ export default function CandidatesPage() {
           <div className="flex flex-col sm:flex-row items-center justify-between mb-8 animate-slide-up">
             <div className="text-center sm:text-left mb-4 sm:mb-0">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Candidates</h1>
-              <p className="text-gray-500">Manage candidates every partylist</p>
+              <p className="text-gray-500">Manage candidates for <span className="font-semibold text-blue-600">{activeSession?.name || 'Session 1'}</span></p>
             </div>
             
             {isAdmin && !showForm && (

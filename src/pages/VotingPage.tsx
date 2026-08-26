@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
@@ -20,12 +20,27 @@ import {
 import { Vote, CheckCircle, ArrowRight, ArrowLeft, Send, Clock, User, Check } from 'lucide-react';
 
 export default function VotingPage() {
-  const { candidates, positions, votes, setVote, submitVotes, hasVoted, isLoggedIn, user, election, logout } = useVoting();
+  const { candidates, positions, votes, setVote, submitVotes, hasVoted, isLoggedIn, user, election, logout, sessions, activeSessionId, switchSession } = useVoting();
   const [currentPositionIndex, setCurrentPositionIndex] = useState(0);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Auto-select an active session the voter is eligible for
+  useEffect(() => {
+    if (user?.role === 'voter' && sessions.length > 0) {
+      const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
+      const eligible = activeSessions.filter(s => {
+        const gradeOk = !s.eligibleGradeLevels || s.eligibleGradeLevels.length === 0 || s.eligibleGradeLevels.includes(user.gradeLevel || '');
+        const sectionOk = !s.eligibleSections || s.eligibleSections.length === 0 || s.eligibleSections.includes(user.section || '');
+        return gradeOk && sectionOk;
+      });
+      if (eligible.length > 0 && (!activeSessionId || !eligible.find(s => s.id === activeSessionId))) {
+        switchSession(eligible[0].id);
+      }
+    }
+  }, [user, sessions, activeSessionId, switchSession]);
 
   // Redirect if not logged in or not a voter
   if (!isLoggedIn || user?.role !== 'voter') {

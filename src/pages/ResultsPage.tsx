@@ -26,7 +26,7 @@ import schoolLogo from '@/assets/school-logo.png';
 import type { TieResolution, VoteVerification } from '@/types/voting';
 
 export default function ResultsPage() {
-  const { election, getResults, candidates, user, isLoggedIn } = useVoting();
+  const { election, getResults, candidates, user, isLoggedIn, sessions, activeSessionId, switchSession } = useVoting();
   const printRef = useRef<HTMLDivElement>(null);
 
   const [showPrintReport, setShowPrintReport] = useState(false);
@@ -470,6 +470,22 @@ export default function ResultsPage() {
 
             {/* Action Buttons */}
             <div className="flex items-center gap-2 flex-wrap">
+              {/* Session Selector */}
+              <div className="relative mr-2">
+                <select
+                  value={activeSessionId || ''}
+                  onChange={(e) => switchSession(e.target.value)}
+                  className="w-full sm:w-[200px] appearance-none bg-white border border-slate-200 text-slate-800 font-semibold text-xs sm:text-sm rounded-xl px-4 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  <option value="" disabled>Select a session...</option>
+                  {sessions.map(s => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.schoolYear})</option>
+                  ))}
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-500">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+              </div>
               {election?.resultsFinalized && (
                 <Button
                   onClick={() => setShowPrintReport(true)}

@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 export default function PositionsPage() {
-  const { positions, addPosition, deletePosition, cleanupDuplicatePositions, user, isLoggedIn } = useVoting();
+  const { positions, addPosition, deletePosition, cleanupDuplicatePositions, user, isLoggedIn, activeSession } = useVoting();
   const { toast } = useToast();
 
   const [showForm, setShowForm] = useState(false);
@@ -155,7 +155,7 @@ export default function PositionsPage() {
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-gray-500">
-                Configure ballot positions and maximum votes allowed per position
+                Configure ballot positions and maximum votes allowed per position for <span className="font-semibold text-blue-600">{activeSession?.name || 'Session 1'}</span>
               </p>
             </div>
 

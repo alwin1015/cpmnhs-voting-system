@@ -2,7 +2,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useVoting } from '@/contexts/VotingContext';
 import { Button } from '@/components/ui/button';
 import schoolLogo from '@/assets/school-logo.png';
-import { LogOut, User, Menu, X, Vote } from 'lucide-react';
+import { LogOut, User, Menu, X, Vote, CalendarDays } from 'lucide-react';
 import { useState } from 'react';
 
 export function Header() {
@@ -19,7 +19,6 @@ export function Header() {
   // Determine center title based on route
   const getCenterTitle = () => {
     if (location.pathname.startsWith('/admin')) return 'Admin Dashboard';
-    if (isLoggedIn && user?.role === 'admin') return 'Admin Dashboard';
     return null;
   };
 
@@ -56,7 +55,7 @@ export function Header() {
 
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-5">
-          {!centerTitle && location.pathname !== '/vote' && (
+          {location.pathname !== '/vote' && (
             <>
               <Link to="/" className="text-xs sm:text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors">
                 Home
@@ -65,9 +64,15 @@ export function Header() {
                 Candidates
               </Link>
               {isLoggedIn && user?.role === 'admin' && (
-                <Link to="/results" className="text-xs sm:text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors">
-                  Live Results
-                </Link>
+                <>
+                  <Link to="/sessions" className="text-xs sm:text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors flex items-center gap-1.5">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    Sessions
+                  </Link>
+                  <Link to="/results" className="text-xs sm:text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors">
+                    Live Results
+                  </Link>
+                </>
               )}
             </>
           )}
@@ -150,6 +155,14 @@ export function Header() {
 
             {isLoggedIn && user?.role === 'admin' && (
               <>
+                <Link 
+                  to="/sessions" 
+                  className="text-sm font-semibold py-2 px-2.5 rounded-lg text-slate-700 hover:bg-slate-100 flex items-center gap-2" 
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <CalendarDays className="h-4 w-4 text-slate-500" />
+                  Sessions
+                </Link>
                 <Link 
                   to="/results" 
                   className="text-sm font-semibold py-2 px-2.5 rounded-lg text-slate-700 hover:bg-slate-100" 

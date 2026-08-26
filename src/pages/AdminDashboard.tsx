@@ -46,6 +46,7 @@ import {
   Check,
   FileCheck,
   Pen,
+  Layers,
 } from 'lucide-react';
 
 type ScheduleStep = 'details' | 'signatories' | 'authorization' | 'activate';
@@ -68,7 +69,7 @@ const STEP_LABELS: { key: ScheduleStep; label: string; icon: any }[] = [
 ];
 
 export default function AdminDashboard() {
-  const { user, isLoggedIn, election, candidates, positions, getResults, voters, sections, updateElection, resetSystem } = useVoting();
+  const { user, isLoggedIn, election, candidates, positions, getResults, voters, sections, updateElection, resetSystem, sessions, activeSessionId, switchSession } = useVoting();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -395,6 +396,14 @@ export default function AdminDashboard() {
       iconColor: '#9333ea',
       iconBg: '#faf5ff',
       onClick: handleOpenMappings,
+    },
+    {
+      title: 'Sessions',
+      description: 'Manage multiple elections',
+      icon: Layers,
+      iconColor: '#0ea5e9',
+      iconBg: '#f0f9ff',
+      onClick: () => navigate('/sessions'),
     },
     {
       title: 'Results',
@@ -754,19 +763,35 @@ export default function AdminDashboard() {
         <div className="container mx-auto px-4 max-w-6xl">
 
           {/* Top Admin Action Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 animate-slide-up">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 animate-slide-up bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Admin Dashboard</h1>
               <p className="text-xs sm:text-sm text-slate-500">Welcome back, {user?.name || 'Administrator'}. Manage elections and student voting.</p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              {/* Session Selector */}
+              <div className="relative flex-1 sm:flex-initial min-w-[200px]">
+                <select
+                  value={activeSessionId || ''}
+                  onChange={(e) => switchSession(e.target.value)}
+                  className="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-800 font-semibold text-sm rounded-xl px-4 py-2.5 pr-10 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <option value="" disabled>Select a session...</option>
+                  {sessions.map(s => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.schoolYear})</option>
+                  ))}
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-500">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                </div>
+              </div>
               <Button
                 onClick={() => setIsResetDialogOpen(true)}
                 variant="outline"
-                className="gap-2 h-10 px-4 text-red-600 border-red-200 bg-red-50/60 hover:bg-red-100 hover:text-red-700 hover:border-red-300 font-semibold shadow-xs transition-all duration-200 rounded-xl"
+                className="gap-2 h-10 px-4 text-red-600 border-red-200 bg-red-50/60 hover:bg-red-100 hover:text-red-700 hover:border-red-300 font-semibold shadow-xs transition-all duration-200 rounded-xl whitespace-nowrap"
               >
                 <AlertTriangle className="h-4 w-4 text-red-600" />
-                Reset Data
+                Reset Session
               </Button>
             </div>
           </div>

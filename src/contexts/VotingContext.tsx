@@ -1,14 +1,11 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
-import { Candidate, Position, Voter, Section, Election, User } from '@/types/voting';
+import { Candidate, Position, Voter, Section, Election, VotingSession, User } from '@/types/voting';
 import { api as onlineApi } from '@/lib/api';
 import { offlineApi } from '@/lib/offlineApi';
 import { supabase } from '@/lib/supabase';
 
 // ⚡ OFFLINE MODE TOGGLE
-// Set to true to use localStorage (no internet needed)
-// Set to false to use Supabase (requires internet)
 const OFFLINE_MODE = false;
-
 const api = OFFLINE_MODE ? offlineApi : onlineApi;
 
 interface VotingContextType {
@@ -21,12 +18,23 @@ interface VotingContextType {
   votes: Record<string, string>;
   isLoggedIn: boolean;
   hasVoted: boolean;
+  // Sessions
+  sessions: VotingSession[];
+  activeSessionId: string | null;
+  activeSession: VotingSession | null;
+  switchSession: (id: string) => void;
+  createSession: (data: any) => Promise<VotingSession>;
+  deleteSession: (id: string) => Promise<void>;
+  duplicateSession: (id: string) => Promise<VotingSession>;
+  refreshSessions: () => Promise<void>;
+  // Auth
   login: (lrn: string, password: string) => Promise<boolean>;
   adminLogin: (username: string, password: string) => Promise<boolean>;
   register: (lrn: string, firstName: string, middleInitial: string, lastName: string, gradeLevel: string, section: string, password: string) => Promise<{ success: boolean; message: string }>;
   bulkRegister: (students: any[]) => Promise<{ success: boolean; message: string; errors?: string[] }>;
   adminRegister: (username: string, email: string, password: string) => Promise<{ success: boolean; message: string }>;
   logout: () => void;
+  // Voting
   setVote: (positionId: string, candidateId: string) => void;
   submitVotes: () => Promise<boolean>;
   getResults: () => { position: Position; candidates: Candidate[] }[];
@@ -34,6 +42,7 @@ interface VotingContextType {
   unfinalizeResults: () => Promise<void>;
   updateElection: (updates: Partial<Election>) => Promise<void>;
   resetSystem: () => Promise<void>;
+  // CRUD
   addCandidate: (candidate: Omit<Candidate, 'id' | 'votes'>) => Promise<void>;
   updateCandidate: (id: string, candidate: Partial<Candidate>) => Promise<void>;
   deleteCandidate: (id: string) => Promise<void>;
@@ -48,6 +57,60 @@ interface VotingContextType {
 
 const VotingContext = createContext<VotingContextType | undefined>(undefined);
 
+// Helper: parse a session row from DB into VotingSession
+function parseSession(eData: any, voters?: Voter[]): VotingSession {
+  let parsedMappings: Record<string, string> = {};
+  if (eData.grade_mappings) {
+    try {
+      parsedMappings = typeof eData.grade_mappings === 'string'
+        ? JSON.parse(eData.grade_mappings)
+        : eData.grade_mappings;
+    } catch (_) {}
+  }
+
+  let eligibleGrades: string[] = [];
+  if (eData.eligible_grade_levels) {
+    try {
+      eligibleGrades = typeof eData.eligible_grade_levels === 'string'
+        ? JSON.parse(eData.eligible_grade_levels)
+        : (eData.eligible_grade_levels || []);
+    } catch (_) {}
+  }
+
+  let eligibleSections: string[] = [];
+  if (eData.eligible_sections) {
+    try {
+      eligibleSections = typeof eData.eligible_sections === 'string'
+        ? JSON.parse(eData.eligible_sections)
+        : (eData.eligible_sections || []);
+    } catch (_) {}
+  }
+
+  return {
+    id: String(eData.id),
+    name: eData.name || 'Untitled Election',
+    schoolYear: eData.school_year ?? eData.schoolYear ?? '',
+    startDate: new Date(eData.start_date ?? eData.startDate ?? Date.now()),
+    endDate: new Date(eData.end_date ?? eData.endDate ?? Date.now()),
+    isActive: Boolean(eData.is_active ?? eData.isActive ?? false),
+    status: eData.status || 'upcoming',
+    gradeMappings: parsedMappings,
+    eligibleGradeLevels: eligibleGrades,
+    eligibleSections: eligibleSections,
+    totalVoters: voters ? voters.filter(v => v.status === 'approved').length : undefined,
+    totalVoted: undefined, // computed per-session separately
+    resultsFinalized: Boolean(eData.results_finalized ?? false),
+    finalizedBy: eData.finalized_by ?? null,
+    finalizedAt: eData.finalized_at ? new Date(eData.finalized_at) : undefined,
+    scheduleStatus: eData.schedule_status ?? eData.scheduleStatus ?? 'draft',
+    authorizationDocGenerated: Boolean(eData.authorization_doc_generated ?? eData.authorizationDocGenerated ?? false),
+    authorizationConfirmedAt: eData.authorization_confirmed_at ?? eData.authorizationConfirmedAt ?? null,
+    signatories: eData.signatories
+      ? (typeof eData.signatories === 'string' ? JSON.parse(eData.signatories) : eData.signatories)
+      : null,
+  };
+}
+
 export function VotingProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [hasVoted, setHasVoted] = useState(false);
@@ -57,26 +120,51 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   const [sections, setSections] = useState<Section[]>([]);
   const [voters, setVoters] = useState<Voter[]>([]);
   const [election, setElection] = useState<Election | null>(null);
+  const [sessions, setSessions] = useState<VotingSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
-  // Fetch all data from the API and map snake_case → camelCase
+  // Computed active session
+  const activeSession = sessions.find(s => s.id === activeSessionId) || null;
+
+  // Fetch all sessions
+  const refreshSessions = useCallback(async () => {
+    try {
+      const sessionsData = await api.getSessions().catch(() => []);
+      const rawSessions = Array.isArray(sessionsData) ? sessionsData : (sessionsData as any)?.data || [];
+      const parsed = rawSessions.map((s: any) => parseSession(s));
+      setSessions(parsed);
+
+      // Auto-close expired sessions
+      for (const s of parsed) {
+        if (s.isActive && s.status === 'active' && s.endDate && new Date() >= s.endDate) {
+          try {
+            await api.updateSession(s.id, { is_active: false, status: 'completed' });
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      console.error('Failed to refresh sessions:', e);
+    }
+  }, []);
+
+  // Fetch scoped data for the active session
   const refreshData = useCallback(async () => {
     try {
-      const [candidatesRes, positionsRes, sectionsRes, votersRes, electionData] =
-        await Promise.all([
-          api.getCandidates().catch(() => ({ data: [] })),
-          api.getPositions().catch(() => ({ data: [] })),
-          api.getSections().catch(() => ({ data: [] })),
-          api.getVoters().catch(() => ({ data: [] })),
-          api.getElection().catch(() => null),
-        ]);
+      const sessionId = activeSessionId || undefined;
 
-      // Unwrap .data from API responses (PHP returns { success, data })
-      const candidatesData = candidatesRes?.data ?? candidatesRes ?? [];
-      const positionsData = positionsRes?.data ?? positionsRes ?? [];
-      const sectionsData = sectionsRes?.data ?? sectionsRes ?? [];
-      const votersData = votersRes?.data ?? votersRes ?? [];
+      const [candidatesRes, positionsRes, sectionsRes, votersRes] = await Promise.all([
+        api.getCandidates(sessionId).catch(() => []),
+        api.getPositions(sessionId).catch(() => []),
+        api.getSections().catch(() => []),
+        api.getVoters().catch(() => []),
+      ]);
 
-      // Map candidates: DB snake_case → React camelCase
+      const candidatesData = (candidatesRes as any)?.data ?? candidatesRes ?? [];
+      const positionsData = (positionsRes as any)?.data ?? positionsRes ?? [];
+      const sectionsData = (sectionsRes as any)?.data ?? sectionsRes ?? [];
+      const votersData = (votersRes as any)?.data ?? votersRes ?? [];
+
+      // Map candidates
       setCandidates(
         (Array.isArray(candidatesData) ? candidatesData : []).map((c: any) => ({
           id: String(c.id),
@@ -88,13 +176,13 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           gradeLevel: c.grade_level ?? c.gradeLevel ?? '',
           section: c.section ?? '',
           votes: Number(c.votes ?? 0),
+          sessionId: String(c.session_id ?? sessionId ?? '1'),
         }))
       );
 
-      // Map positions with deduplication by name
+      // Map positions with deduplication
       const seenPositionNames = new Set<string>();
       const uniquePositions: Position[] = [];
-
       (Array.isArray(positionsData) ? positionsData : []).forEach((p: any) => {
         const normalized = (p.name || '').trim().toLowerCase();
         if (!seenPositionNames.has(normalized)) {
@@ -105,13 +193,13 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             order: Number(p.display_order ?? p.order ?? 0),
             maxVotes: Number(p.max_votes ?? p.maxVotes ?? 1),
             strictGradeMapping: Boolean(p.strict_grade_mapping ?? p.strictGradeMapping ?? false),
+            sessionId: String(p.session_id ?? sessionId ?? '1'),
           });
         }
       });
-
       setPositions(uniquePositions.sort((a, b) => a.order - b.order));
 
-      // Map sections
+      // Map sections (global)
       setSections(
         (Array.isArray(sectionsData) ? sectionsData : []).map((s: any) => ({
           id: String(s.id),
@@ -120,119 +208,104 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         }))
       );
 
-      // Map voters
-      const mappedVoters: Voter[] = (Array.isArray(votersData) ? votersData : []).map((v: any) => ({
-        id: String(v.id),
-        lrn: v.lrn,
-        name: v.name,
-        gradeLevel: v.grade_level ?? v.gradeLevel ?? '',
-        section: v.section ?? '',
-        hasVoted: Boolean(v.has_voted ?? v.hasVoted ?? false),
-        votedAt: v.voted_at ? new Date(v.voted_at) : v.votedAt ? new Date(v.votedAt) : undefined,
-        status: v.status ?? 'pending',
-        createdAt: v.created_at ? new Date(v.created_at) : v.createdAt ? new Date(v.createdAt) : undefined,
-      }));
+      // Fetch voter sessions if a session is active
+      let voterSessionsData: any[] = [];
+      if (sessionId) {
+        voterSessionsData = await api.getVoterSessions(sessionId).catch(() => []);
+      }
+      const voterSessionMap = new Map(voterSessionsData.map(vs => [String(vs.voter_id), vs]));
+
+      // Map voters (global) + merge session-specific voting status
+      const mappedVoters: Voter[] = (Array.isArray(votersData) ? votersData : []).map((v: any) => {
+        const vs = voterSessionMap.get(String(v.id));
+        return {
+          id: String(v.id),
+          lrn: v.lrn,
+          name: v.name,
+          gradeLevel: v.grade_level ?? v.gradeLevel ?? '',
+          section: v.section ?? '',
+          hasVoted: vs ? Boolean(vs.has_voted) : false, // override with session status
+          votedAt: vs && vs.voted_at ? new Date(vs.voted_at) : undefined,
+          status: v.status ?? 'pending',
+          createdAt: v.created_at ? new Date(v.created_at) : v.createdAt ? new Date(v.createdAt) : undefined,
+        };
+      });
       setVoters(mappedVoters);
 
-      // Map election
-      const eData = electionData?.data ?? electionData;
-      if (eData && eData.id) {
-        let parsedMappings: Record<string, string> = {};
-        if (eData.grade_mappings) {
-          try {
-            parsedMappings = typeof eData.grade_mappings === 'string' 
-              ? JSON.parse(eData.grade_mappings) 
-              : eData.grade_mappings;
-          } catch (e) {
-            console.error('Failed to parse grade_mappings', e);
-          }
-        }
-        
-        setElection({
-          id: String(eData.id),
-          name: eData.name,
-          schoolYear: eData.school_year ?? eData.schoolYear ?? '',
-          startDate: new Date(eData.start_date ?? eData.startDate),
-          endDate: new Date(eData.end_date ?? eData.endDate),
-          isActive: Boolean(eData.is_active ?? eData.isActive ?? false),
-          totalVoters: mappedVoters.filter((v) => v.status === 'approved').length,
-          totalVoted: mappedVoters.filter((v) => v.hasVoted).length,
-          gradeMappings: parsedMappings,
-          resultsFinalized: Boolean(eData.results_finalized ?? (() => {
-            try {
-              const b = localStorage.getItem('election_finalization_backup');
-              return b ? JSON.parse(b).results_finalized : false;
-            } catch (_) { return false; }
-          })()),
-          finalizedBy: eData.finalized_by ?? (() => {
-            try {
-              const b = localStorage.getItem('election_finalization_backup');
-              return b ? JSON.parse(b).finalized_by : null;
-            } catch (_) { return null; }
-          })(),
-          finalizedAt: eData.finalized_at 
-            ? new Date(eData.finalized_at) 
-            : (() => {
-                try {
-                  const b = localStorage.getItem('election_finalization_backup');
-                  return b ? new Date(JSON.parse(b).finalized_at) : null;
-                } catch (_) { return null; }
-              })(),
-          scheduleStatus: eData.schedule_status ?? eData.scheduleStatus ?? (() => {
-            try {
-              const b = localStorage.getItem('election_schedule_backup');
-              return b ? JSON.parse(b).schedule_status || 'draft' : 'draft';
-            } catch (_) { return 'draft'; }
-          })(),
-          authorizationDocGenerated: Boolean(eData.authorization_doc_generated ?? eData.authorizationDocGenerated ?? (() => {
-            try {
-              const b = localStorage.getItem('election_schedule_backup');
-              return b ? JSON.parse(b).authorization_doc_generated : false;
-            } catch (_) { return false; }
-          })()),
-          authorizationConfirmedAt: eData.authorization_confirmed_at ?? eData.authorizationConfirmedAt ?? (() => {
-            try {
-              const b = localStorage.getItem('election_schedule_backup');
-              return b ? JSON.parse(b).authorization_confirmed_at : null;
-            } catch (_) { return null; }
-          })(),
-          signatories: eData.signatories 
-            ? (typeof eData.signatories === 'string' ? JSON.parse(eData.signatories) : eData.signatories) 
-            : (() => {
-                try {
-                  const b = localStorage.getItem('election_schedule_backup');
-                  return b ? JSON.parse(b).signatories || null : null;
-                } catch (_) { return null; }
-              })(),
-        });
-      } else {
-        // Fallback: compute from voters even without election data
-        setElection(null);
-      }
+      // Refresh sessions list and set election to active session
+      await refreshSessions();
+
+      // Update hasVoted for current user if they are a voter
+      setHasVoted((prev) => {
+        // We use a functional state update to access the current user, or we can just use the user from closure if available. But wait, `user` isn't in the dependency array of `refreshData`.
+        // To avoid stale closures without adding user to deps, let's just let the useEffect below handle it.
+        return prev;
+      });
     } catch (error) {
       console.error('Failed to refresh data:', error);
     }
-  }, []);
+  }, [activeSessionId, refreshSessions]);
 
-    // On mount: check existing session and load data
+  // Keep election in sync with activeSession from sessions state
+  useEffect(() => {
+    if (activeSessionId && sessions.length > 0) {
+      const s = sessions.find(s => s.id === activeSessionId);
+      if (s) {
+        setElection({
+          ...s,
+          totalVoters: voters.filter(v => v.status === 'approved').length,
+          totalVoted: undefined, // will be computed from voter_sessions
+        });
+      }
+    } else if (sessions.length > 0) {
+      // Default to first session
+      const defaultSession = sessions[0];
+      setElection({
+        ...defaultSession,
+        totalVoters: voters.filter(v => v.status === 'approved').length,
+      });
+    }
+  }, [activeSessionId, sessions, voters]);
+
+  // On mount: check existing session and load data
   useEffect(() => {
     const init = async () => {
       try {
         const meData = await api.getMe();
-        if (meData && meData.id) {
+        if (meData && (meData.user || meData.id)) {
+          const userData = meData.user || meData;
           setUser({
-            id: String(meData.id),
-            role: meData.role,
-            name: meData.name,
-            lrn: meData.lrn,
-            email: meData.email,
-            gradeLevel: meData.gradeLevel || meData.grade_level,
+            id: String(userData.id),
+            role: userData.role,
+            name: userData.name,
+            lrn: userData.lrn,
+            email: userData.email,
+            gradeLevel: userData.gradeLevel || userData.grade_level,
+            section: userData.section,
           });
           setHasVoted(Boolean(meData.has_voted ?? meData.hasVoted ?? false));
         }
       } catch {
-        // No active session � that's fine
+        // No active session — that's fine
       }
+
+      // Load sessions first, then scoped data
+      try {
+        const sessionsData = await api.getSessions().catch(() => []);
+        const rawSessions = Array.isArray(sessionsData) ? sessionsData : (sessionsData as any)?.data || [];
+        const parsed = rawSessions.map((s: any) => parseSession(s));
+        setSessions(parsed);
+
+        // Try to restore active session from localStorage
+        const savedSessionId = localStorage.getItem('activeSessionId');
+        if (savedSessionId && parsed.find((s: VotingSession) => s.id === savedSessionId)) {
+          setActiveSessionId(savedSessionId);
+        } else if (parsed.length > 0) {
+          // Default to first session
+          setActiveSessionId(parsed[0].id);
+        }
+      } catch (_) {}
+
       await refreshData();
     };
     init();
@@ -245,11 +318,10 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         })
         .subscribe();
 
-      // Background heartbeat to guarantee fresh real-time sync across all devices
       const pollInterval = setInterval(() => {
         refreshData();
       }, 5000);
-      
+
       return () => {
         supabase.removeChannel(channel);
         clearInterval(pollInterval);
@@ -257,6 +329,41 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     }
   }, [refreshData]);
 
+  // Persist activeSessionId
+  useEffect(() => {
+    if (activeSessionId) {
+      localStorage.setItem('activeSessionId', activeSessionId);
+    }
+  }, [activeSessionId]);
+
+  // Session management
+  const switchSession = useCallback((id: string) => {
+    setActiveSessionId(id);
+    setVotes({});
+  }, []);
+
+  const createSessionFn = useCallback(async (data: any): Promise<VotingSession> => {
+    const created = await api.createSession(data);
+    await refreshData();
+    return parseSession(created);
+  }, [refreshData]);
+
+  const deleteSessionFn = useCallback(async (id: string) => {
+    await api.deleteSession(id);
+    if (activeSessionId === id) {
+      const remaining = sessions.filter(s => s.id !== id);
+      setActiveSessionId(remaining.length > 0 ? remaining[0].id : null);
+    }
+    await refreshData();
+  }, [activeSessionId, sessions, refreshData]);
+
+  const duplicateSessionFn = useCallback(async (id: string): Promise<VotingSession> => {
+    const created = await api.duplicateSession(id);
+    await refreshData();
+    return parseSession(created);
+  }, [refreshData]);
+
+  // Auth
   const login = useCallback(
     async (lrn: string, password: string): Promise<boolean> => {
       try {
@@ -268,9 +375,10 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             name: data.user.name,
             lrn: data.user.lrn ?? lrn,
             gradeLevel: data.user.gradeLevel,
+            section: data.user.section,
           });
-          setHasVoted(Boolean(data.hasVoted ?? data.has_voted ?? false));
-          refreshData(); // Fire and forget
+          setHasVoted(false); // Reset — will be checked per-session
+          refreshData();
           return true;
         }
         return false;
@@ -293,7 +401,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             name: data.user.name ?? username,
             email: data.user.email,
           });
-          refreshData(); // Fire and forget
+          refreshData();
           return true;
         }
         return false;
@@ -307,13 +415,8 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(
     async (
-      lrn: string,
-      firstName: string,
-      middleInitial: string,
-      lastName: string,
-      gradeLevel: string,
-      section: string,
-      password: string
+      lrn: string, firstName: string, middleInitial: string, lastName: string,
+      gradeLevel: string, section: string, password: string
     ): Promise<{ success: boolean; message: string }> => {
       try {
         const data = await api.register({ lrn, firstName, middleInitial, lastName, gradeLevel, section, password });
@@ -322,7 +425,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           message: data.message ?? 'Registration submitted! Please wait for admin approval.',
         };
       } catch (error: any) {
-        console.error('Registration failed:', error);
         return { success: false, message: error.message || 'Registration failed.' };
       }
     },
@@ -340,7 +442,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           errors: data.errors,
         };
       } catch (error: any) {
-        console.error('Bulk registration failed:', error);
         return { success: false, message: error.message || 'Bulk registration failed.' };
       }
     },
@@ -348,11 +449,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   );
 
   const adminRegister = useCallback(
-    async (
-      username: string,
-      email: string,
-      password: string
-    ): Promise<{ success: boolean; message: string }> => {
+    async (username: string, email: string, password: string): Promise<{ success: boolean; message: string }> => {
       try {
         const data = await api.adminRegister({ username, email, password });
         return {
@@ -360,7 +457,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           message: data.message ?? 'Admin registration successful! You can now login.',
         };
       } catch (error: any) {
-        console.error('Admin registration failed:', error);
         return { success: false, message: error.message || 'Admin registration failed.' };
       }
     },
@@ -375,21 +471,17 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setVote = useCallback((positionId: string, candidateId: string) => {
-    setVotes((prev) => ({
-      ...prev,
-      [positionId]: candidateId,
-    }));
+    setVotes((prev) => ({ ...prev, [positionId]: candidateId }));
   }, []);
 
   const submitVotes = useCallback(async (): Promise<boolean> => {
     if (!user) return false;
     try {
-      // Convert votes Record<positionId, candidateId> to array
       const votesArray = Object.entries(votes).map(([positionId, candidateId]) => ({
         candidate_id: candidateId,
         position_id: positionId,
       }));
-      await api.submitVotes(votesArray);
+      await api.submitVotes(votesArray, activeSessionId || undefined);
       setHasVoted(true);
       await refreshData();
       return true;
@@ -397,7 +489,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       console.error('Submit votes failed:', error);
       return false;
     }
-  }, [votes, user, refreshData]);
+  }, [votes, user, activeSessionId, refreshData]);
 
   const getResults = useCallback(() => {
     return positions.map((position) => ({
@@ -410,33 +502,33 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   const finalizeResults = useCallback(async () => {
     try {
-      await api.finalizeResults();
+      await api.finalizeResults(activeSessionId || undefined);
       await refreshData();
     } catch (error) {
       console.error('Finalize results failed:', error);
       throw error;
     }
-  }, [refreshData]);
+  }, [activeSessionId, refreshData]);
 
   const unfinalizeResults = useCallback(async () => {
     try {
-      await api.unfinalizeResults();
+      await api.unfinalizeResults(activeSessionId || undefined);
       await refreshData();
     } catch (error) {
       console.error('Unfinalize results failed:', error);
       throw error;
     }
-  }, [refreshData]);
+  }, [activeSessionId, refreshData]);
 
   const updateElection = useCallback(
     async (updates: Partial<Election>) => {
       try {
-        // Immediate optimistic UI update - eliminates all lag and delay
         setElection((prev) => (prev ? { ...prev, ...updates } : null));
 
-        const mapped: any = {};
+        const mapped: any = { id: activeSessionId || '1' };
         if (updates.name !== undefined) mapped.name = updates.name;
         if (updates.schoolYear !== undefined) mapped.school_year = updates.schoolYear;
+
         const toMySQLDateTime = (d: Date) => {
           if (isNaN(d.getTime())) return null;
           return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace('T', ' ');
@@ -456,34 +548,36 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         if (updates.authorizationDocGenerated !== undefined) mapped.authorization_doc_generated = updates.authorizationDocGenerated;
         if (updates.authorizationConfirmedAt !== undefined) mapped.authorization_confirmed_at = updates.authorizationConfirmedAt;
         if (updates.signatories !== undefined) mapped.signatories = updates.signatories;
-        
-        await api.updateElection(mapped);
+        if (updates.status !== undefined) mapped.status = updates.status;
+        if ((updates as any).eligibleGradeLevels !== undefined) mapped.eligible_grade_levels = (updates as any).eligibleGradeLevels;
+        if ((updates as any).eligibleSections !== undefined) mapped.eligible_sections = (updates as any).eligibleSections;
+
+        await api.updateSession(activeSessionId || '1', mapped);
         await refreshData();
       } catch (error) {
         console.error('Update election failed:', error);
       }
     },
-    [refreshData]
+    [activeSessionId, refreshData]
   );
 
   const resetSystem = useCallback(async () => {
     try {
-      await api.resetSystem();
+      await api.resetSession(activeSessionId || '1');
       await refreshData();
     } catch (error) {
       console.error('Reset system failed:', error);
       throw error;
     }
-  }, [refreshData]);
+  }, [activeSessionId, refreshData]);
 
   // Candidate CRUD
   const addCandidate = useCallback(
     async (candidateData: Omit<Candidate, 'id' | 'votes'>) => {
-      // Optimistic update
       const tempId = `temp-${Date.now()}`;
       setCandidates((prev) => [...prev, { ...candidateData, id: tempId, votes: 0 }]);
 
-      const mapped = {
+      const mapped: any = {
         name: candidateData.name,
         position_id: candidateData.position,
         party: candidateData.party,
@@ -491,17 +585,18 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         motto: candidateData.motto,
         grade_level: candidateData.gradeLevel,
         section: candidateData.section,
+        session_id: activeSessionId || '1',
       };
       try {
         await api.addCandidate(mapped);
         await refreshData();
       } catch (error) {
         console.error('Add candidate failed:', error);
-        await refreshData(); // Revert on failure
+        await refreshData();
         throw error;
       }
     },
-    [refreshData]
+    [activeSessionId, refreshData]
   );
 
   const updateCandidate = useCallback(
@@ -548,11 +643,12 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       const tempId = `temp-${Date.now()}`;
       setPositions((prev) => [...prev, { ...positionData, id: tempId }]);
 
-      const mapped = {
+      const mapped: any = {
         name: positionData.name,
         display_order: positionData.order,
         max_votes: positionData.maxVotes,
         strict_grade_mapping: positionData.strictGradeMapping ? true : false,
+        session_id: activeSessionId || '1',
       };
       try {
         await api.addPosition(mapped);
@@ -563,7 +659,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         throw error;
       }
     },
-    [refreshData]
+    [activeSessionId, refreshData]
   );
 
   const deletePosition = useCallback(
@@ -582,16 +678,16 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   const cleanupDuplicatePositions = useCallback(async () => {
     try {
-      const result = await api.cleanupDuplicatePositions();
+      const result = await api.cleanupDuplicatePositions(activeSessionId || undefined);
       await refreshData();
       return result;
     } catch (error) {
       console.error('Cleanup duplicate positions failed:', error);
       throw error;
     }
-  }, [refreshData]);
+  }, [activeSessionId, refreshData]);
 
-  // Section CRUD
+  // Section CRUD (global)
   const addSection = useCallback(
     (sectionData: Omit<Section, 'id'>) => {
       const tempId = `temp-${Date.now()}`;
@@ -671,6 +767,14 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         votes,
         isLoggedIn: !!user,
         hasVoted,
+        sessions,
+        activeSessionId,
+        activeSession,
+        switchSession,
+        createSession: createSessionFn,
+        deleteSession: deleteSessionFn,
+        duplicateSession: duplicateSessionFn,
+        refreshSessions,
         login,
         adminLogin,
         register,
@@ -708,6 +812,3 @@ export function useVoting() {
   }
   return context;
 }
-
-
-

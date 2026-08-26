@@ -8,6 +8,7 @@ export interface Candidate {
   gradeLevel: string;
   section: string;
   votes: number;
+  sessionId: string;
 }
 
 export interface Position {
@@ -15,7 +16,8 @@ export interface Position {
   name: string;
   order: number;
   maxVotes: number;
-  strictGradeMapping?: boolean; // If true, filters candidates by Election.gradeMappings
+  strictGradeMapping?: boolean;
+  sessionId: string;
 }
 
 export interface Voter {
@@ -30,25 +32,36 @@ export interface Voter {
   createdAt?: Date;
 }
 
+export interface VoterSession {
+  id: string;
+  voterId: string;
+  sessionId: string;
+  hasVoted: boolean;
+  votedAt?: Date;
+}
+
 export interface Section {
   id: string;
   name: string;
   gradeLevel: string;
 }
 
-export interface Election {
+export interface VotingSession {
   id: string;
   name: string;
   schoolYear: string;
   startDate: Date;
   endDate: Date;
   isActive: boolean;
-  totalVoters?: number;
-  totalVoted?: number;
-  gradeMappings?: Record<string, string>; // Maps voter grade to candidate grade
+  status: 'upcoming' | 'active' | 'completed' | 'finalized';
+  gradeMappings?: Record<string, string>;
+  eligibleGradeLevels: string[];
+  eligibleSections: string[];
   resultsFinalized?: boolean;
   finalizedBy?: string;
   finalizedAt?: Date;
+  totalVoters?: number;
+  totalVoted?: number;
   scheduleStatus?: 'draft' | 'pending_authorization' | 'authorized' | 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
   authorizationDocGenerated?: boolean;
   authorizationConfirmedAt?: string;
@@ -59,6 +72,9 @@ export interface Election {
     approvedBy?: Signatory;
   };
 }
+
+// Keep Election as alias for backward compat during transition
+export type Election = VotingSession;
 
 export interface Signatory {
   name: string;
@@ -91,6 +107,7 @@ export interface VoteVerification {
   notes?: string;
   originalVoteCounts: Record<string, number>;
   createdAt: Date;
+  sessionId?: string;
 }
 
 export interface TieResolution {
@@ -117,6 +134,7 @@ export interface Vote {
   voterId: string;
   candidateId: string;
   positionId: string;
+  sessionId: string;
   timestamp: Date;
 }
 
@@ -126,5 +144,6 @@ export interface User {
   name: string;
   lrn?: string;
   email?: string;
-  gradeLevel?: string; // To enforce voting permissions
+  gradeLevel?: string;
+  section?: string;
 }

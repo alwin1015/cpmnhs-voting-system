@@ -16,6 +16,7 @@ import VotersPage from "./pages/VotersPage";
 import SectionsPage from "./pages/SectionsPage";
 import PositionsPage from "./pages/PositionsPage";
 import ElectionReportPage from "./pages/ElectionReportPage";
+import SessionManagerPage from "@/pages/SessionManagerPage";
 
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
@@ -37,6 +38,7 @@ const App = () => (
             <Route path="/vote" element={<VotingPage />} />
             <Route path="/results" element={<ResultsPage />} />
             <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/sessions" element={<SessionManagerPage />} />
             <Route path="/registrations" element={<RegistrationsPage />} />
             <Route path="/voters" element={<VotersPage />} />
             <Route path="/sections" element={<SectionsPage />} />
