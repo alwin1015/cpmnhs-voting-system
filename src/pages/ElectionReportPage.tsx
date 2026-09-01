@@ -22,7 +22,9 @@ import {
   FileText, Trophy, AlertTriangle, CheckCircle, Lock, Printer,
   Shield, Search, Filter, ChevronDown, ChevronUp, Users, XCircle, Award
 } from 'lucide-react';
-import schoolLogo from '@/assets/school-logo.png';
+import cpmnhsLogo from '@/assets/cpmnhs-logo.png';
+import depedLogo from '@/assets/deped-logo.png';
+import sslgLogo from '@/assets/sslg-logo.png';
 
 export default function ElectionReportPage() {
   const { election, candidates, positions, voters, user, isLoggedIn, finalizeResults, unfinalizeResults } = useVoting();
@@ -339,30 +341,21 @@ export default function ElectionReportPage() {
               {/* Left Logo: CPMNHS Seal */}
               <div className="w-16 flex-shrink-0 flex justify-center">
                 <img
-                  src={schoolLogo}
+                  src={cpmnhsLogo}
                   alt="CPMNHS Seal"
-                  className="w-12 h-12 sm:w-14 sm:h-14 object-contain rounded-full border border-slate-200 shadow-xs"
+                  className="w-12 h-12 sm:w-16 sm:h-16 object-contain rounded-full shadow-xs"
                 />
               </div>
 
               {/* Center: DepEd Header */}
               <div className="flex-1 text-center flex flex-col items-center">
-                {/* DepEd Official Brand */}
+                {/* DepEd Logo */}
                 <div className="flex flex-col items-center leading-none mb-1">
-                  <div className="flex items-center">
-                    <span className="text-xl sm:text-2xl font-black text-[#003876] tracking-tighter">Dep</span>
-                    <div className="relative inline-flex flex-col items-center mx-0.5">
-                      <svg className="w-3.5 h-4 -mb-1" viewBox="0 0 24 28" fill="none">
-                        <path d="M12 0C7 7 4 10.5 4 15a8 8 0 0 0 16 0c0-4.5-3-8-8-15z" fill="#dc2626"/>
-                        <path d="M12 7C9 11 7 13 7 16a5 5 0 0 0 10 0c0-3-2-5-5-9z" fill="#f59e0b"/>
-                      </svg>
-                      <span className="text-xl sm:text-2xl font-black text-[#003876] tracking-tighter">E</span>
-                    </div>
-                    <span className="text-xl sm:text-2xl font-black text-[#dc2626] tracking-tighter">D</span>
-                  </div>
-                  <span className="text-[7px] sm:text-[8px] font-extrabold text-[#003876] uppercase tracking-widest mt-0.5">
-                    DEPARTMENT OF EDUCATION
-                  </span>
+                  <img
+                    src={depedLogo}
+                    alt="DepEd Logo"
+                    className="w-24 sm:w-32 object-contain"
+                  />
                 </div>
 
                 <p className="text-[10px] sm:text-[11px] text-slate-700 font-medium leading-tight">Republic of the Philippines</p>
@@ -378,9 +371,9 @@ export default function ElectionReportPage() {
               {/* Right Logo: SSLG Seal */}
               <div className="w-16 flex-shrink-0 flex justify-center">
                 <img
-                  src={schoolLogo}
+                  src={sslgLogo}
                   alt="SSLG Seal"
-                  className="w-12 h-12 sm:w-14 sm:h-14 object-contain rounded-full border border-slate-200 shadow-xs"
+                  className="w-12 h-12 sm:w-16 sm:h-16 object-contain rounded-full shadow-xs"
                 />
               </div>
             </div>
