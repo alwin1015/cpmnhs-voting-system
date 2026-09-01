@@ -151,7 +151,31 @@ export default function ResultsPage() {
   // ==========================================
   // OFFICIAL PRINTABLE RESULTS VIEW
   // ==========================================
+  // ==========================================
+  // OFFICIAL PRINTABLE RESULTS VIEW
+  // ==========================================
   if (showPrintReport) {
+    const electionDate = election?.startDate ? new Date(election.startDate) : new Date();
+    const electionDateFormatted = election?.startDate
+      ? new Date(election.startDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+      : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+    const getOrdinal = (n: number) => {
+      const s = ['th', 'st', 'nd', 'rd'];
+      const v = n % 100;
+      return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    };
+    const dayWithSuffix = getOrdinal(electionDate.getDate());
+    const monthAndYear = electionDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+    const formatTime12 = (d?: Date) => {
+      if (!d || isNaN(d.getTime())) return '';
+      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    };
+    const startTimeStr = election?.startDate ? formatTime12(new Date(election.startDate)) : '7:00 AM';
+    const endTimeStr = election?.endDate ? formatTime12(new Date(election.endDate)) : '4:00 PM';
+    const electionTimeFormatted = `${startTimeStr} – ${endTimeStr}`;
+
     return (
       <div className="min-h-screen bg-white text-slate-900 font-sans">
         {/* Screen Controls Header (Hidden during Print) */}
@@ -183,218 +207,258 @@ export default function ResultsPage() {
         {/* Printable Document Sheet */}
         <div ref={printRef} className="max-w-4xl mx-auto p-8 sm:p-12 print:p-0 print:max-w-none text-slate-900">
           
-          {/* DepEd & School Formal Header */}
-          <div className="text-center border-b-2 border-slate-900 pb-5 mb-6 relative">
-            <div className="flex items-center justify-center gap-4 mb-2">
-              <img
-                src={schoolLogo}
-                alt="CPMNHS Official Logo"
-                className="w-20 h-20 sm:w-24 sm:h-24 object-contain rounded-full border border-slate-200 shadow-xs"
-              />
-              <div className="text-center">
-                <p className="text-xs uppercase tracking-wider text-slate-600 font-medium">Republic of the Philippines</p>
-                <p className="text-xs uppercase tracking-wider text-slate-600 font-medium">Department of Education</p>
-                <p className="text-xs text-slate-600">Region VII, Central Visayas • Division of Bohol</p>
-                <h1 className="text-base sm:text-lg font-extrabold text-slate-900 uppercase tracking-tight mt-0.5">
+          {/* Header with 3 Logos (CPMNHS Left, DepEd Center, SSLG Right) */}
+          <div className="border-b-2 border-slate-900 pb-3 mb-4">
+            <div className="flex items-center justify-between gap-4 mb-2">
+              {/* Left Logo: CPMNHS Seal */}
+              <div className="w-16 flex-shrink-0 flex justify-center">
+                <img
+                  src={schoolLogo}
+                  alt="CPMNHS Seal"
+                  className="w-12 h-12 sm:w-14 sm:h-14 object-contain rounded-full border border-slate-200 shadow-xs"
+                />
+              </div>
+
+              {/* Center: DepEd Header */}
+              <div className="flex-1 text-center flex flex-col items-center">
+                {/* DepEd Official Brand */}
+                <div className="flex flex-col items-center leading-none mb-1">
+                  <div className="flex items-center">
+                    <span className="text-xl sm:text-2xl font-black text-[#003876] tracking-tighter">Dep</span>
+                    <div className="relative inline-flex flex-col items-center mx-0.5">
+                      <svg className="w-3.5 h-4 -mb-1" viewBox="0 0 24 28" fill="none">
+                        <path d="M12 0C7 7 4 10.5 4 15a8 8 0 0 0 16 0c0-4.5-3-8-8-15z" fill="#dc2626"/>
+                        <path d="M12 7C9 11 7 13 7 16a5 5 0 0 0 10 0c0-3-2-5-5-9z" fill="#f59e0b"/>
+                      </svg>
+                      <span className="text-xl sm:text-2xl font-black text-[#003876] tracking-tighter">E</span>
+                    </div>
+                    <span className="text-xl sm:text-2xl font-black text-[#dc2626] tracking-tighter">D</span>
+                  </div>
+                  <span className="text-[7px] sm:text-[8px] font-extrabold text-[#003876] uppercase tracking-widest mt-0.5">
+                    DEPARTMENT OF EDUCATION
+                  </span>
+                </div>
+
+                <p className="text-[10px] sm:text-[11px] text-slate-700 font-medium leading-tight">Republic of the Philippines</p>
+                <p className="text-[10px] sm:text-[11px] text-slate-700 font-medium leading-tight">Department of Education</p>
+                <p className="text-[10px] sm:text-[11px] text-slate-700 leading-tight">Region VII – Central Visayas</p>
+                <p className="text-[10px] sm:text-[11px] text-slate-700 leading-tight">Division of Bohol</p>
+                <h1 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-tight mt-0.5 leading-tight">
                   CONGRESSMAN PABLO MALASARTE NATIONAL HIGH SCHOOL
                 </h1>
-                <p className="text-xs text-slate-600">Cabad, Balilihan, Bohol</p>
+                <p className="text-[10px] sm:text-[11px] text-slate-600 leading-tight">Cabad, Balilihan, Bohol</p>
+              </div>
+
+              {/* Right Logo: SSLG Seal */}
+              <div className="w-16 flex-shrink-0 flex justify-center">
+                <img
+                  src={schoolLogo}
+                  alt="SSLG Seal"
+                  className="w-12 h-12 sm:w-14 sm:h-14 object-contain rounded-full border border-slate-200 shadow-xs"
+                />
               </div>
             </div>
+          </div>
 
-            <div className="mt-3 pt-2 border-t border-slate-300">
-              <h2 className="text-base sm:text-lg font-black tracking-wider uppercase text-slate-900">
-                OFFICIAL ELECTION RESULTS & CERTIFICATE OF CANVASS
-              </h2>
-              <p className="text-xs sm:text-sm font-semibold text-slate-700 mt-0.5">
-                {election?.name || 'Supreme Secondary Learner Government (SSLG) General Election'} • S.Y. {election?.schoolYear || '2026-2027'}
+          {/* Title Header */}
+          <div className="text-center mb-4">
+            <h2 className="text-base sm:text-lg font-black tracking-wider uppercase text-slate-900">
+              PRINT RESULTS
+            </h2>
+            <h3 className="text-xs sm:text-sm font-bold uppercase text-slate-800 tracking-wide">
+              SCHOOL ELECTION
+            </h3>
+            <h4 className="text-xs sm:text-sm font-bold uppercase text-slate-800 tracking-wide">
+              SCHOOL YEAR {election?.schoolYear || '2025-2026'}
+            </h4>
+          </div>
+
+          {/* Metadata Section */}
+          <div className="max-w-xl text-[11px] sm:text-xs space-y-1 mb-5 text-slate-800 font-medium">
+            <div className="grid grid-cols-[160px_12px_1fr] sm:grid-cols-[180px_12px_1fr] items-center">
+              <span className="font-semibold">Election Title</span>
+              <span>:</span>
+              <span>{election?.name || 'Supreme Secondary Learners Government (SSLG) Election'}</span>
+            </div>
+            <div className="grid grid-cols-[160px_12px_1fr] sm:grid-cols-[180px_12px_1fr] items-center">
+              <span className="font-semibold">Date of Election</span>
+              <span>:</span>
+              <span>{electionDateFormatted}</span>
+            </div>
+            <div className="grid grid-cols-[160px_12px_1fr] sm:grid-cols-[180px_12px_1fr] items-center">
+              <span className="font-semibold">Voting Time</span>
+              <span>:</span>
+              <span>{electionTimeFormatted}</span>
+            </div>
+            <div className="grid grid-cols-[160px_12px_1fr] sm:grid-cols-[180px_12px_1fr] items-center">
+              <span className="font-semibold">Venue</span>
+              <span>:</span>
+              <span>Congressman Pablo Malasarte National High School</span>
+            </div>
+            <div className="grid grid-cols-[160px_12px_1fr] sm:grid-cols-[180px_12px_1fr] items-center">
+              <span className="font-semibold">Total Registered Voters</span>
+              <span>:</span>
+              <span>{election?.totalVoters?.toLocaleString() || '0'}</span>
+            </div>
+            <div className="grid grid-cols-[160px_12px_1fr] sm:grid-cols-[180px_12px_1fr] items-center">
+              <span className="font-semibold">Total Votes Cast</span>
+              <span>:</span>
+              <span>{election?.totalVoted?.toLocaleString() || '0'}</span>
+            </div>
+            <div className="grid grid-cols-[160px_12px_1fr] sm:grid-cols-[180px_12px_1fr] items-center">
+              <span className="font-semibold">Voter Turnout</span>
+              <span>:</span>
+              <span>{turnoutPercent}%</span>
+            </div>
+          </div>
+
+          {/* Official Results Table */}
+          <div className="mb-5">
+            <h3 className="text-center font-bold text-xs sm:text-sm uppercase tracking-wider text-slate-900 mb-2">
+              OFFICIAL RESULTS
+            </h3>
+
+            <table className="w-full border border-slate-900 text-xs sm:text-sm border-collapse">
+              <thead>
+                <tr className="bg-sky-100/60 border-b border-slate-900 text-slate-900 font-bold uppercase text-[11px] sm:text-xs">
+                  <th className="py-2 px-3 border-r border-slate-900 text-center w-1/4">POSITION</th>
+                  <th className="py-2 px-3 border-r border-slate-900 text-center w-2/5">CANDIDATE NAME</th>
+                  <th className="py-2 px-3 border-r border-slate-900 text-center w-1/5">TOTAL VOTES</th>
+                  <th className="py-2 px-3 text-center w-1/6">RANK</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-300">
+                {results.map(({ position, candidates: posCandidates }) => {
+                  if (posCandidates.length === 0) {
+                    return (
+                      <tr key={position.id} className="border-b border-slate-900">
+                        <td className="py-2 px-3 font-bold uppercase text-slate-900 border-r border-slate-900 text-center align-middle">
+                          {position.name}
+                        </td>
+                        <td colSpan={3} className="py-2 px-3 text-center text-slate-400 italic">
+                          No candidates registered
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  return posCandidates.map((candidate, idx) => (
+                    <tr
+                      key={candidate.id}
+                      className={`border-b ${idx === posCandidates.length - 1 ? 'border-b-slate-900' : 'border-b-slate-300'}`}
+                    >
+                      {idx === 0 && (
+                        <td
+                          rowSpan={posCandidates.length}
+                          className="py-2.5 px-3 font-bold uppercase text-slate-900 border-r border-slate-900 text-center align-middle"
+                        >
+                          {position.name}
+                        </td>
+                      )}
+                      <td className="py-2 px-3 uppercase text-slate-900 border-r border-slate-900 font-medium">
+                        {candidate.name}
+                      </td>
+                      <td className="py-2 px-3 text-center font-bold text-slate-900 border-r border-slate-900 font-mono">
+                        {candidate.votes.toLocaleString()}
+                      </td>
+                      <td className="py-2 px-3 text-center font-bold text-slate-900">
+                        {idx + 1}
+                      </td>
+                    </tr>
+                  ));
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Certification Text & Signatures */}
+          <div className="space-y-5 pt-2 break-inside-avoid text-xs sm:text-sm">
+            <div className="space-y-1.5 text-slate-800 leading-relaxed text-justify sm:text-center text-[11px] sm:text-xs">
+              <p>
+                We, the undersigned, hereby certify that the above results are true, correct, and officially tallied based on the votes cast during the SSLG Election held on {electionDateFormatted}.
+              </p>
+              <p>
+                Certified this {dayWithSuffix} day of {monthAndYear} at Congressman Pablo Malasarte National High School, Cabad, Balilihan, Bohol.
               </p>
             </div>
-          </div>
 
-          {/* Canvass Metadata Summary Box */}
-          <div className="border border-slate-300 rounded-lg p-3.5 mb-6 bg-slate-50/50 text-xs sm:text-sm grid grid-cols-2 sm:grid-cols-4 gap-3 print:bg-transparent">
-            <div>
-              <span className="text-slate-500 block text-[11px] uppercase font-semibold">Election Period</span>
-              <strong className="text-slate-900">
-                {election?.startDate ? new Date(election.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-                {' — '}
-                {election?.endDate ? new Date(election.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
-              </strong>
+            {/* ELECTION COMMITTEE Section */}
+            <div className="pt-2">
+              <h4 className="font-bold uppercase text-slate-900 text-center text-xs tracking-wider mb-8">
+                ELECTION COMMITTEE
+              </h4>
+
+              <div className="grid grid-cols-3 gap-6 sm:gap-10 text-center">
+                {/* Chairperson */}
+                <div className="flex flex-col items-center">
+                  <div className="w-full border-b border-slate-900 mb-1"></div>
+                  <span className="text-[11px] sm:text-xs text-slate-800 font-bold leading-tight">
+                    Signature over Printed Name
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] text-slate-600 font-medium">
+                    Chairperson
+                  </span>
+                </div>
+
+                {/* Co-Chairperson */}
+                <div className="flex flex-col items-center">
+                  <div className="w-full border-b border-slate-900 mb-1"></div>
+                  <span className="text-[11px] sm:text-xs text-slate-800 font-bold leading-tight">
+                    Signature over Printed Name
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] text-slate-600 font-medium">
+                    Co-Chairperson
+                  </span>
+                </div>
+
+                {/* Member */}
+                <div className="flex flex-col items-center">
+                  <div className="w-full border-b border-slate-900 mb-1"></div>
+                  <span className="text-[11px] sm:text-xs text-slate-800 font-bold leading-tight">
+                    Signature over Printed Name
+                  </span>
+                  <span className="text-[10px] sm:text-[11px] text-slate-600 font-medium">
+                    Member
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div>
-              <span className="text-slate-500 block text-[11px] uppercase font-semibold">Registered Voters</span>
-              <strong className="text-slate-900">{election?.totalVoters?.toLocaleString() || '0'} students</strong>
-            </div>
-
-            <div>
-              <span className="text-slate-500 block text-[11px] uppercase font-semibold">Ballots Cast</span>
-              <strong className="text-slate-900">{election?.totalVoted?.toLocaleString() || '0'} ({turnoutPercent}% turnout)</strong>
-            </div>
-
-            <div>
-              <span className="text-slate-500 block text-[11px] uppercase font-semibold">Status & Canvass Date</span>
-              <strong className="text-emerald-700 font-bold">
-                {election?.resultsFinalized ? 'OFFICIAL & FINALIZED' : 'PROVISIONAL TALLY'}
-              </strong>
-              {election?.finalizedAt && (
-                <span className="block text-[10px] text-slate-500">
-                  {formatDateTime(election.finalizedAt)}
+            {/* Certified Correct & Noted by Section */}
+            <div className="pt-4 grid grid-cols-2 gap-12 sm:gap-20 text-center">
+              {/* Certified Correct */}
+              <div className="flex flex-col items-center w-full">
+                <span className="text-xs font-semibold text-slate-800 self-start sm:self-center mb-6">
+                  Certified Correct:
                 </span>
-              )}
-            </div>
-          </div>
-
-          {/* Complete Final Results by Position */}
-          <div className="space-y-6 mb-8">
-            {results.map(({ position, candidates: posCandidates }, posIdx) => {
-              const posTotalVotes = posCandidates.reduce((sum, c) => sum + c.votes, 0);
-              const tieRes = tieResolutions.find((t) => t.positionId === position.id);
-
-              return (
-                <div key={position.id} className="border border-slate-300 rounded-lg overflow-hidden break-inside-avoid">
-                  {/* Position Title Bar */}
-                  <div className="bg-slate-100 border-b border-slate-300 px-4 py-2 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded bg-slate-800 text-white text-xs font-bold flex items-center justify-center">
-                        {posIdx + 1}
-                      </span>
-                      <h3 className="font-bold text-sm sm:text-base text-slate-900 uppercase">
-                        {position.name}
-                      </h3>
-                    </div>
-                    <span className="text-xs font-semibold text-slate-600">
-                      Total Votes: {posTotalVotes.toLocaleString()} (Max Votes Allowed: {position.maxVotes})
-                    </span>
-                  </div>
-
-                  {/* Table of Candidates */}
-                  <table className="w-full text-left text-xs sm:text-sm border-collapse">
-                    <thead>
-                      <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase text-slate-500">
-                        <th className="py-2 px-3 w-12 text-center">Rank</th>
-                        <th className="py-2 px-3">Candidate Name</th>
-                        <th className="py-2 px-3">Party Affiliation</th>
-                        <th className="py-2 px-3">Grade & Section</th>
-                        <th className="py-2 px-3 text-right">Votes</th>
-                        <th className="py-2 px-3 text-right">Percentage</th>
-                        <th className="py-2 px-3 text-center w-36">Result Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      {posCandidates.length === 0 ? (
-                        <tr>
-                          <td colSpan={7} className="py-4 text-center text-slate-400 italic">
-                            No candidates registered for this position.
-                          </td>
-                        </tr>
-                      ) : (
-                        posCandidates.map((candidate, idx) => {
-                          const percentage = posTotalVotes > 0 ? Math.round((candidate.votes / posTotalVotes) * 100) : 0;
-                          const isWinner = idx === 0 && candidate.votes > 0 && (!detectedTies.some(t => t.positionId === position.id) || tieRes?.selectedWinnerId === candidate.id);
-                          const isVerifiedWinner = tieRes?.selectedWinnerId === candidate.id;
-                          const isTied = detectedTies.some(t => t.positionId === position.id) && candidate.votes === posCandidates[0].votes;
-
-                          return (
-                            <tr key={candidate.id} className={isWinner ? 'bg-emerald-50/40 font-semibold' : ''}>
-                              <td className="py-2 px-3 text-center font-mono text-xs text-slate-500">
-                                {idx + 1}
-                              </td>
-                              <td className="py-2 px-3 font-semibold text-slate-900">
-                                {candidate.name}
-                              </td>
-                              <td className="py-2 px-3 text-slate-600">
-                                {candidate.party || 'Independent'}
-                              </td>
-                              <td className="py-2 px-3 text-slate-600 text-xs">
-                                Grade {candidate.gradeLevel || '—'} {candidate.section ? `• ${candidate.section}` : ''}
-                              </td>
-                              <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
-                                {candidate.votes.toLocaleString()}
-                              </td>
-                              <td className="py-2 px-3 text-right text-slate-600 text-xs">
-                                {percentage}%
-                              </td>
-                              <td className="py-2 px-3 text-center">
-                                {isVerifiedWinner ? (
-                                  <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                    ELECTED (Verified)
-                                  </span>
-                                ) : isWinner ? (
-                                  <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                    ELECTED
-                                  </span>
-                                ) : isTied ? (
-                                  <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                                    TIED
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-400 text-xs">—</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-
-                  {/* Tie Resolution audit info note if applicable */}
-                  {tieRes && (
-                    <div className="px-4 py-1.5 bg-blue-50/60 border-t border-blue-200 text-[11px] text-blue-900">
-                      <strong>Tie Resolution Canvass:</strong> Winner resolved by {tieRes.resolvedBy} on {formatDateTime(tieRes.resolvedAt)}. Reason: {tieRes.reason || 'Official Tie Breaking procedure'}.
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Formal DepEd Verification & Signatures Section */}
-          <div className="border-t-2 border-slate-900 pt-6 mt-8 break-inside-avoid">
-            <p className="text-xs text-slate-700 italic mb-8 leading-relaxed text-center">
-              We, the undersigned members of the Board of Canvassers and Election Committee, hereby certify that the foregoing results were accurately counted, canvassed, and verified in accordance with the official Supreme Secondary Learner Government (SSLG) election guidelines.
-            </p>
-
-            <div className="grid grid-cols-3 gap-6 text-center text-xs sm:text-sm">
-              {/* Election Administrator */}
-              <div className="flex flex-col items-center">
-                <div className="w-full border-b-2 border-slate-900 mb-1.5 pb-6">
-                  <span className="font-bold uppercase text-slate-900 block text-xs">
-                    {election?.finalizedBy || user?.name || 'Administrator'}
+                <div className="w-full max-w-[240px] border-b border-slate-900 mb-1">
+                  <span className="font-bold uppercase text-slate-900 text-xs sm:text-sm block">
+                    {election?.signatories?.preparedBy?.name || 'MS. LIZA MAY A. BELTRAN'}
                   </span>
                 </div>
-                <span className="font-semibold text-slate-800 text-xs">ELECTION ADMINISTRATOR</span>
-                <span className="text-[10px] text-slate-500">CPMNHS SSLG COMELEC</span>
+                <span className="text-[11px] sm:text-xs text-slate-600 font-medium">
+                  {election?.signatories?.preparedBy?.position || 'School Election Officer'}
+                </span>
               </div>
 
-              {/* SSLG Adviser */}
-              <div className="flex flex-col items-center">
-                <div className="w-full border-b-2 border-slate-900 mb-1.5 pb-6">
-                  <span className="font-bold uppercase text-slate-900 block text-xs">
-                    SSLG ADVISER / DESIGNEE
+              {/* Noted by */}
+              <div className="flex flex-col items-center w-full">
+                <span className="text-xs font-semibold text-slate-800 self-start sm:self-center mb-6">
+                  Noted by:
+                </span>
+                <div className="w-full max-w-[240px] border-b border-slate-900 mb-1">
+                  <span className="font-bold uppercase text-slate-900 text-xs sm:text-sm block">
+                    {election?.signatories?.approvedBy?.name || 'DR. ROLANDO D. VILLARIN'}
                   </span>
                 </div>
-                <span className="font-semibold text-slate-800 text-xs">COMELEC ADVISER</span>
-                <span className="text-[10px] text-slate-500">Committee Member</span>
-              </div>
-
-              {/* School Principal */}
-              <div className="flex flex-col items-center">
-                <div className="w-full border-b-2 border-slate-900 mb-1.5 pb-6">
-                  <span className="font-bold uppercase text-slate-900 block text-xs">
-                    SCHOOL PRINCIPAL
-                  </span>
-                </div>
-                <span className="font-semibold text-slate-800 text-xs">SCHOOL PRINCIPAL</span>
-                <span className="text-[10px] text-slate-500">Congressman Pablo Malasarte NHS</span>
+                <span className="text-[11px] sm:text-xs text-slate-600 font-medium">
+                  {election?.signatories?.approvedBy?.position || 'School Principal'}
+                </span>
               </div>
             </div>
 
-            <div className="mt-8 text-center text-[10px] text-slate-400 border-t border-slate-200 pt-3">
+            <div className="mt-6 text-center text-[10px] text-slate-400 border-t border-slate-200 pt-2 no-print">
               <p>CPMNHS iVote Electronic Voting System • Generated on {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
-              <p className="mt-0.5">This document serves as the official and final election canvass report.</p>
             </div>
           </div>
 
