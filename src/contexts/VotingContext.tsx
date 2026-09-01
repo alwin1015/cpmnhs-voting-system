@@ -137,38 +137,41 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       const rawSessions = Array.isArray(sessionsData) ? sessionsData : (sessionsData as any)?.data || [];
       const parsed = rawSessions.map((s: any) => parseSession(s));
       setSessions(parsed);
-
-      // Auto-close expired sessions
-      for (const s of parsed) {
-        if (s.isActive && s.status === 'active' && s.endDate && new Date() >= s.endDate) {
-          try {
-            await api.updateSession(s.id, { is_active: false, status: 'completed' });
-          } catch (_) {}
-        }
-      }
+      return parsed;
     } catch (e) {
       console.error('Failed to refresh sessions:', e);
+      return [];
     }
   }, []);
 
+  const isRefreshingRef = React.useRef(false);
+
   // Fetch scoped data for the active session
   const refreshData = useCallback(async () => {
+    if (isRefreshingRef.current) return;
+    isRefreshingRef.current = true;
+
     try {
       const sessionId = activeSessionId || undefined;
 
-      const [candidatesRes, positionsRes, sectionsRes, votersRes, settingsRes] = await Promise.all([
+      const [candidatesRes, positionsRes, sectionsRes, votersRes, settingsRes, sessionsData] = await Promise.all([
         api.getCandidates(sessionId).catch(() => []),
         api.getPositions(sessionId).catch(() => []),
         api.getSections().catch(() => []),
         api.getVoters().catch(() => []),
         api.getSystemSettings().catch(() => ({ currentSchoolYear: '2026-2027' })),
+        api.getSessions().catch(() => []),
       ]);
 
       const candidatesData = (candidatesRes as any)?.data ?? candidatesRes ?? [];
       const positionsData = (positionsRes as any)?.data ?? positionsRes ?? [];
       const sectionsData = (sectionsRes as any)?.data ?? sectionsRes ?? [];
       const votersData = (votersRes as any)?.data ?? votersRes ?? [];
-      setCurrentSchoolYear(settingsRes.currentSchoolYear || '2026-2027');
+      const rawSessions = Array.isArray(sessionsData) ? sessionsData : (sessionsData as any)?.data || [];
+      const parsedSessions = rawSessions.map((s: any) => parseSession(s));
+
+      setSessions(parsedSessions);
+      setCurrentSchoolYear(settingsRes?.currentSchoolYear || '2026-2027');
 
       // Map candidates
       setCandidates(
@@ -235,7 +238,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           name: v.name,
           gradeLevel: v.grade_level ?? v.gradeLevel ?? '',
           section: v.section ?? '',
-          hasVoted: vs ? Boolean(vs.has_voted) : false, // override with session status
+          hasVoted: vs ? Boolean(vs.has_voted) : false,
           votedAt: vs && vs.voted_at ? new Date(vs.voted_at) : undefined,
           status: v.status ?? 'pending',
           createdAt: v.created_at ? new Date(v.created_at) : v.createdAt ? new Date(v.createdAt) : undefined,
@@ -243,20 +246,12 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         };
       });
       setVoters(mappedVoters);
-
-      // Refresh sessions list and set election to active session
-      await refreshSessions();
-
-      // Update hasVoted for current user if they are a voter
-      setHasVoted((prev) => {
-        // We use a functional state update to access the current user, or we can just use the user from closure if available. But wait, `user` isn't in the dependency array of `refreshData`.
-        // To avoid stale closures without adding user to deps, let's just let the useEffect below handle it.
-        return prev;
-      });
     } catch (error) {
       console.error('Failed to refresh data:', error);
+    } finally {
+      isRefreshingRef.current = false;
     }
-  }, [activeSessionId, refreshSessions]);
+  }, [activeSessionId]);
 
   // Keep election in sync with activeSession from sessions state
   useEffect(() => {
@@ -280,12 +275,14 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     }
   }, [activeSessionId, sessions, voters]);
 
-  // On mount: check existing session and load data
+  // On mount: check auth and load initial data
   useEffect(() => {
+    let isMounted = true;
+
     const init = async () => {
       try {
         const meData = await api.getMe();
-        if (meData && (meData.user || meData.id)) {
+        if (isMounted && meData && (meData.user || meData.id)) {
           const userData = meData.user || meData;
           setUser({
             id: String(userData.id),
@@ -299,47 +296,63 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           setHasVoted(Boolean(meData.has_voted ?? meData.hasVoted ?? false));
         }
       } catch {
-        // No active session — that's fine
+        // No active user session
       }
 
-      // Load sessions first, then scoped data
+      // Initial load of sessions
       try {
         const sessionsData = await api.getSessions().catch(() => []);
         const rawSessions = Array.isArray(sessionsData) ? sessionsData : (sessionsData as any)?.data || [];
         const parsed = rawSessions.map((s: any) => parseSession(s));
-        setSessions(parsed);
-
-        // Try to restore active session from localStorage
-        const savedSessionId = localStorage.getItem('activeSessionId');
-        if (savedSessionId && parsed.find((s: VotingSession) => s.id === savedSessionId)) {
-          setActiveSessionId(savedSessionId);
-        } else if (parsed.length > 0) {
-          // Default to first session
-          setActiveSessionId(parsed[0].id);
+        if (isMounted) {
+          setSessions(parsed);
+          const savedSessionId = localStorage.getItem('activeSessionId');
+          if (savedSessionId && parsed.find((s: VotingSession) => s.id === savedSessionId)) {
+            setActiveSessionId(savedSessionId);
+          } else if (parsed.length > 0) {
+            setActiveSessionId(parsed[0].id);
+          }
         }
       } catch (_) {}
 
-      await refreshData();
+      if (isMounted) {
+        await refreshData();
+      }
     };
     init();
 
     if (!OFFLINE_MODE) {
+      let debounceTimer: any = null;
+      const debouncedRefresh = () => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          if (isMounted) refreshData();
+        }, 1200);
+      };
+
       const channel = supabase
         .channel('public:all-tables')
         .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-          refreshData();
+          debouncedRefresh();
         })
         .subscribe();
 
+      // Gentle polling every 30 seconds only as safety fallback
       const pollInterval = setInterval(() => {
-        refreshData();
-      }, 5000);
+        if (isMounted) debouncedRefresh();
+      }, 30000);
 
       return () => {
-        supabase.removeChannel(channel);
+        isMounted = false;
+        clearTimeout(debounceTimer);
         clearInterval(pollInterval);
+        supabase.removeChannel(channel);
       };
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, [refreshData]);
 
   // Persist activeSessionId
