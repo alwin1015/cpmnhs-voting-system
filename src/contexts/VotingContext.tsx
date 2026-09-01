@@ -331,16 +331,19 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       };
 
       const channel = supabase
-        .channel('public:all-tables')
-        .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-          debouncedRefresh();
-        })
+        .channel('db-realtime-sync')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, () => debouncedRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, () => debouncedRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => debouncedRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'voter_sessions' }, () => debouncedRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'voting_sessions' }, () => debouncedRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'positions' }, () => debouncedRefresh())
         .subscribe();
 
-      // Gentle polling every 30 seconds only as safety fallback
+      // Gentle polling every 45 seconds only as safety fallback
       const pollInterval = setInterval(() => {
         if (isMounted) debouncedRefresh();
-      }, 30000);
+      }, 45000);
 
       return () => {
         isMounted = false;
@@ -355,12 +358,13 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     };
   }, [refreshData]);
 
-  // Persist activeSessionId
+  // Persist activeSessionId and trigger refresh on session switch
   useEffect(() => {
     if (activeSessionId) {
       localStorage.setItem('activeSessionId', activeSessionId);
+      refreshData();
     }
-  }, [activeSessionId]);
+  }, [activeSessionId, refreshData]);
 
   // Session management
   const switchSession = useCallback((id: string) => {
