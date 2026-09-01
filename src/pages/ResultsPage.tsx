@@ -115,79 +115,224 @@ export default function ResultsPage() {
   const handleDownloadDocx = async () => {
     setIsDownloading(true);
     try {
-      if (!printRef.current) return;
-      
-      // Clone the print area
-      const clone = printRef.current.cloneNode(true) as HTMLElement;
-      
-      // Convert all images to Base64 so they appear in Word offline, and remove black backgrounds
-      const images = clone.getElementsByTagName('img');
-      for (let img of Array.from(images)) {
-        if (img.src && !img.src.startsWith('data:')) {
-          try {
-            const response = await fetch(img.src);
-            const blob = await response.blob();
-            const imgBitmap = await createImageBitmap(blob);
-            
-            const canvas = document.createElement('canvas');
-            canvas.width = imgBitmap.width;
-            canvas.height = imgBitmap.height;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(imgBitmap, 0, 0);
-              const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-              const data = imageData.data;
-              // Remove black background (pixels that are very dark)
-              for (let i = 0; i < data.length; i += 4) {
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
-                // If pixel is black or very close to black (e.g., RGB all < 30), make it transparent
-                if (r < 30 && g < 30 && b < 30) {
-                  data[i + 3] = 0; // Alpha to 0
-                }
-              }
-              ctx.putImageData(imageData, 0, 0);
-              img.src = canvas.toDataURL('image/png');
-            }
-            img.width = img.clientWidth || 60; // Set explicit widths for Word
-            img.height = img.clientHeight || 60;
-          } catch (e) {
-            console.error('Failed to convert image to base64', e);
+      // Helper function to process image to Base64 (max 120x120 for Word)
+      const getBase64Image = async (src: string) => {
+        try {
+          const response = await fetch(src);
+          const blob = await response.blob();
+          const imgBitmap = await createImageBitmap(blob);
+          
+          const maxDim = 120;
+          let width = imgBitmap.width;
+          let height = imgBitmap.height;
+          
+          if (width > maxDim || height > maxDim) {
+            const ratio = Math.min(maxDim / width, maxDim / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          } else {
+            width = maxDim;
+            height = maxDim;
           }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          
+          if (ctx) {
+            ctx.drawImage(imgBitmap, 0, 0, width, height);
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
+              if (r < 30 && g < 30 && b < 30) {
+                data[i + 3] = 0;
+              }
+            }
+            ctx.putImageData(imageData, 0, 0);
+            return { src: canvas.toDataURL('image/png'), width, height };
+          }
+        } catch (e) {
+          console.error('Failed to convert image:', e);
         }
-      }
+        return { src, width: 100, height: 100 };
+      };
 
-      // Hide anything with 'no-print' class in the clone
-      const noPrintElements = clone.querySelectorAll('.no-print');
-      noPrintElements.forEach(el => (el as HTMLElement).style.display = 'none');
+      const [cpmnhsBase64, depedBase64, sslgBase64] = await Promise.all([
+        getBase64Image(cpmnhsLogo),
+        getBase64Image(depedLogo),
+        getBase64Image(sslgLogo)
+      ]);
 
-      // Basic CSS to ensure it looks decent in Word
-      const styles = `
-        <style>
-          body { font-family: Arial, sans-serif; }
-          table { width: 100%; border-collapse: collapse; }
-          th, td { padding: 8px; border: 1px solid #000; text-align: center; }
-          .border-b-2 { border-bottom: 2px solid #000; }
-          .border-b { border-bottom: 1px solid #000; }
-          .font-bold { font-weight: bold; }
-          .text-center { text-align: center; }
-          .uppercase { text-transform: uppercase; }
-          .flex { display: table; width: 100%; }
-          .grid { display: table; width: 100%; }
-        </style>
-      `;
+      const electionDateFormatted = election?.startDate
+        ? new Date(election.startDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+        : new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
-      // Word HTML format requirements
+      const formatTime12 = (d?: Date) => {
+        if (!d || isNaN(d.getTime())) return '';
+        return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      };
+      const startTimeStr = election?.startDate ? formatTime12(new Date(election.startDate)) : '7:00 AM';
+      const endTimeStr = election?.endDate ? formatTime12(new Date(election.endDate)) : '4:00 PM';
+      const electionTimeFormatted = `${startTimeStr} – ${endTimeStr}`;
+
+      const getOrdinal = (n: number) => {
+        const s = ['th', 'st', 'nd', 'rd'];
+        const v = n % 100;
+        return n + (s[(v - 20) % 10] || s[v] || s[0]);
+      };
+      const dayWithSuffix = getOrdinal((election?.startDate ? new Date(election.startDate) : new Date()).getDate());
+      const monthAndYear = (election?.startDate ? new Date(election.startDate) : new Date()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+      let resultsRows = '';
+      results.forEach(({ position, candidates: posCandidates }) => {
+        if (posCandidates.length === 0) {
+          resultsRows += `
+            <tr>
+              <td style="border: 1px solid #000; padding: 6px; font-weight: bold; text-align: center; vertical-align: middle;">${position.name.toUpperCase()}</td>
+              <td colspan="3" style="border: 1px solid #000; padding: 6px; text-align: center; font-style: italic; color: #666;">No candidates registered</td>
+            </tr>
+          `;
+        } else {
+          posCandidates.forEach((candidate, idx) => {
+            resultsRows += `
+              <tr>
+                ${idx === 0 ? `<td rowspan="${posCandidates.length}" style="border: 1px solid #000; padding: 6px; font-weight: bold; text-align: center; vertical-align: middle;">${position.name.toUpperCase()}</td>` : ''}
+                <td style="border: 1px solid #000; padding: 6px; text-align: left;">${candidate.name.toUpperCase()}</td>
+                <td style="border: 1px solid #000; padding: 6px; text-align: center; font-weight: bold;">${candidate.votes.toLocaleString()}</td>
+                <td style="border: 1px solid #000; padding: 6px; text-align: center; font-weight: bold;">${idx + 1}</td>
+              </tr>
+            `;
+          });
+        }
+      });
+
       const html = `
         <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
         <head>
           <meta charset='utf-8'>
-          <title>Export HTML To Doc</title>
-          ${styles}
+          <title>Election Results</title>
+          <style>
+            @page { size: 8.5in 11in; margin: 1in; }
+            body { font-family: 'Arial', sans-serif; font-size: 11pt; color: #000; }
+            .header-table { width: 100%; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+            .header-table td { vertical-align: middle; }
+            .header-text { text-align: center; line-height: 1.2; }
+            .header-text p { margin: 0; padding: 0; font-size: 10pt; }
+            .header-text h1 { margin: 5px 0; font-size: 13pt; font-weight: bold; }
+            .title-section { text-align: center; margin-bottom: 20px; }
+            .title-section h2 { margin: 0; font-size: 16pt; font-weight: bold; }
+            .title-section h3 { margin: 2px 0; font-size: 12pt; font-weight: bold; }
+            .meta-table { width: 100%; max-width: 500px; margin-bottom: 20px; font-size: 11pt; }
+            .meta-table td { padding: 2px 0; }
+            .results-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 11pt; }
+            .results-table th { border: 1px solid #000; padding: 8px; background-color: #f2f2f2; font-weight: bold; }
+            .cert-text { margin-bottom: 30px; text-align: justify; text-justify: inter-word; line-height: 1.5; }
+            .signatures-table { width: 100%; text-align: center; margin-top: 40px; page-break-inside: avoid; }
+            .signatures-table td { padding: 10px; vertical-align: bottom; }
+            .sig-line { border-bottom: 1px solid #000; margin-bottom: 5px; width: 80%; margin-left: auto; margin-right: auto; }
+            .sig-name { font-weight: bold; font-size: 11pt; text-transform: uppercase; }
+            .sig-title { font-size: 10pt; color: #333; }
+          </style>
         </head>
         <body>
-          ${clone.innerHTML}
+          <table class="header-table">
+            <tr>
+              <td width="20%" style="text-align: left;">
+                <img src="${cpmnhsBase64.src}" width="90" height="90" alt="CPMNHS Logo">
+              </td>
+              <td width="60%" class="header-text">
+                <img src="${depedBase64.src}" width="160" alt="DepEd Logo" style="margin-bottom: 5px;"><br>
+                <p>Republic of the Philippines</p>
+                <p>Department of Education</p>
+                <p>Region VII – Central Visayas</p>
+                <p>Division of Bohol</p>
+                <h1>CONGRESSMAN PABLO MALASARTE NATIONAL HIGH SCHOOL</h1>
+                <p>Cabad, Balilihan, Bohol</p>
+              </td>
+              <td width="20%" style="text-align: right;">
+                <img src="${sslgBase64.src}" width="90" height="90" alt="SSLG Logo">
+              </td>
+            </tr>
+          </table>
+
+          <div class="title-section">
+            <h2>PRINT RESULTS</h2>
+            <h3>SCHOOL ELECTION</h3>
+            <h3>SCHOOL YEAR ${election?.schoolYear || '2025-2026'}</h3>
+          </div>
+
+          <table class="meta-table">
+            <tr><td width="35%"><b>Election Title</b></td><td width="5%">:</td><td>${election?.name || 'Supreme Secondary Learners Government (SSLG) Election'}</td></tr>
+            <tr><td><b>Date of Election</b></td><td>:</td><td>${electionDateFormatted}</td></tr>
+            <tr><td><b>Voting Time</b></td><td>:</td><td>${electionTimeFormatted}</td></tr>
+            <tr><td><b>Venue</b></td><td>:</td><td>Congressman Pablo Malasarte National High School</td></tr>
+            <tr><td><b>Total Registered Voters</b></td><td>:</td><td>${election?.totalVoters?.toLocaleString() || '0'}</td></tr>
+            <tr><td><b>Total Votes Cast</b></td><td>:</td><td>${election?.totalVoted?.toLocaleString() || '0'}</td></tr>
+            <tr><td><b>Voter Turnout</b></td><td>:</td><td>${turnoutPercent}%</td></tr>
+          </table>
+
+          <div style="text-align: center; font-weight: bold; margin-bottom: 10px;">OFFICIAL RESULTS</div>
+          
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th width="25%">POSITION</th>
+                <th width="45%">CANDIDATE NAME</th>
+                <th width="15%">TOTAL VOTES</th>
+                <th width="15%">RANK</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${resultsRows}
+            </tbody>
+          </table>
+
+          <div class="cert-text">
+            <p>We, the undersigned, hereby certify that the above results are true, correct, and officially tallied based on the votes cast during the SSLG Election held on ${electionDateFormatted}.</p>
+            <p>Certified this ${dayWithSuffix} day of ${monthAndYear} at Congressman Pablo Malasarte National High School, Cabad, Balilihan, Bohol.</p>
+          </div>
+
+          <div style="text-align: center; font-weight: bold; margin-bottom: 20px;">ELECTION COMMITTEE</div>
+          
+          <table class="signatures-table">
+            <tr>
+              <td width="33%">
+                <div class="sig-line"></div>
+                <div class="sig-name">Signature over Printed Name</div>
+                <div class="sig-title">Chairperson</div>
+              </td>
+              <td width="34%">
+                <div class="sig-line"></div>
+                <div class="sig-name">Signature over Printed Name</div>
+                <div class="sig-title">Co-Chairperson</div>
+              </td>
+              <td width="33%">
+                <div class="sig-line"></div>
+                <div class="sig-name">Signature over Printed Name</div>
+                <div class="sig-title">Member</div>
+              </td>
+            </tr>
+          </table>
+
+          <table class="signatures-table" style="margin-top: 50px;">
+            <tr>
+              <td width="50%" style="text-align: left; padding-left: 40px;">
+                <div style="font-weight: bold; margin-bottom: 30px;">Certified Correct:</div>
+                <div class="sig-name" style="text-decoration: underline;">${election?.signatories?.preparedBy?.name || 'MS. LIZA MAY A. BELTRAN'}</div>
+                <div class="sig-title">${election?.signatories?.preparedBy?.position || 'School Election Officer'}</div>
+              </td>
+              <td width="50%" style="text-align: left; padding-left: 40px;">
+                <div style="font-weight: bold; margin-bottom: 30px;">Noted by:</div>
+                <div class="sig-name" style="text-decoration: underline;">${election?.signatories?.approvedBy?.name || 'DR. ROLANDO D. VILLARIN'}</div>
+                <div class="sig-title">${election?.signatories?.approvedBy?.position || 'School Principal'}</div>
+              </td>
+            </tr>
+          </table>
+
         </body>
         </html>
       `;
@@ -322,11 +467,11 @@ export default function ResultsPage() {
           <div className="border-b-2 border-slate-900 pb-3 mb-4">
             <div className="flex items-center justify-between gap-4 mb-2">
               {/* Left Logo: CPMNHS Seal */}
-              <div className="w-16 flex-shrink-0 flex justify-center">
+              <div className="w-20 flex-shrink-0 flex justify-center">
                 <img
                   src={cpmnhsLogo}
                   alt="CPMNHS Seal"
-                  className="w-12 h-12 sm:w-16 sm:h-16 object-contain rounded-full shadow-xs"
+                  className="w-16 h-16 sm:w-20 sm:h-20 object-contain rounded-full shadow-xs"
                 />
               </div>
 
@@ -337,26 +482,26 @@ export default function ResultsPage() {
                   <img
                     src={depedLogo}
                     alt="DepEd Logo"
-                    className="w-24 sm:w-32 object-contain"
+                    className="w-32 sm:w-40 object-contain"
                   />
                 </div>
 
-                <p className="text-[10px] sm:text-[11px] text-slate-700 font-medium leading-tight">Republic of the Philippines</p>
-                <p className="text-[10px] sm:text-[11px] text-slate-700 font-medium leading-tight">Department of Education</p>
-                <p className="text-[10px] sm:text-[11px] text-slate-700 leading-tight">Region VII – Central Visayas</p>
-                <p className="text-[10px] sm:text-[11px] text-slate-700 leading-tight">Division of Bohol</p>
-                <h1 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-tight mt-0.5 leading-tight">
+                <p className="text-[10px] sm:text-xs text-slate-700 font-medium leading-tight">Republic of the Philippines</p>
+                <p className="text-[10px] sm:text-xs text-slate-700 font-medium leading-tight">Department of Education</p>
+                <p className="text-[10px] sm:text-xs text-slate-700 leading-tight">Region VII – Central Visayas</p>
+                <p className="text-[10px] sm:text-xs text-slate-700 leading-tight">Division of Bohol</p>
+                <h1 className="text-xs sm:text-base font-black text-slate-900 uppercase tracking-tight mt-1 leading-tight">
                   CONGRESSMAN PABLO MALASARTE NATIONAL HIGH SCHOOL
                 </h1>
-                <p className="text-[10px] sm:text-[11px] text-slate-600 leading-tight">Cabad, Balilihan, Bohol</p>
+                <p className="text-[10px] sm:text-xs text-slate-600 leading-tight">Cabad, Balilihan, Bohol</p>
               </div>
 
               {/* Right Logo: SSLG Seal */}
-              <div className="w-16 flex-shrink-0 flex justify-center">
+              <div className="w-20 flex-shrink-0 flex justify-center">
                 <img
                   src={sslgLogo}
                   alt="SSLG Seal"
-                  className="w-12 h-12 sm:w-16 sm:h-16 object-contain rounded-full shadow-xs"
+                  className="w-16 h-16 sm:w-20 sm:h-20 object-contain rounded-full shadow-xs"
                 />
               </div>
             </div>

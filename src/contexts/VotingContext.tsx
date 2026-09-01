@@ -147,12 +147,12 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   const isRefreshingRef = React.useRef(false);
 
   // Fetch scoped data for the active session
-  const refreshData = useCallback(async () => {
+  const refreshData = useCallback(async (overrideSessionId?: string) => {
     if (isRefreshingRef.current) return;
     isRefreshingRef.current = true;
 
     try {
-      const sessionId = activeSessionId || undefined;
+      const sessionId = overrideSessionId || activeSessionId || undefined;
 
       const [candidatesRes, positionsRes, sectionsRes, votersRes, settingsRes, sessionsData] = await Promise.all([
         api.getCandidates(sessionId).catch(() => []),
@@ -307,16 +307,23 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         if (isMounted) {
           setSessions(parsed);
           const savedSessionId = localStorage.getItem('activeSessionId');
+          let resolvedSessionId: string | null = null;
           if (savedSessionId && parsed.find((s: VotingSession) => s.id === savedSessionId)) {
-            setActiveSessionId(savedSessionId);
+            resolvedSessionId = savedSessionId;
           } else if (parsed.length > 0) {
-            setActiveSessionId(parsed[0].id);
+            resolvedSessionId = parsed[0].id;
           }
+          if (resolvedSessionId) {
+            setActiveSessionId(resolvedSessionId);
+          }
+          // Pass the resolved session ID directly to avoid the race condition
+          // where activeSessionId state hasn't updated yet
+          await refreshData(resolvedSessionId || undefined);
         }
-      } catch (_) {}
-
-      if (isMounted) {
-        await refreshData();
+      } catch (_) {
+        if (isMounted) {
+          await refreshData();
+        }
       }
     };
     init();
@@ -358,19 +365,19 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     };
   }, [refreshData]);
 
-  // Persist activeSessionId and trigger refresh on session switch
+  // Persist activeSessionId to localStorage
   useEffect(() => {
     if (activeSessionId) {
       localStorage.setItem('activeSessionId', activeSessionId);
-      refreshData();
     }
-  }, [activeSessionId, refreshData]);
+  }, [activeSessionId]);
 
   // Session management
   const switchSession = useCallback((id: string) => {
     setActiveSessionId(id);
     setVotes({});
-  }, []);
+    refreshData(id);
+  }, [refreshData]);
 
   const createSessionFn = useCallback(async (data: any): Promise<VotingSession> => {
     const created = await api.createSession(data);
