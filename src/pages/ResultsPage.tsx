@@ -122,7 +122,7 @@ export default function ResultsPage() {
           const blob = await response.blob();
           const imgBitmap = await createImageBitmap(blob);
           
-          const maxDim = 120;
+          const maxDim = 120; // Internal canvas size can stay 120
           let width = imgBitmap.width;
           let height = imgBitmap.height;
           
@@ -158,7 +158,7 @@ export default function ResultsPage() {
         } catch (e) {
           console.error('Failed to convert image:', e);
         }
-        return { src, width: 100, height: 100 };
+        return { src, width: 115, height: 115 };
       };
 
       const [cpmnhsBase64, depedBase64, sslgBase64] = await Promise.all([
@@ -241,11 +241,11 @@ export default function ResultsPage() {
         <body>
           <table class="header-table">
             <tr>
-              <td width="20%" style="text-align: left;">
-                <img src="${cpmnhsBase64.src}" width="90" height="90" alt="CPMNHS Logo">
+              <td width="22%" style="text-align: left;">
+                <img src="${cpmnhsBase64.src}" width="115" height="115" alt="CPMNHS Logo">
               </td>
-              <td width="60%" class="header-text">
-                <img src="${depedBase64.src}" width="160" alt="DepEd Logo" style="margin-bottom: 5px;"><br>
+              <td width="56%" class="header-text">
+                <img src="${depedBase64.src}" width="170" alt="DepEd Logo" style="margin-bottom: 5px;"><br>
                 <p>Republic of the Philippines</p>
                 <p>Department of Education</p>
                 <p>Region VII – Central Visayas</p>
@@ -253,8 +253,8 @@ export default function ResultsPage() {
                 <h1>CONGRESSMAN PABLO MALASARTE NATIONAL HIGH SCHOOL</h1>
                 <p>Cabad, Balilihan, Bohol</p>
               </td>
-              <td width="20%" style="text-align: right;">
-                <img src="${sslgBase64.src}" width="90" height="90" alt="SSLG Logo">
+              <td width="22%" style="text-align: right;">
+                <img src="${sslgBase64.src}" width="115" height="115" alt="SSLG Logo">
               </td>
             </tr>
           </table>
