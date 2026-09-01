@@ -6,6 +6,7 @@ import { useVoting } from '@/contexts/VotingContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { api } from '@/lib/api';
+import { generateResultsDocx } from '@/lib/generateResultsDocx';
 import {
   BarChart3,
   Trophy,
@@ -20,7 +21,8 @@ import {
   Printer,
   ArrowLeft,
   AlertTriangle,
-  Check
+  Check,
+  FileDown
 } from 'lucide-react';
 import schoolLogo from '@/assets/school-logo.png';
 import type { TieResolution, VoteVerification } from '@/types/voting';
@@ -32,6 +34,7 @@ export default function ResultsPage() {
   const [showPrintReport, setShowPrintReport] = useState(false);
   const [tieResolutions, setTieResolutions] = useState<TieResolution[]>([]);
   const [verifications, setVerifications] = useState<VoteVerification[]>([]);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const results = getResults();
   const isAdmin = isLoggedIn && user?.role === 'admin';
@@ -106,6 +109,18 @@ export default function ResultsPage() {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleDownloadDocx = async () => {
+    setIsDownloading(true);
+    try {
+      await generateResultsDocx(results, election, turnoutPercent);
+    } catch (error) {
+      console.error('Failed to generate Word document:', error);
+      alert('Failed to generate Word document. Please try again.');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   if (!isAdmin) {
@@ -194,14 +209,24 @@ export default function ResultsPage() {
               Official Printable Report Preview
             </span>
           </div>
-
-          <Button
-            onClick={handlePrint}
-            size="sm"
-            className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm"
-          >
-            <Printer className="h-4 w-4" /> Print Final Results
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={handleDownloadDocx}
+              disabled={isDownloading}
+              size="sm"
+              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm"
+            >
+              <FileDown className="h-4 w-4" />
+              {isDownloading ? 'Generating...' : 'Download Word Doc'}
+            </Button>
+            <Button
+              onClick={handlePrint}
+              size="sm"
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm"
+            >
+              <Printer className="h-4 w-4" /> Print Final Results
+            </Button>
+          </div>
         </div>
 
         {/* Printable Document Sheet */}
@@ -551,14 +576,25 @@ export default function ResultsPage() {
                 </div>
               </div>
               {election?.resultsFinalized && (
-                <Button
-                  onClick={() => setShowPrintReport(true)}
-                  size="sm"
-                  className="h-9 gap-1.5 text-xs sm:text-sm bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm rounded-xl"
-                >
-                  <Printer className="h-4 w-4" />
-                  Print Final Results
-                </Button>
+                <>
+                  <Button
+                    onClick={() => setShowPrintReport(true)}
+                    size="sm"
+                    className="h-9 gap-1.5 text-xs sm:text-sm bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm rounded-xl"
+                  >
+                    <Printer className="h-4 w-4" />
+                    Print Final Results
+                  </Button>
+                  <Button
+                    onClick={handleDownloadDocx}
+                    disabled={isDownloading}
+                    size="sm"
+                    className="h-9 gap-1.5 text-xs sm:text-sm bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm rounded-xl"
+                  >
+                    <FileDown className="h-4 w-4" />
+                    {isDownloading ? 'Generating...' : 'Download Word Doc'}
+                  </Button>
+                </>
               )}
 
               <Link to="/election-report">
