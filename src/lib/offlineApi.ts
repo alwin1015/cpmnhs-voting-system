@@ -77,8 +77,9 @@ export function seedDefaults() {
   if (!localStorage.getItem(LS_KEYS.verifications)) setStore(LS_KEYS.verifications, []);
   if (!localStorage.getItem(LS_KEYS.tieResolutions)) setStore(LS_KEYS.tieResolutions, []);
 }
-
-seedDefaults();
+// NOTE: seedDefaults() is NOT called here automatically.
+// It is only called explicitly from VotingContext when OFFLINE_MODE=true,
+// to avoid crashing the app with localStorage quota errors in online mode.
 
 export const offlineApi = {
   // Auth

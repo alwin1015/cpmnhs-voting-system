@@ -279,15 +279,18 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
-    // FORCIBLY CLEAR OLD OFFLINE DATA ONCE TO LOAD NEW SEED
-    if (OFFLINE_MODE && !localStorage.getItem('offline_synced_v3')) {
-      Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('offline_') && key !== 'offline_session') {
-          localStorage.removeItem(key);
-        }
-      });
-      localStorage.setItem('offline_synced_v3', 'true');
-      // Re-seed immediately from offlineSeed data
+    // OFFLINE MODE: seed data into localStorage from offlineSeed
+    if (OFFLINE_MODE) {
+      if (!localStorage.getItem('offline_synced_v3')) {
+        // Clear stale data, re-seed from fresh offlineSeed
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith('offline_') && key !== 'offline_session') {
+            localStorage.removeItem(key);
+          }
+        });
+        localStorage.setItem('offline_synced_v3', 'true');
+      }
+      // Always ensure seed is present (runs only if keys are missing)
       seedDefaults();
     }
 
