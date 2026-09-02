@@ -90,7 +90,7 @@ export const offlineApi = {
     if (voter.password_hash !== password) throw new Error('Invalid password');
     if (voter.status !== 'approved') throw new Error('Your registration is still pending approval.');
 
-    const user = { id: voter.id, role: 'voter', name: voter.name, lrn: voter.lrn, gradeLevel: voter.grade_level };
+    const user = { id: voter.id, role: 'voter', name: voter.name, lrn: voter.lrn, gradeLevel: voter.grade_level, section: voter.section };
     localStorage.setItem(LS_KEYS.session, JSON.stringify({ user, has_voted: voter.has_voted }));
     return { success: true, user, hasVoted: voter.has_voted };
   },
