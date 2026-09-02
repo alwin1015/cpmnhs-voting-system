@@ -1,5 +1,8 @@
-// Auto-generated offline seed — 2026-09-02T02:02:57.624Z
-// Note: base64 photo_url stripped to stay within localStorage 5MB quota
+// Auto-generated offline seed data — DO NOT EDIT MANUALLY
+// Generated: 2026-09-02T08:07:57.994Z
+// Source: Live Supabase database
+// Note: base64 photo_url stripped to stay within localStorage quota
+
 export const offlineSeed = {
   "positions": [
     {
@@ -606,6 +609,18 @@ export const offlineSeed = {
       "has_voted": false,
       "voted_at": null,
       "created_at": "2026-09-01T11:10:46.934359+00:00"
+    },
+    {
+      "id": "a96d1c13-97d7-4cf3-b4b4-e0a4eae56715",
+      "lrn": "000011112222",
+      "name": "Faris Gingo",
+      "grade_level": "10",
+      "section": "Gold",
+      "password_hash": "$2b$10$VbULtbX4eVADNRPLywMvBeYUj9VepktlPONGb/FB56vX5FtWOPIBi",
+      "status": "approved",
+      "has_voted": false,
+      "voted_at": null,
+      "created_at": "2026-09-02T08:00:34.557417+00:00"
     }
   ],
   "votes": [
@@ -1312,4 +1327,4 @@ export const offlineSeed = {
     }
   ],
   "settings": []
-};
+} as const;
