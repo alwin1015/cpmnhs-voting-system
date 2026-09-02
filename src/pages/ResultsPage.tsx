@@ -242,10 +242,10 @@ export default function ResultsPage() {
           <table class="header-table">
             <tr>
               <td width="22%" style="text-align: left;">
-                <img src="${cpmnhsBase64.src}" width="160" height="160" alt="CPMNHS Logo">
+                <img src="${cpmnhsBase64.src}" width="120" height="120" alt="CPMNHS Logo">
               </td>
               <td width="56%" class="header-text">
-                <img src="${depedBase64.src}" width="170" alt="DepEd Logo" style="margin-bottom: 5px;"><br>
+                <img src="${depedBase64.src}" width="140" alt="DepEd Logo" style="margin-bottom: 5px;"><br>
                 <p>Republic of the Philippines</p>
                 <p>Department of Education</p>
                 <p>Region VII – Central Visayas</p>
@@ -254,7 +254,7 @@ export default function ResultsPage() {
                 <p>Cabad, Balilihan, Bohol</p>
               </td>
               <td width="22%" style="text-align: right;">
-                <img src="${sslgBase64.src}" width="160" height="160" alt="SSLG Logo">
+                <img src="${sslgBase64.src}" width="120" height="120" alt="SSLG Logo">
               </td>
             </tr>
           </table>
@@ -467,11 +467,11 @@ export default function ResultsPage() {
           <div className="border-b-2 border-slate-900 pb-3 mb-4">
             <div className="flex items-center justify-between gap-4 mb-2">
               {/* Left Logo: CPMNHS Seal */}
-              <div className="w-36 flex-shrink-0 flex justify-center">
+              <div className="w-32 flex-shrink-0 flex justify-center">
                 <img
                   src={cpmnhsLogo}
                   alt="CPMNHS Seal"
-                  className="w-32 h-32 sm:w-36 sm:h-36 object-contain rounded-full shadow-xs"
+                  className="w-24 h-24 sm:w-28 sm:h-28 object-contain rounded-full shadow-xs"
                 />
               </div>
 
@@ -482,7 +482,7 @@ export default function ResultsPage() {
                   <img
                     src={depedLogo}
                     alt="DepEd Logo"
-                    className="w-40 sm:w-48 object-contain"
+                    className="w-36 sm:w-40 object-contain"
                   />
                 </div>
 
@@ -497,11 +497,11 @@ export default function ResultsPage() {
               </div>
 
               {/* Right Logo: SSLG Seal */}
-              <div className="w-36 flex-shrink-0 flex justify-center">
+              <div className="w-32 flex-shrink-0 flex justify-center">
                 <img
                   src={sslgLogo}
                   alt="SSLG Seal"
-                  className="w-32 h-32 sm:w-36 sm:h-36 object-contain rounded-full shadow-xs"
+                  className="w-24 h-24 sm:w-28 sm:h-28 object-contain rounded-full shadow-xs"
                 />
               </div>
             </div>
