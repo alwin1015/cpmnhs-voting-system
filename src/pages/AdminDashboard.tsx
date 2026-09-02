@@ -282,7 +282,7 @@ export default function AdminDashboard() {
             return {
               id: v.id,
               grade_level: nextGrade,
-              section: 'TBD',
+              section: '',
               status: nextStatus,
               academic_history: [...(v.academicHistory || []), { schoolYear: currentSchoolYear, gradeLevel: v.gradeLevel, section: v.section }]
             };

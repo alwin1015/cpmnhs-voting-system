@@ -21,6 +21,9 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showApprovalPopup, setShowApprovalPopup] = useState(false);
+  const [showSectionUpdate, setShowSectionUpdate] = useState(false);
+  const [newSection, setNewSection] = useState('');
+  const [loggedUserForSection, setLoggedUserForSection] = useState<any>(null);
 
   // Register state
   const [regLrn, setRegLrn] = useState('');
@@ -33,7 +36,7 @@ export default function LoginPage() {
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
 
-  const { login, register, sections, sessions } = useVoting();
+  const { login, register, sections, sessions, updateMySection } = useVoting();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -65,35 +68,44 @@ export default function LoginPage() {
       
       if (success) {
         let shouldShowPopup = false;
+        let needsSectionUpdate = false;
+        let loggedUser: any = null;
         
         try {
           const sessionDataStr = localStorage.getItem('voting_session');
           if (sessionDataStr && sessions) {
             const sessionData = JSON.parse(sessionDataStr);
-            const loggedUser = sessionData.user;
+            loggedUser = sessionData.user;
             
             if (loggedUser && loggedUser.role === 'voter') {
-              const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
-              const eligible = activeSessions.filter(s => {
-                const gradeOk = !s.eligibleGradeLevels || s.eligibleGradeLevels.length === 0 || s.eligibleGradeLevels.includes(loggedUser.gradeLevel || '');
-                const sectionOk = !s.eligibleSections || s.eligibleSections.length === 0 || s.eligibleSections.includes(loggedUser.section || '');
-                return gradeOk && sectionOk;
-              });
+              if (loggedUser.section === 'TBD' || loggedUser.section === '' || !loggedUser.section) {
+                needsSectionUpdate = true;
+              } else {
+                const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
+                const eligible = activeSessions.filter(s => {
+                  const gradeOk = !s.eligibleGradeLevels || s.eligibleGradeLevels.length === 0 || s.eligibleGradeLevels.includes(loggedUser.gradeLevel || '');
+                  const sectionOk = !s.eligibleSections || s.eligibleSections.length === 0 || s.eligibleSections.includes(loggedUser.section || '');
+                  return gradeOk && sectionOk;
+                });
 
-              if (eligible.length > 0) {
-                const activeSessionId = eligible[0].id;
-                const popupKey = `approval_popup_seen_${loggedUser.id}_${activeSessionId}`;
-                
-                if (!localStorage.getItem(popupKey)) {
-                  localStorage.setItem(popupKey, 'true');
-                  shouldShowPopup = true;
+                if (eligible.length > 0) {
+                  const activeSessionId = eligible[0].id;
+                  const popupKey = `approval_popup_seen_${loggedUser.id}_${activeSessionId}`;
+                  
+                  if (!localStorage.getItem(popupKey)) {
+                    localStorage.setItem(popupKey, 'true');
+                    shouldShowPopup = true;
+                  }
                 }
               }
             }
           }
         } catch (e) {}
 
-        if (shouldShowPopup) {
+        if (needsSectionUpdate) {
+          setLoggedUserForSection(loggedUser);
+          setShowSectionUpdate(true);
+        } else if (shouldShowPopup) {
           setShowApprovalPopup(true);
         } else {
           toast({
@@ -114,6 +126,36 @@ export default function LoginPage() {
         title: 'Error',
         description: 'An error occurred. Please try again.',
         variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSectionUpdate = async () => {
+    if (!newSection || !loggedUserForSection) {
+      toast({
+        title: 'Error',
+        description: 'Please select a section.',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      await updateMySection(loggedUserForSection.id, newSection);
+      toast({
+        title: 'Section Updated',
+        description: 'Your section has been successfully updated.'
+      });
+      setShowSectionUpdate(false);
+      navigate('/vote');
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: 'Failed to update section.',
+        variant: 'destructive'
       });
     } finally {
       setIsLoading(false);
@@ -517,7 +559,53 @@ export default function LoginPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog open={showSectionUpdate} onOpenChange={() => {}}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader className="text-center sm:text-center flex flex-col items-center">
+            <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4">
+              <User className="w-10 h-10" />
+            </div>
+            <AlertDialogTitle className="text-xl font-bold text-slate-900">
+              Welcome back to the new School Year!
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-600 text-base mt-2">
+              You are now in <strong>Grade {loggedUserForSection?.gradeLevel}</strong>. Please select your section for the new school year before continuing.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          
+          <div className="py-4">
+            <div className="space-y-2 text-left">
+              <Label htmlFor="newSection">Your Section</Label>
+              <select
+                id="newSection"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                value={newSection}
+                onChange={(e) => setNewSection(e.target.value)}
+              >
+                <option value="">Select a section...</option>
+                {sections
+                  .filter(s => s.gradeLevel === loggedUserForSection?.gradeLevel)
+                  .map(section => (
+                    <option key={section.id} value={section.name}>
+                      {section.name}
+                    </option>
+                  ))
+                }
+              </select>
+            </div>
+          </div>
 
+          <AlertDialogFooter className="sm:justify-center mt-2">
+            <Button
+              onClick={handleSectionUpdate}
+              disabled={!newSection || isLoading}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 rounded-full h-11 text-base shadow-md w-full"
+            >
+              {isLoading ? 'Updating...' : 'Update Section'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

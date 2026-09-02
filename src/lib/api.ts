@@ -129,6 +129,22 @@ export const api = {
     if (error) throw new Error(error.message);
     return { success: true };
   },
+
+  updateMySection: async (voterId: string, newSection: string) => {
+    const { error } = await supabase.from('voters').update({ section: newSection }).eq('id', voterId);
+    if (error) throw new Error(error.message);
+    
+    // Update local storage session
+    const sessionStr = localStorage.getItem('voting_session');
+    if (sessionStr) {
+      const session = JSON.parse(sessionStr);
+      if (session.user && session.user.id === voterId) {
+        session.user.section = newSection;
+        localStorage.setItem('voting_session', JSON.stringify(session));
+      }
+    }
+    return { success: true };
+  },
   
   rejectVoter: async (id: string) => {
     const { error } = await supabase.from('voters').update({ status: 'rejected' }).eq('id', id);

@@ -179,6 +179,23 @@ export const offlineApi = {
     setStore(LS_KEYS.voters, voters);
     return { success: true };
   },
+  updateMySection: async (voterId: string, newSection: string) => {
+    const voters = getStore<any>(LS_KEYS.voters);
+    const v = voters.find((v: any) => String(v.id) === voterId);
+    if (v) v.section = newSection;
+    setStore(LS_KEYS.voters, voters);
+    
+    // Update local storage session
+    const sessionStr = localStorage.getItem('voting_session');
+    if (sessionStr) {
+      const session = JSON.parse(sessionStr);
+      if (session.user && session.user.id === voterId) {
+        session.user.section = newSection;
+        localStorage.setItem('voting_session', JSON.stringify(session));
+      }
+    }
+    return { success: true };
+  },
   rejectVoter: async (id: string) => {
     const voters = getStore<any>(LS_KEYS.voters);
     const v = voters.find((v: any) => String(v.id) === id);

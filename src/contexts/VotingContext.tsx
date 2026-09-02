@@ -5,7 +5,7 @@ import { offlineApi, seedDefaults } from '@/lib/offlineApi';
 import { supabase } from '@/lib/supabase';
 
 // ⚡ OFFLINE MODE TOGGLE
-const OFFLINE_MODE = false;
+const OFFLINE_MODE = true;
 const api = OFFLINE_MODE ? offlineApi : onlineApi;
 
 interface VotingContextType {
@@ -55,6 +55,7 @@ interface VotingContextType {
   addSection: (section: Omit<Section, 'id'>) => void;
   deleteSection: (id: string) => void;
   approveVoter: (id: string) => Promise<boolean>;
+  updateMySection: (voterId: string, newSection: string) => Promise<void>;
   rejectVoter: (id: string) => Promise<boolean>;
 }
 
@@ -801,6 +802,23 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     [refreshData]
   );
 
+  const updateMySection = useCallback(
+    async (voterId: string, newSection: string) => {
+      setVoters(prev => prev.map(v => v.id === voterId ? { ...v, section: newSection } : v));
+      if (user && user.id === voterId) {
+        setUser(prev => prev ? { ...prev, section: newSection } : null);
+      }
+      try {
+        await api.updateMySection(voterId, newSection);
+      } catch (error) {
+        console.error('Update section failed:', error);
+        refreshData();
+        throw error;
+      }
+    },
+    [refreshData, user]
+  );
+
   const rejectVoter = useCallback(
     async (id: string) => {
       setVoters(prev => prev.map(v => v.id === id ? { ...v, status: 'rejected' } : v));
@@ -861,6 +879,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         addSection,
         deleteSection,
         approveVoter,
+        updateMySection,
         rejectVoter,
       }}
     >
