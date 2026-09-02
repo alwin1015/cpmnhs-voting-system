@@ -5,7 +5,7 @@ import { offlineApi, seedDefaults } from '@/lib/offlineApi';
 import { supabase } from '@/lib/supabase';
 
 // ⚡ OFFLINE MODE TOGGLE
-const OFFLINE_MODE = false;
+const OFFLINE_MODE = true;
 const api = OFFLINE_MODE ? offlineApi : onlineApi;
 
 interface VotingContextType {
