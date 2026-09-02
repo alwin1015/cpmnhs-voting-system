@@ -639,7 +639,7 @@ export default function AdminDashboard() {
             ? 'The election schedule has been authorized. You can now activate it and launch the election from the dashboard.'
             : 'Complete the authorization process before activating the schedule.'}
         </p>
-        {election?.authorizationConfirmedAt && (
+        {election?.authorizationConfirmedAt && !isNaN(new Date(election.authorizationConfirmedAt).getTime()) && (
           <p className="text-[11px] text-slate-400">
             Authorized on: {new Date(election.authorizationConfirmedAt).toLocaleString()}
           </p>
@@ -864,9 +864,9 @@ export default function AdminDashboard() {
                   {election && (
                     <span className="text-xs text-white/60 flex items-center gap-1.5 bg-black/10 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">
                       <CalendarClock className="h-3.5 w-3.5" />
-                      {election.startDate ? election.startDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No start'} 
+                      {election.startDate && !isNaN(election.startDate.getTime()) ? election.startDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No start'} 
                       <span className="mx-1 opacity-50">—</span>
-                      {election.endDate ? election.endDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No end'}
+                      {election.endDate && !isNaN(election.endDate.getTime()) ? election.endDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No end'}
                     </span>
                   )}
                 </div>
