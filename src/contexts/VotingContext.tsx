@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { Candidate, Position, Voter, Section, Election, VotingSession, User } from '@/types/voting';
 import { api as onlineApi } from '@/lib/api';
-import { offlineApi } from '@/lib/offlineApi';
+import { offlineApi, seedDefaults } from '@/lib/offlineApi';
 import { supabase } from '@/lib/supabase';
 
 // ⚡ OFFLINE MODE TOGGLE
@@ -280,14 +280,15 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
 
     // FORCIBLY CLEAR OLD OFFLINE DATA ONCE TO LOAD NEW SEED
-    if (OFFLINE_MODE && !localStorage.getItem('offline_synced_v2')) {
+    if (OFFLINE_MODE && !localStorage.getItem('offline_synced_v3')) {
       Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('offline_')) {
+        if (key.startsWith('offline_') && key !== 'offline_session') {
           localStorage.removeItem(key);
         }
       });
-      localStorage.setItem('offline_synced_v2', 'true');
-      // This will force seedDefaults() to run again in offlineApi
+      localStorage.setItem('offline_synced_v3', 'true');
+      // Re-seed immediately from offlineSeed data
+      seedDefaults();
     }
 
     const init = async () => {

@@ -37,8 +37,7 @@ function genId(): string {
 
 import { offlineSeed } from './offlineSeed';
 
-// Seed default data if empty
-function seedDefaults() {
+export function seedDefaults() {
   if (!localStorage.getItem(LS_KEYS.positions)) setStore(LS_KEYS.positions, offlineSeed.positions || []);
   if (!localStorage.getItem(LS_KEYS.sections)) setStore(LS_KEYS.sections, offlineSeed.sections || []);
   if (!localStorage.getItem(LS_KEYS.candidates)) setStore(LS_KEYS.candidates, offlineSeed.candidates || []);
@@ -54,8 +53,10 @@ function seedDefaults() {
     ]);
   }
 
+  // Seed election from the first session in offlineSeed if available
   if (!localStorage.getItem(LS_KEYS.election)) {
-    setStore(LS_KEYS.election, {
+    const firstSession = (offlineSeed.sessions && offlineSeed.sessions[0]) || null;
+    setStore(LS_KEYS.election, firstSession || {
       id: 1,
       name: 'SSG General Election',
       school_year: '2026-2027',
