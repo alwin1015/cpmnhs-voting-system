@@ -231,8 +231,43 @@ export default function AdminDashboard() {
 
   const handleActivateSchedule = async () => {
     setIsScheduleOpen(false);
-    toast({ title: 'Schedule Activated', description: 'The election is now scheduled. Use "Launch Election" to start voting.' });
+    
+    // Check for School Year Rollover
+    if (currentSchoolYear && election?.schoolYear && currentSchoolYear !== election.schoolYear) {
+      try {
+        const updates = voters.map(v => {
+          if (v.status === 'graduated' || v.status === 'inactive' || !v.gradeLevel) return null;
+          let nextGrade = v.gradeLevel;
+          let nextStatus = v.status;
+          const numGrade = parseInt(v.gradeLevel, 10);
+          if (!isNaN(numGrade)) {
+            if (numGrade < 12) {
+              nextGrade = (numGrade + 1).toString();
+            } else if (numGrade === 12) {
+              nextGrade = 'Graduated';
+              nextStatus = 'graduated';
+            }
+          }
+          return {
+            id: v.id,
+            grade_level: nextGrade,
+            section: '',
+            status: nextStatus,
+            academic_history: [...(v.academicHistory || []), { schoolYear: currentSchoolYear, gradeLevel: v.gradeLevel, section: v.section }]
+          };
+        }).filter(Boolean) as any[];
 
+        if (updates.length > 0) {
+          await processRollover(election.schoolYear, updates);
+          toast({ title: 'School Year Updated', description: `Voters automatically promoted for ${election.schoolYear}. Grade 12 students graduated.` });
+        }
+      } catch (err) {
+        console.error("Rollover failed", err);
+        toast({ title: 'Rollover Error', description: 'Failed to automatically promote students.', variant: 'destructive' });
+      }
+    }
+
+    toast({ title: 'Schedule Activated', description: 'The election is now scheduled. Use "Launch Election" to start voting.' });
     updateElection({ scheduleStatus: 'scheduled' }).catch(err => console.error('Activate schedule error:', err));
   };
 
@@ -263,40 +298,7 @@ export default function AdminDashboard() {
         return;
       }
 
-      // Check for School Year Rollover
-      if (currentSchoolYear && election.schoolYear && currentSchoolYear !== election.schoolYear) {
-        try {
-          const updates = voters.map(v => {
-            if (v.status === 'graduated' || v.status === 'inactive' || !v.gradeLevel) return null;
-            let nextGrade = v.gradeLevel;
-            let nextStatus = v.status;
-            const numGrade = parseInt(v.gradeLevel, 10);
-            if (!isNaN(numGrade)) {
-              if (numGrade < 12) {
-                nextGrade = (numGrade + 1).toString();
-              } else if (numGrade === 12) {
-                nextGrade = 'Graduated';
-                nextStatus = 'graduated';
-              }
-            }
-            return {
-              id: v.id,
-              grade_level: nextGrade,
-              section: '',
-              status: nextStatus,
-              academic_history: [...(v.academicHistory || []), { schoolYear: currentSchoolYear, gradeLevel: v.gradeLevel, section: v.section }]
-            };
-          }).filter(Boolean) as any[];
 
-          if (updates.length > 0) {
-            await processRollover(election.schoolYear, updates);
-            toast({ title: 'School Year Updated', description: `Voters automatically promoted for ${election.schoolYear}. Grade 12 students graduated.` });
-          }
-        } catch (err) {
-          console.error("Rollover failed", err);
-          toast({ title: 'Rollover Error', description: 'Failed to automatically promote students.', variant: 'destructive' });
-        }
-      }
 
       await updateElection({ isActive: true, scheduleStatus: 'ongoing' });
       toast({ title: 'Election Launched!', description: 'Students can now cast their votes.' });
