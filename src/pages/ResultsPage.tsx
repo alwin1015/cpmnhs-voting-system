@@ -467,11 +467,11 @@ export default function ResultsPage() {
           <div className="border-b-2 border-slate-900 pb-3 mb-4">
             <div className="flex items-center justify-between gap-4 mb-2">
               {/* Left Logo: CPMNHS Seal */}
-              <div className="w-20 flex-shrink-0 flex justify-center">
+              <div className="w-28 flex-shrink-0 flex justify-center">
                 <img
                   src={cpmnhsLogo}
                   alt="CPMNHS Seal"
-                  className="w-16 h-16 sm:w-20 sm:h-20 object-contain rounded-full shadow-xs"
+                  className="w-24 h-24 sm:w-28 sm:h-28 object-contain rounded-full shadow-xs"
                 />
               </div>
 
@@ -497,11 +497,11 @@ export default function ResultsPage() {
               </div>
 
               {/* Right Logo: SSLG Seal */}
-              <div className="w-20 flex-shrink-0 flex justify-center">
+              <div className="w-28 flex-shrink-0 flex justify-center">
                 <img
                   src={sslgLogo}
                   alt="SSLG Seal"
-                  className="w-16 h-16 sm:w-20 sm:h-20 object-contain rounded-full shadow-xs"
+                  className="w-24 h-24 sm:w-28 sm:h-28 object-contain rounded-full shadow-xs"
                 />
               </div>
             </div>
