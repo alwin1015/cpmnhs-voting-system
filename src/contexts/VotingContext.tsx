@@ -279,6 +279,17 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
+    // FORCIBLY CLEAR OLD OFFLINE DATA ONCE TO LOAD NEW SEED
+    if (OFFLINE_MODE && !localStorage.getItem('offline_synced_v2')) {
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('offline_')) {
+          localStorage.removeItem(key);
+        }
+      });
+      localStorage.setItem('offline_synced_v2', 'true');
+      // This will force seedDefaults() to run again in offlineApi
+    }
+
     const init = async () => {
       try {
         const meData = await api.getMe();
