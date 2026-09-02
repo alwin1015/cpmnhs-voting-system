@@ -348,7 +348,7 @@ export default function AdminDashboard() {
   }
 
   const results = getResults();
-  const voterTurnoutStr = election && election.totalVoters > 0 
+  const voterTurnoutStr = election?.totalVoters > 0 
     ? `${Math.round(((election.totalVoted || 0) / election.totalVoters) * 100)}%` 
     : '0%';
 
@@ -864,9 +864,9 @@ export default function AdminDashboard() {
                   {election && (
                     <span className="text-xs text-white/60 flex items-center gap-1.5 bg-black/10 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">
                       <CalendarClock className="h-3.5 w-3.5" />
-                      {election.startDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })} 
+                      {election.startDate ? election.startDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No start'} 
                       <span className="mx-1 opacity-50">—</span>
-                      {election.endDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      {election.endDate ? election.endDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No end'}
                     </span>
                   )}
                 </div>
