@@ -159,13 +159,42 @@ export default function VotingPage() {
     );
   }
 
-  // Filter positions: skip Representative positions if grade map is set to 'none'
+  // Helper to extract grade number from a Representative position name (e.g. "Grade 8 Representative" -> "8")
+  const getRepresentativeGrade = (posName: string): string | null => {
+    if (!/representative|rep\b/i.test(posName)) return null;
+    const m = posName.match(/(?:grade|gr\.?|g)\s*(\d+)/i) ||
+              posName.match(/(\d+)(?:st|nd|rd|th)?\s*(?:grade|gr\.?|representative|rep)/i) ||
+              posName.match(/\b(\d+)\b/);
+    return m ? m[1] : null;
+  };
+
+  // Filter positions: each voter only sees the Representative assigned to their grade, or none if set to 'none'
   const votablePositions = positions.filter(p => {
-    const isRep = p.name.toLowerCase().includes('representative');
-    if (isRep && election?.gradeMappings && user?.gradeLevel) {
+    const isRep = /representative|rep\b/i.test(p.name);
+    if (!isRep) return true; // Non-representative positions (President, VP, etc.) are always visible
+
+    // If election has gradeMappings configured and voter has a gradeLevel:
+    if (election?.gradeMappings && user?.gradeLevel) {
       const targetGrade = election.gradeMappings[user.gradeLevel];
-      if (targetGrade === 'none') return false;
+
+      // If 'none' is selected, this grade cannot see or vote for any Grade 7–12 Representative
+      if (targetGrade === 'none') {
+        return false;
+      }
+
+      // If mapped to a specific grade (e.g. '8')
+      if (targetGrade) {
+        const repGrade = getRepresentativeGrade(p.name);
+        // If this position has a specific grade in its title (e.g. "Grade 8 Representative"),
+        // only keep it if it matches the target grade
+        if (repGrade) {
+          return repGrade === targetGrade;
+        }
+        // Generic representative position with no grade in title: keep it
+        return true;
+      }
     }
+
     return true;
   });
 
@@ -191,14 +220,18 @@ export default function VotingPage() {
     );
   }
 
-  const currentPosition = votablePositions[currentPositionIndex];
+  const currentPosition = votablePositions[currentPositionIndex] || votablePositions[0];
   
   let positionCandidates = candidates.filter(c => c.position === currentPosition.id);
-  const isRepresentativePosition = currentPosition.name.toLowerCase().includes('representative');
+  const isRepresentativePosition = /representative|rep\b/i.test(currentPosition.name);
   if (isRepresentativePosition && election?.gradeMappings && user?.gradeLevel) {
     const targetGrade = election.gradeMappings[user.gradeLevel];
-    if (targetGrade) {
-      positionCandidates = positionCandidates.filter(c => c.gradeLevel === targetGrade);
+    if (targetGrade && targetGrade !== 'none') {
+      const repGrade = getRepresentativeGrade(currentPosition.name);
+      // Only filter candidates by candidate.gradeLevel if the position itself is generic (no grade in position name)
+      if (!repGrade) {
+        positionCandidates = positionCandidates.filter(c => c.gradeLevel === targetGrade);
+      }
     }
   }
 
