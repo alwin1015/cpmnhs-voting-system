@@ -130,6 +130,12 @@ export const api = {
     return { success: true };
   },
 
+  approveAllPendingVoters: async () => {
+    const { error } = await supabase.from('voters').update({ status: 'approved' }).eq('status', 'pending');
+    if (error) throw new Error(error.message);
+    return { success: true };
+  },
+
   updateMySection: async (voterId: string, newSection: string) => {
     const { error } = await supabase.from('voters').update({ section: newSection }).eq('id', voterId);
     if (error) throw new Error(error.message);

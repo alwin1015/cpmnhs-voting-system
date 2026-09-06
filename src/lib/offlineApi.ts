@@ -179,6 +179,14 @@ export const offlineApi = {
     setStore(LS_KEYS.voters, voters);
     return { success: true };
   },
+  approveAllPendingVoters: async () => {
+    const voters = getStore<any>(LS_KEYS.voters);
+    voters.forEach((v: any) => {
+      if (v.status === 'pending') v.status = 'approved';
+    });
+    setStore(LS_KEYS.voters, voters);
+    return { success: true };
+  },
   updateMySection: async (voterId: string, newSection: string) => {
     const voters = getStore<any>(LS_KEYS.voters);
     const v = voters.find((v: any) => String(v.id) === voterId);

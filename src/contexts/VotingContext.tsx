@@ -55,6 +55,7 @@ interface VotingContextType {
   addSection: (section: Omit<Section, 'id'>) => void;
   deleteSection: (id: string) => void;
   approveVoter: (id: string) => Promise<boolean>;
+  approveAllVoters: () => Promise<boolean>;
   updateMySection: (voterId: string, newSection: string) => Promise<void>;
   rejectVoter: (id: string) => Promise<boolean>;
 }
@@ -802,6 +803,22 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     [refreshData]
   );
 
+  const approveAllVoters = useCallback(
+    async () => {
+      setVoters(prev => prev.map(v => v.status === 'pending' ? { ...v, status: 'approved' } : v));
+      try {
+        await api.approveAllPendingVoters();
+        await refreshData();
+        return true;
+      } catch (error) {
+        console.error('Approve all voters failed:', error);
+        await refreshData();
+        return false;
+      }
+    },
+    [refreshData]
+  );
+
   const updateMySection = useCallback(
     async (voterId: string, newSection: string) => {
       setVoters(prev => prev.map(v => v.id === voterId ? { ...v, section: newSection } : v));
@@ -879,6 +896,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         addSection,
         deleteSection,
         approveVoter,
+        approveAllVoters,
         updateMySection,
         rejectVoter,
       }}
