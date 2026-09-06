@@ -159,7 +159,15 @@ export default function VotingPage() {
     );
   }
 
-  const votablePositions = positions;
+  // Filter positions: skip Representative positions if grade map is set to 'none'
+  const votablePositions = positions.filter(p => {
+    const isRep = p.name.toLowerCase().includes('representative');
+    if (isRep && election?.gradeMappings && user?.gradeLevel) {
+      const targetGrade = election.gradeMappings[user.gradeLevel];
+      if (targetGrade === 'none') return false;
+    }
+    return true;
+  });
 
   if (votablePositions.length === 0) {
     return (

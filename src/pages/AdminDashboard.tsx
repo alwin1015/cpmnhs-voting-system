@@ -779,6 +779,7 @@ export default function AdminDashboard() {
                           className="w-full pl-3 pr-10 py-2 rounded-lg border border-gray-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-gray-50 hover:bg-gray-100 transition-colors appearance-none cursor-pointer text-gray-700"
                         >
                           <option value="">Any Grade (No Restriction)</option>
+                          <option value="none">None (Cannot vote for any Representative)</option>
                           {GRADES.map(g => (
                             <option key={g} value={g}>Grade {g} Representatives</option>
                           ))}
