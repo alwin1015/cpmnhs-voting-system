@@ -278,7 +278,7 @@ export default function AdminDashboard() {
 
   const handleSaveMappings = async () => {
     setIsMappingsOpen(false);
-    toast({ title: 'Mappings Saved', description: 'Candidate grade mappings have been updated.' });
+    toast({ title: 'Mappings Saved', description: 'Representative grade mappings have been updated.' });
     updateElection({ gradeMappings: editMappings }).catch(err => console.error('Save mappings error:', err));
   };
 
@@ -747,10 +747,10 @@ export default function AdminDashboard() {
                 <div className="relative z-10">
                   <h2 className="text-xl font-bold flex items-center gap-2 text-white">
                     <Settings className="w-5 h-5 text-purple-200" />
-                    Candidate Grade Mapping
+                    Representative Grade Mapping
                   </h2>
                   <p className="text-sm text-purple-100 mt-2 opacity-90 leading-relaxed">
-                    Configure voting rules. Students will only see candidates from their mapped grade for restricted positions.
+                    Configure voting rules. Students will only see representatives from their mapped grade level.
                   </p>
                 </div>
                 <Settings className="w-32 h-32 absolute -bottom-10 -right-10 text-white opacity-10 rotate-12" />
@@ -780,7 +780,7 @@ export default function AdminDashboard() {
                         >
                           <option value="">Any Grade (No Restriction)</option>
                           {GRADES.map(g => (
-                            <option key={g} value={g}>Grade {g} Candidates</option>
+                            <option key={g} value={g}>Grade {g} Representatives</option>
                           ))}
                         </select>
                         <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-400 group-hover:text-purple-500 transition-colors">
