@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
@@ -20,7 +20,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [showApprovalPopup, setShowApprovalPopup] = useState(false);
+  const [showApprovalBanner, setShowApprovalBanner] = useState(false);
+  const [isBannerFadingOut, setIsBannerFadingOut] = useState(false);
   const [showSectionUpdate, setShowSectionUpdate] = useState(false);
   const [newSection, setNewSection] = useState('');
   const [loggedUserForSection, setLoggedUserForSection] = useState<any>(null);
@@ -36,9 +37,64 @@ export default function LoginPage() {
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
 
-  const { login, register, sections, sessions, updateMySection } = useVoting();
+  const { login, register, sections, sessions, updateMySection, voters, election } = useVoting();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  const checkAndTriggerApprovalNotification = (targetLrn: string) => {
+    if (!targetLrn || targetLrn.length !== 12 || !voters || voters.length === 0) return;
+
+    const voter = voters.find(v => v.lrn === targetLrn);
+    if (!voter) return;
+
+    // Show only to students who are approved and eligible for the current voting session
+    // Do not show to pending, rejected, or unregistered students
+    if (voter.status !== 'approved') return;
+
+    const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
+    const eligibleSession = activeSessions.find(s => {
+      const gradeOk = !s.eligibleGradeLevels || s.eligibleGradeLevels.length === 0 || s.eligibleGradeLevels.includes(voter.gradeLevel || '');
+      const sectionOk = !s.eligibleSections || s.eligibleSections.length === 0 || s.eligibleSections.includes(voter.section || '');
+      return gradeOk && sectionOk;
+    }) || (activeSessions.length > 0 ? activeSessions[0] : null);
+
+    const sessionId = eligibleSession ? eligibleSession.id : (election?.id || 'current');
+
+    // Tie notification to current voting session: after displayed once, do not show again
+    const notificationKey = `approval_notice_shown_${voter.id}_${sessionId}`;
+    if (localStorage.getItem(notificationKey)) {
+      return;
+    }
+
+    // Mark as shown
+    localStorage.setItem(notificationKey, 'true');
+
+    // Show popup
+    setShowApprovalBanner(true);
+    setIsBannerFadingOut(false);
+
+    // Keep visible for approximately 3 seconds, then fade out and disappear
+    setTimeout(() => {
+      setIsBannerFadingOut(true);
+    }, 3000);
+
+    setTimeout(() => {
+      setShowApprovalBanner(false);
+      setIsBannerFadingOut(false);
+    }, 3500);
+  };
+
+  // Automatically check approval status on page load or when voters/sessions update
+  useEffect(() => {
+    if (isRegisterMode) return;
+    const knownLrn = localStorage.getItem('student_device_lrn');
+    if (knownLrn && knownLrn.length === 12) {
+      if (!lrn) {
+        setLrn(knownLrn);
+      }
+      checkAndTriggerApprovalNotification(knownLrn);
+    }
+  }, [voters, sessions, isRegisterMode]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,36 +123,18 @@ export default function LoginPage() {
       const success = await login(lrn, password);
       
       if (success) {
-        let shouldShowPopup = false;
         let needsSectionUpdate = false;
         let loggedUser: any = null;
         
         try {
           const sessionDataStr = localStorage.getItem('voting_session');
-          if (sessionDataStr && sessions) {
+          if (sessionDataStr) {
             const sessionData = JSON.parse(sessionDataStr);
             loggedUser = sessionData.user;
             
             if (loggedUser && loggedUser.role === 'voter') {
               if (loggedUser.section === 'TBD' || loggedUser.section === '' || !loggedUser.section) {
                 needsSectionUpdate = true;
-              } else {
-                const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
-                const eligible = activeSessions.filter(s => {
-                  const gradeOk = !s.eligibleGradeLevels || s.eligibleGradeLevels.length === 0 || s.eligibleGradeLevels.includes(loggedUser.gradeLevel || '');
-                  const sectionOk = !s.eligibleSections || s.eligibleSections.length === 0 || s.eligibleSections.includes(loggedUser.section || '');
-                  return gradeOk && sectionOk;
-                });
-
-                if (eligible.length > 0) {
-                  const activeSessionId = eligible[0].id;
-                  const popupKey = `approval_popup_seen_${loggedUser.id}_${activeSessionId}`;
-                  
-                  if (!localStorage.getItem(popupKey)) {
-                    localStorage.setItem(popupKey, 'true');
-                    shouldShowPopup = true;
-                  }
-                }
               }
             }
           }
@@ -105,8 +143,6 @@ export default function LoginPage() {
         if (needsSectionUpdate) {
           setLoggedUserForSection(loggedUser);
           setShowSectionUpdate(true);
-        } else if (shouldShowPopup) {
-          setShowApprovalPopup(true);
         } else {
           toast({
             title: 'Login Successful',
@@ -211,6 +247,10 @@ export default function LoginPage() {
           title: 'Registration Submitted',
           description: result.message,
         });
+        // Save LRN on this device so approval popup shows automatically when approved by admin
+        localStorage.setItem('student_device_lrn', regLrn);
+        setLrn(regLrn);
+
         // Reset register form and switch to login
         setRegLrn('');
         setRegFirstName('');
@@ -441,6 +481,36 @@ export default function LoginPage() {
                 </form>
               ) : (
                 <form onSubmit={handleLogin} className="space-y-4">
+                  {/* Temporary Approval Notification Popup */}
+                  {showApprovalBanner && (
+                    <div
+                      className={`transition-all duration-500 ease-in-out overflow-hidden ${
+                        isBannerFadingOut
+                          ? 'opacity-0 -translate-y-2 max-h-0 mb-0 py-0'
+                          : 'opacity-100 translate-y-0 max-h-28 mb-4'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 p-3.5 bg-emerald-50 border border-emerald-200/90 rounded-xl shadow-xs text-emerald-900 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                          <CheckCircle2 className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-xs sm:text-sm font-bold text-emerald-900 leading-tight">
+                            You've been approved and are ready to vote!
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowApprovalBanner(false)}
+                          className="text-emerald-500 hover:text-emerald-800 text-xs p-1 rounded-md transition-colors"
+                          title="Dismiss"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label htmlFor="student-id">LRN</Label>
                     <div className="relative">
@@ -448,7 +518,14 @@ export default function LoginPage() {
                       <Input
                         id="student-id"
                         value={lrn}
-                        onChange={(e) => setLrn(e.target.value.replace(/\D/g, '').slice(0, 12))}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, '').slice(0, 12);
+                          setLrn(val);
+                          if (val.length === 12) {
+                            localStorage.setItem('student_device_lrn', val);
+                            checkAndTriggerApprovalNotification(val);
+                          }
+                        }}
                         maxLength={12}
                         className="pl-9 bg-white/50"
                         disabled={isLoading}
@@ -521,43 +598,6 @@ export default function LoginPage() {
 
       <Footer />
 
-      <AlertDialog open={showApprovalPopup} onOpenChange={(open) => {
-        if (!open) {
-          setShowApprovalPopup(false);
-          toast({
-            title: 'Login Successful',
-            description: 'Welcome to the CPMNHS Voting System!',
-          });
-          navigate('/vote');
-        }
-      }}>
-        <AlertDialogContent className="max-w-md">
-          <AlertDialogHeader className="text-center sm:text-center flex flex-col items-center">
-            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4">
-              <CheckCircle2 className="w-10 h-10" />
-            </div>
-            <AlertDialogTitle className="text-2xl font-bold text-slate-900">Registration Approved!</AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-600 text-base mt-2">
-              You've been approved and are ready to vote! Click the button below to proceed to the voting portal.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="sm:justify-center mt-6">
-            <AlertDialogAction 
-              onClick={() => {
-                setShowApprovalPopup(false);
-                toast({
-                  title: 'Login Successful',
-                  description: 'Welcome to the CPMNHS Voting System!',
-                });
-                navigate('/vote');
-              }}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 rounded-full h-11 text-base shadow-md"
-            >
-              Continue to Voting Portal
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <AlertDialog open={showSectionUpdate} onOpenChange={() => {}}>
         <AlertDialogContent className="max-w-md">
