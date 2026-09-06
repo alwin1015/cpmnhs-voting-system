@@ -58,6 +58,7 @@ interface VotingContextType {
   approveAllVoters: () => Promise<boolean>;
   updateMySection: (voterId: string, newSection: string) => Promise<void>;
   rejectVoter: (id: string) => Promise<boolean>;
+  deleteVoter: (id: string) => Promise<boolean>;
 }
 
 const VotingContext = createContext<VotingContextType | undefined>(undefined);
@@ -852,6 +853,22 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     [refreshData]
   );
 
+  const deleteVoter = useCallback(
+    async (id: string) => {
+      setVoters(prev => prev.filter(v => v.id !== id));
+      try {
+        await api.deleteVoter(id);
+        await refreshData();
+        return true;
+      } catch (error) {
+        console.error('Delete voter failed:', error);
+        await refreshData();
+        return false;
+      }
+    },
+    [refreshData]
+  );
+
   return (
     <VotingContext.Provider
       value={{
@@ -899,6 +916,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         approveAllVoters,
         updateMySection,
         rejectVoter,
+        deleteVoter,
       }}
     >
       {children}

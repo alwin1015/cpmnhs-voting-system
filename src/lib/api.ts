@@ -164,6 +164,14 @@ export const api = {
     return { success: true };
   },
 
+  deleteVoter: async (id: string) => {
+    // Delete dependent voter_sessions first
+    await supabase.from('voter_sessions').delete().eq('voter_id', id);
+    const { error } = await supabase.from('voters').delete().eq('id', id);
+    if (error) throw new Error(error.message);
+    return { success: true };
+  },
+
   // ==================== Voter Sessions (Per-Session Voting Status) ====================
   getVoterSessions: async (sessionId: string) => {
     const { data, error } = await supabase.from('voter_sessions').select('*').eq('session_id', sessionId);

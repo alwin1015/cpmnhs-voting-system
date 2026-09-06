@@ -211,6 +211,18 @@ export const offlineApi = {
     setStore(LS_KEYS.voters, voters);
     return { success: true };
   },
+  deleteVoter: async (id: string) => {
+    let voters = getStore<any>(LS_KEYS.voters);
+    voters = voters.filter((v: any) => String(v.id) !== String(id));
+    setStore(LS_KEYS.voters, voters);
+
+    let voterSessions = getStore<any>(LS_KEYS.voterSessions);
+    if (voterSessions) {
+      voterSessions = voterSessions.filter((vs: any) => String(vs.voter_id) !== String(id));
+      setStore(LS_KEYS.voterSessions, voterSessions);
+    }
+    return { success: true };
+  },
 
   // Candidates
   getCandidates: async (sessionId?: string) => {

@@ -17,12 +17,29 @@ import {
   LayoutGrid,
   ExternalLink,
   ChevronDown,
-  GraduationCap
+  GraduationCap,
+  Trash2,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function VotersPage() {
-  const { voters, sections, user, isLoggedIn } = useVoting();
+  const { voters, sections, user, isLoggedIn, deleteVoter } = useVoting();
+  const { toast } = useToast();
+
+  // Deletion state
+  const [voterToDelete, setVoterToDelete] = useState<any | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Filter & Search States
   const [searchQuery, setSearchQuery] = useState('');
@@ -32,6 +49,35 @@ export default function VotersPage() {
   const [filterVoted, setFilterVoted] = useState<string>('all');
 
   const isAdmin = isLoggedIn && user?.role === 'admin';
+
+  const handleDeleteVoter = async () => {
+    if (!voterToDelete) return;
+    setIsDeleting(true);
+    try {
+      const success = await deleteVoter(voterToDelete.id);
+      if (success) {
+        toast({
+          title: 'Student Deleted',
+          description: `${voterToDelete.name} has been removed from the registered voters directory.`,
+        });
+      } else {
+        toast({
+          title: 'Error',
+          description: 'Failed to delete student. Please check database permissions.',
+          variant: 'destructive',
+        });
+      }
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: 'An unexpected error occurred while deleting the student.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+      setVoterToDelete(null);
+    }
+  };
 
   // Standard grade levels
   const standardGrades = ['7', '8', '9', '10', '11', '12'];
@@ -530,13 +576,14 @@ export default function VotersPage() {
                                       <th className="py-2.5 px-4">Grade & Section</th>
                                       <th className="py-2.5 px-4 text-center">Registration Status</th>
                                       <th className="py-2.5 px-4">Date Registered</th>
-                                      <th className="py-2.5 px-4 text-right">Voting Status</th>
+                                      <th className="py-2.5 px-4 text-center">Voting Status</th>
+                                      <th className="py-2.5 px-4 text-right">Actions</th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-50 text-xs sm:text-sm">
                                     {secVoters.length === 0 ? (
                                       <tr>
-                                        <td colSpan={7} className="py-8 text-center text-slate-400">
+                                        <td colSpan={8} className="py-8 text-center text-slate-400">
                                           <Users className="h-6 w-6 mx-auto mb-1 text-slate-300" />
                                           <p className="text-xs font-medium text-slate-500">
                                             No registered voters in Grade {grade} – {sectionName}
@@ -577,7 +624,7 @@ export default function VotersPage() {
                                           <td className="py-3 px-4 text-slate-500 text-xs">
                                             {formatDate(voter.createdAt)}
                                           </td>
-                                          <td className="py-3 px-4 text-right">
+                                          <td className="py-3 px-4 text-center">
                                             {voter.hasVoted ? (
                                               <span className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
                                                 <CheckCircle2 className="h-3 w-3" /> Voted
@@ -587,6 +634,18 @@ export default function VotersPage() {
                                                 Not Voted
                                               </span>
                                             )}
+                                          </td>
+                                          <td className="py-3 px-4 text-right">
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() => setVoterToDelete(voter)}
+                                              className="text-rose-500 hover:text-rose-700 hover:bg-rose-50 h-8 px-2 rounded-lg text-xs font-medium transition-colors"
+                                              title={`Delete ${voter.name}`}
+                                            >
+                                              <Trash2 className="h-3.5 w-3.5 mr-1" />
+                                              Delete
+                                            </Button>
                                           </td>
                                         </tr>
                                       ))
@@ -608,6 +667,50 @@ export default function VotersPage() {
 
         </div>
       </main>
+
+      {/* Delete Student Confirmation Dialog */}
+      <AlertDialog open={!!voterToDelete} onOpenChange={(open) => !open && setVoterToDelete(null)}>
+        <AlertDialogContent className="max-w-md rounded-2xl">
+          <AlertDialogHeader className="text-center sm:text-left">
+            <div className="w-12 h-12 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center mb-2 mx-auto sm:mx-0">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <AlertDialogTitle className="text-xl font-bold text-slate-900">
+              Delete Student Record?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-slate-600 text-sm mt-1.5">
+                <p>
+                  Are you sure you want to permanently delete <strong>{voterToDelete?.name}</strong>?
+                </p>
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-700 space-y-1">
+                  <div><strong>LRN:</strong> {voterToDelete?.lrn || 'N/A'}</div>
+                  <div><strong>Grade & Section:</strong> Grade {voterToDelete?.gradeLevel} – {voterToDelete?.section}</div>
+                  <div><strong>Current Status:</strong> <span className="capitalize">{voterToDelete?.status}</span></div>
+                </div>
+                <p className="text-xs text-rose-600 font-medium pt-1">
+                  Use this to remove students who dropped out or transferred to another school. They will no longer appear in the Registered Voters list and will not be carried over as active voters during the next school year.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="pt-3 gap-2">
+            <AlertDialogCancel disabled={isDeleting} className="rounded-xl">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleDeleteVoter();
+              }}
+              disabled={isDeleting}
+              className="bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-xs"
+            >
+              {isDeleting ? 'Deleting...' : 'Yes, Delete Student'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Footer />
     </div>
