@@ -14,13 +14,13 @@ import {
   Upload, 
   CheckCheck, 
   Search, 
-  Filter, 
   GraduationCap, 
   BookOpen, 
   Clock, 
   AlertCircle,
   Users,
-  Check
+  Check,
+  ArrowRight
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -32,7 +32,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import * as XLSX from 'xlsx';
 
@@ -51,7 +51,7 @@ export default function RegistrationsPage() {
   const [rejectConfirmId, setRejectConfirmId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGradeTab, setSelectedGradeTab] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [viewMode, setViewMode] = useState<'pending' | 'rejected'>('pending');
 
   const isAdmin = isLoggedIn && user?.role === 'admin';
 
@@ -63,39 +63,35 @@ export default function RegistrationsPage() {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  // Metrics
-  const totalStudents = voters.length;
-  const pendingVoters = voters.filter(v => v.status === 'pending');
-  const approvedVoters = voters.filter(v => v.status === 'approved');
-  const rejectedVoters = voters.filter(v => v.status === 'rejected');
+  // Only students for approval (pending) and rejected signups
+  const pendingVoters = useMemo(() => voters.filter(v => v.status === 'pending'), [voters]);
+  const rejectedVoters = useMemo(() => voters.filter(v => v.status === 'rejected'), [voters]);
   const pendingCount = pendingVoters.length;
 
-  // Filter voters by search & status
-  const filteredVoters = useMemo(() => {
-    return voters.filter(v => {
-      // Search filter
-      const query = searchQuery.trim().toLowerCase();
-      const matchesSearch = !query || 
-        (v.name || '').toLowerCase().includes(query) || 
-        (v.lrn || '').toLowerCase().includes(query) ||
-        (v.section || '').toLowerCase().includes(query);
+  // Active list based on view mode (strictly pending for approval by default)
+  const activeList = viewMode === 'pending' ? pendingVoters : rejectedVoters;
 
-      // Status filter
-      const matchesStatus = statusFilter === 'all' || v.status === statusFilter;
+  // Filter active list by search query
+  const filteredStudents = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return activeList;
+    return activeList.filter(v => 
+      (v.name || '').toLowerCase().includes(query) || 
+      (v.lrn || '').toLowerCase().includes(query) ||
+      (v.section || '').toLowerCase().includes(query)
+    );
+  }, [activeList, searchQuery]);
 
-      return matchesSearch && matchesStatus;
-    });
-  }, [voters, searchQuery, statusFilter]);
-
-  // Bulk Approve All
+  // Bulk Approve All Pending
   const handleApproveAll = async () => {
     setIsApprovingAll(true);
     try {
+      const count = pendingCount;
       const success = await approveAllVoters();
       if (success) {
         toast({
           title: 'All Registrations Approved!',
-          description: `All ${pendingCount} pending registrations across Grade 7–12 have been approved.`,
+          description: `Successfully approved ${count} student registration(s). They can now log in and vote.`,
         });
       } else {
         toast({
@@ -122,12 +118,12 @@ export default function RegistrationsPage() {
     if (success) {
       toast({
         title: 'Student Approved',
-        description: `${name} is now approved and can log in to vote.`,
+        description: `${name} is now approved and eligible to log in and vote.`,
       });
     } else {
       toast({
         title: 'Error',
-        description: 'Failed to approve student. Check database connection.',
+        description: 'Failed to approve student. Check database permissions.',
         variant: 'destructive',
       });
     }
@@ -200,7 +196,6 @@ export default function RegistrationsPage() {
                description: `${result.errors.length} records were skipped (duplicates or missing fields).`,
                variant: 'destructive',
              });
-             console.warn("Bulk upload errors:", result.errors);
           }
         } else {
           toast({
@@ -239,6 +234,9 @@ export default function RegistrationsPage() {
     );
   }
 
+  // Check how many grades have pending students
+  const gradesWithPending = GRADES.filter(g => pendingVoters.some(v => v.gradeLevel === g));
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50/70">
       <Header />
@@ -250,15 +248,19 @@ export default function RegistrationsPage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 animate-slide-up">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
-                  Administration
+                <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                  Awaiting Approval
                 </span>
+                <span className="text-xs text-slate-400">•</span>
+                <Link to="/voters" className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1">
+                  View Approved Voters ({voters.filter(v => v.status === 'approved').length}) <ArrowRight className="w-3 h-3" />
+                </Link>
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                Student Registrations
+                Student Registrations for Approval
               </h1>
               <p className="text-sm text-slate-500 mt-0.5">
-                Organize, review, and approve registered students by Grade Level & Section
+                Review and approve student signups organized by Grade Level & Section
               </p>
             </div>
 
@@ -267,14 +269,14 @@ export default function RegistrationsPage() {
               <Button 
                 onClick={() => setShowApproveAllDialog(true)}
                 disabled={pendingCount === 0 || isApprovingAll}
-                className={`text-white font-bold shadow-sm transition-all duration-200 h-10 px-4 rounded-xl ${
+                className={`text-white font-bold shadow-sm transition-all duration-200 h-10 px-5 rounded-xl flex items-center gap-2 ${
                   pendingCount > 0 
-                    ? 'bg-emerald-600 hover:bg-emerald-700 hover:shadow-md ring-2 ring-emerald-500/20' 
-                    : 'bg-slate-400 cursor-not-allowed'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 hover:shadow-md ring-2 ring-emerald-500/20 active:scale-95' 
+                    : 'bg-slate-300 text-slate-500 cursor-not-allowed'
                 }`}
               >
-                <CheckCheck className="h-4 w-4 mr-2" />
-                {pendingCount > 0 ? `Approve All (${pendingCount})` : 'All Approved'}
+                <CheckCheck className="h-4 w-4" />
+                {pendingCount > 0 ? `Approve All (${pendingCount})` : 'No Pending Students'}
               </Button>
 
               {/* Bulk Upload Button */}
@@ -297,20 +299,8 @@ export default function RegistrationsPage() {
             </div>
           </div>
 
-          {/* Metrics Overview Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
-            <Card className="bg-white border-slate-200/80 shadow-xs rounded-xl overflow-hidden">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-500">Total Registered</p>
-                  <p className="text-xl font-extrabold text-slate-900">{totalStudents}</p>
-                </div>
-              </CardContent>
-            </Card>
-
+          {/* Quick Metrics Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
             <Card className="bg-white border-slate-200/80 shadow-xs rounded-xl overflow-hidden">
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
@@ -318,37 +308,37 @@ export default function RegistrationsPage() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-slate-500">Pending Approvals</p>
-                  <p className="text-xl font-extrabold text-amber-600">{pendingCount}</p>
+                  <p className="text-2xl font-extrabold text-amber-600">{pendingCount}</p>
                 </div>
               </CardContent>
             </Card>
 
             <Card className="bg-white border-slate-200/80 shadow-xs rounded-xl overflow-hidden">
               <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-5 h-5" />
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                  <GraduationCap className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-slate-500">Approved Students</p>
-                  <p className="text-xl font-extrabold text-emerald-600">{approvedVoters.length}</p>
+                  <p className="text-xs font-semibold text-slate-500">Grade Levels with Pending</p>
+                  <p className="text-2xl font-extrabold text-slate-900">{gradesWithPending.length} of 6</p>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-white border-slate-200/80 shadow-xs rounded-xl overflow-hidden">
+            <Card className="bg-white border-slate-200/80 shadow-xs rounded-xl overflow-hidden col-span-2 sm:col-span-1">
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
                   <XCircle className="w-5 h-5" />
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-slate-500">Rejected Signups</p>
-                  <p className="text-xl font-extrabold text-rose-600">{rejectedVoters.length}</p>
+                  <p className="text-2xl font-extrabold text-rose-600">{rejectedVoters.length}</p>
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Filter & Search Bar */}
+          {/* Filter & Navigation Bar */}
           <Card className="bg-white border-slate-200/80 shadow-xs rounded-xl mb-6">
             <CardContent className="p-3 sm:p-4">
               <div className="flex flex-col lg:flex-row items-center gap-3 justify-between">
@@ -357,7 +347,7 @@ export default function RegistrationsPage() {
                 <div className="relative w-full lg:w-80">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <Input
-                    placeholder="Search by student name, LRN, or section..."
+                    placeholder="Search pending by name, LRN, or section..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9 h-10 rounded-lg bg-slate-50/50 border-slate-200 text-sm focus:bg-white transition-colors"
@@ -372,7 +362,7 @@ export default function RegistrationsPage() {
                   )}
                 </div>
 
-                {/* Grade Quick Jump Tabs */}
+                {/* Grade Selector Tabs */}
                 <div className="flex items-center gap-1 overflow-x-auto w-full lg:w-auto py-1 custom-scrollbar">
                   <button
                     onClick={() => setSelectedGradeTab('all')}
@@ -385,8 +375,7 @@ export default function RegistrationsPage() {
                     All Grades
                   </button>
                   {GRADES.map(grade => {
-                    const countInGrade = voters.filter(v => v.gradeLevel === grade).length;
-                    const pendingInGrade = voters.filter(v => v.gradeLevel === grade && v.status === 'pending').length;
+                    const countInGrade = pendingVoters.filter(v => v.gradeLevel === grade).length;
                     return (
                       <button
                         key={grade}
@@ -398,11 +387,11 @@ export default function RegistrationsPage() {
                         }`}
                       >
                         Grade {grade}
-                        {pendingInGrade > 0 && (
-                          <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                        {countInGrade > 0 && (
+                          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
                             selectedGradeTab === grade ? 'bg-white text-blue-700' : 'bg-amber-500 text-white'
                           }`}>
-                            {pendingInGrade}
+                            {countInGrade}
                           </span>
                         )}
                       </button>
@@ -410,129 +399,148 @@ export default function RegistrationsPage() {
                   })}
                 </div>
 
-                {/* Status Filter */}
+                {/* Mode Toggle: Pending Approval vs Rejected */}
                 <div className="flex items-center gap-1 w-full lg:w-auto justify-end">
-                  <span className="text-xs font-semibold text-slate-500 mr-1 flex items-center gap-1">
-                    <Filter className="w-3.5 h-3.5" />
-                    Status:
-                  </span>
-                  {(['all', 'pending', 'approved', 'rejected'] as const).map(status => (
-                    <button
-                      key={status}
-                      onClick={() => setStatusFilter(status)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-semibold capitalize transition-colors ${
-                        statusFilter === status
-                          ? 'bg-slate-800 text-white'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      {status}
-                    </button>
-                  ))}
+                  <button
+                    onClick={() => setViewMode('pending')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${
+                      viewMode === 'pending'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    Pending ({pendingCount})
+                  </button>
+                  <button
+                    onClick={() => setViewMode('rejected')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${
+                      viewMode === 'rejected'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    Rejected ({rejectedVoters.length})
+                  </button>
                 </div>
 
               </div>
             </CardContent>
           </Card>
 
-          {/* Grade 7–12 Tables Section */}
-          <div className="space-y-8">
-            {GRADES.filter(g => selectedGradeTab === 'all' || selectedGradeTab === g).map(grade => {
-              // Students in this grade matching current search and status filters
-              const gradeStudents = filteredVoters.filter(v => v.gradeLevel === grade);
-              const totalInGrade = voters.filter(v => v.gradeLevel === grade).length;
-              const pendingInGrade = voters.filter(v => v.gradeLevel === grade && v.status === 'pending').length;
+          {/* Grade 7–12 Tables Section for Pending Approvals */}
+          {filteredStudents.length === 0 ? (
+            <Card className="bg-white border-slate-200/80 shadow-xs rounded-2xl p-12 text-center">
+              <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4">
+                <CheckCircle2 className="w-9 h-9" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-1">
+                {searchQuery 
+                  ? 'No matching students found' 
+                  : viewMode === 'pending' 
+                  ? 'No Pending Registrations' 
+                  : 'No Rejected Registrations'}
+              </h3>
+              <p className="text-sm text-slate-500 max-w-md mx-auto mb-6">
+                {searchQuery
+                  ? 'Try searching with a different name, LRN, or section.'
+                  : viewMode === 'pending'
+                  ? 'All student registrations have been approved! Registered students can now log in and vote.'
+                  : 'There are currently no rejected student registrations.'}
+              </p>
+              <Button 
+                variant="outline"
+                onClick={() => navigate('/voters')}
+                className="rounded-xl"
+              >
+                Go to Approved Voters List
+              </Button>
+            </Card>
+          ) : (
+            <div className="space-y-8">
+              {GRADES.filter(g => selectedGradeTab === 'all' || selectedGradeTab === g).map(grade => {
+                // Students in this grade for current view
+                const gradeStudents = filteredStudents.filter(v => v.gradeLevel === grade);
 
-              // All unique sections for this grade (from configured sections and students)
-              const gradeDefinedSections = sections.filter(s => s.gradeLevel === grade).map(s => s.name);
-              const studentSections = voters.filter(v => v.gradeLevel === grade).map(v => v.section).filter(Boolean);
-              const uniqueSections = [...new Set([...gradeDefinedSections, ...studentSections])].sort();
+                // If no students in this grade matching current filter, skip unless specifically filtered to this grade
+                if (gradeStudents.length === 0 && selectedGradeTab === 'all') {
+                  return null;
+                }
 
-              // Check if any unassigned students exist for this grade
-              const hasUnassigned = voters.some(v => v.gradeLevel === grade && (!v.section || v.section === 'TBD'));
-              const allSectionsToDisplay = hasUnassigned ? [...uniqueSections, 'Unassigned'] : uniqueSections;
+                // All unique sections present in this grade's students
+                const gradeDefinedSections = sections.filter(s => s.gradeLevel === grade).map(s => s.name);
+                const studentSections = gradeStudents.map(v => v.section).filter(Boolean);
+                const uniqueSections = [...new Set([...gradeDefinedSections, ...studentSections])].sort();
 
-              return (
-                <div key={grade} className="bg-white border border-slate-200/80 shadow-xs rounded-2xl overflow-hidden animate-fade-in">
-                  
-                  {/* Grade Banner Header */}
-                  <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 text-white p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-xs border border-white/20 flex items-center justify-center font-extrabold text-lg text-white">
-                        {grade}
+                // Check if unassigned exists
+                const hasUnassigned = gradeStudents.some(v => !v.section || v.section === 'TBD');
+                const allSectionsToDisplay = hasUnassigned ? [...uniqueSections, 'Unassigned'] : uniqueSections;
+
+                return (
+                  <div key={grade} className="bg-white border border-slate-200/80 shadow-xs rounded-2xl overflow-hidden animate-fade-in">
+                    
+                    {/* Grade Header */}
+                    <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 text-white p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-xs border border-white/20 flex items-center justify-center font-extrabold text-lg text-white">
+                          {grade}
+                        </div>
+                        <div>
+                          <h2 className="text-xl font-bold flex items-center gap-2">
+                            Grade {grade} Registrations
+                          </h2>
+                          <p className="text-xs text-blue-100/80">
+                            {gradeStudents.length} student{gradeStudents.length === 1 ? '' : 's'} awaiting action in Grade {grade}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <h2 className="text-xl font-bold flex items-center gap-2">
-                          Grade {grade} Registrations
-                        </h2>
-                        <p className="text-xs text-blue-100/80">
-                          {totalInGrade} Registered Students • {allSectionsToDisplay.length} Section{allSectionsToDisplay.length === 1 ? '' : 's'}
-                        </p>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-2">
-                      {pendingInGrade > 0 ? (
+                      <div className="flex items-center gap-2">
                         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-400 text-amber-950 shadow-xs">
                           <Clock className="w-3.5 h-3.5" />
-                          {pendingInGrade} Pending Approval{pendingInGrade === 1 ? '' : 's'}
+                          {gradeStudents.length} {viewMode === 'pending' ? 'Pending' : 'Rejected'}
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
-                          <Check className="w-3.5 h-3.5" />
-                          All Up to Date
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Section Tables Container */}
-                  <div className="p-4 sm:p-6 space-y-6">
-                    {allSectionsToDisplay.length === 0 && gradeStudents.length === 0 ? (
-                      <div className="text-center py-10 text-slate-400">
-                        <Users className="h-10 w-10 mx-auto mb-2 text-slate-300" />
-                        <p className="text-sm font-semibold text-slate-600">No students registered in Grade {grade} yet</p>
-                        <p className="text-xs text-slate-400 mt-0.5">Students will appear here once they register or are uploaded.</p>
                       </div>
-                    ) : (
-                      allSectionsToDisplay.map(secName => {
-                        const isUnassigned = secName === 'Unassigned';
-                        const sectionStudents = gradeStudents.filter(v => 
-                          isUnassigned ? (!v.section || v.section === 'TBD') : v.section === secName
-                        );
+                    </div>
 
-                        // If user is searching/filtering and section has 0 matching students, don't show empty table
-                        if (sectionStudents.length === 0 && (searchQuery || statusFilter !== 'all')) {
-                          return null;
-                        }
+                    {/* Section Tables Container */}
+                    <div className="p-4 sm:p-6 space-y-6">
+                      {gradeStudents.length === 0 ? (
+                        <div className="text-center py-8 text-slate-400 text-sm">
+                          No {viewMode} students in Grade {grade}.
+                        </div>
+                      ) : (
+                        allSectionsToDisplay.map(secName => {
+                          const isUnassigned = secName === 'Unassigned';
+                          const sectionStudents = gradeStudents.filter(v => 
+                            isUnassigned ? (!v.section || v.section === 'TBD') : v.section === secName
+                          );
 
-                        const secPendingCount = sectionStudents.filter(s => s.status === 'pending').length;
+                          // If no students in this section, skip
+                          if (sectionStudents.length === 0) {
+                            return null;
+                          }
 
-                        return (
-                          <div 
-                            key={secName}
-                            className="border border-slate-200/90 rounded-xl overflow-hidden bg-slate-50/40 shadow-2xs"
-                          >
-                            {/* Section Sub-Header */}
-                            <div className="bg-slate-100/90 border-b border-slate-200/80 px-4 py-2.5 flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
-                                <span className="font-bold text-slate-800 text-sm">
-                                  {isUnassigned ? 'Unassigned Section' : `Section: ${secName}`}
-                                </span>
-                                <Badge variant="secondary" className="text-[11px] font-semibold bg-white border border-slate-200/80 text-slate-700">
-                                  {sectionStudents.length} Student{sectionStudents.length === 1 ? '' : 's'}
-                                </Badge>
-                                {secPendingCount > 0 && (
-                                  <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[11px] font-bold">
-                                    {secPendingCount} Pending
+                          return (
+                            <div 
+                              key={secName}
+                              className="border border-slate-200/90 rounded-xl overflow-hidden bg-slate-50/40 shadow-2xs"
+                            >
+                              {/* Section Sub-Header */}
+                              <div className="bg-slate-100/90 border-b border-slate-200/80 px-4 py-2.5 flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
+                                  <span className="font-bold text-slate-800 text-sm">
+                                    {isUnassigned ? 'Unassigned Section' : `Section: ${secName}`}
+                                  </span>
+                                  <Badge variant="secondary" className="text-[11px] font-semibold bg-white border border-slate-200/80 text-slate-700">
+                                    {sectionStudents.length} Student{sectionStudents.length === 1 ? '' : 's'}
                                   </Badge>
-                                )}
+                                </div>
                               </div>
-                            </div>
 
-                            {/* Section Student Table */}
-                            {sectionStudents.length > 0 ? (
+                              {/* Section Student Table */}
                               <div className="overflow-x-auto bg-white">
                                 <table className="w-full text-left text-xs sm:text-sm">
                                   <thead>
@@ -540,6 +548,7 @@ export default function RegistrationsPage() {
                                       <th className="py-2.5 px-3 w-12 text-center">#</th>
                                       <th className="py-2.5 px-4">Student Name</th>
                                       <th className="py-2.5 px-4">LRN</th>
+                                      <th className="py-2.5 px-4">Grade & Section</th>
                                       <th className="py-2.5 px-4">Registration Date</th>
                                       <th className="py-2.5 px-4 text-center">Status</th>
                                       <th className="py-2.5 px-4 text-right">Actions</th>
@@ -558,7 +567,7 @@ export default function RegistrationsPage() {
                                         {/* Student Info */}
                                         <td className="py-3 px-4">
                                           <div className="flex items-center gap-2.5">
-                                            <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs shrink-0">
+                                            <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-xs shrink-0">
                                               {student.name.charAt(0).toUpperCase()}
                                             </div>
                                             <div>
@@ -577,6 +586,11 @@ export default function RegistrationsPage() {
                                           {student.lrn || 'N/A'}
                                         </td>
 
+                                        {/* Grade & Section */}
+                                        <td className="py-3 px-4 text-slate-600 text-xs">
+                                          Grade {student.gradeLevel} - {student.section || 'Unassigned'}
+                                        </td>
+
                                         {/* Date */}
                                         <td className="py-3 px-4 text-slate-500 text-xs whitespace-nowrap">
                                           {formatDate(student.createdAt)}
@@ -584,27 +598,15 @@ export default function RegistrationsPage() {
 
                                         {/* Status Badge */}
                                         <td className="py-3 px-4 text-center">
-                                          {student.status === 'approved' && (
-                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                              <CheckCircle2 className="w-3.5 h-3.5" />
-                                              Approved
-                                            </span>
-                                          )}
-                                          {student.status === 'pending' && (
+                                          {student.status === 'pending' ? (
                                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
                                               <Clock className="w-3.5 h-3.5" />
                                               Pending
                                             </span>
-                                          )}
-                                          {student.status === 'rejected' && (
+                                          ) : (
                                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
                                               <XCircle className="w-3.5 h-3.5" />
                                               Rejected
-                                            </span>
-                                          )}
-                                          {student.status === 'graduated' && (
-                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                                              Graduated
                                             </span>
                                           )}
                                         </td>
@@ -613,19 +615,17 @@ export default function RegistrationsPage() {
                                         <td className="py-3 px-4 text-right">
                                           <div className="flex items-center justify-end gap-1.5">
                                             {/* Approve Button */}
-                                            {student.status !== 'approved' && (
-                                              <Button
-                                                size="sm"
-                                                onClick={() => handleApprove(student.id, student.name)}
-                                                className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 px-2.5 rounded-lg text-xs font-semibold shadow-2xs"
-                                                title="Approve Registration"
-                                              >
-                                                <Check className="h-3.5 w-3.5 mr-1" />
-                                                Approve
-                                              </Button>
-                                            )}
+                                            <Button
+                                              size="sm"
+                                              onClick={() => handleApprove(student.id, student.name)}
+                                              className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 px-3 rounded-lg text-xs font-semibold shadow-2xs active:scale-95"
+                                              title="Approve Student"
+                                            >
+                                              <Check className="h-3.5 w-3.5 mr-1" />
+                                              Approve
+                                            </Button>
 
-                                            {/* Reject Button with confirmation */}
+                                            {/* Reject Button with inline confirmation */}
                                             {rejectConfirmId === student.id ? (
                                               <div className="flex items-center gap-1">
                                                 <Button
@@ -665,20 +665,16 @@ export default function RegistrationsPage() {
                                   </tbody>
                                 </table>
                               </div>
-                            ) : (
-                              <div className="py-4 px-4 text-center text-xs text-slate-400 bg-white">
-                                No registered students in this section yet.
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
 
         </div>
       </main>
@@ -696,7 +692,7 @@ export default function RegistrationsPage() {
               Approve All Pending Registrations?
             </AlertDialogTitle>
             <AlertDialogDescription className="text-slate-600 text-sm mt-1.5">
-              This will approve all <strong>{pendingCount} pending registrations</strong> across <strong>Grade 7 to Grade 12 and all sections</strong> at once. 
+              This will approve all <strong>{pendingCount} pending registration(s)</strong> across <strong>Grade 7 to Grade 12 and all sections</strong> at once. 
               <br /><br />
               All approved students will immediately be able to log in and cast their votes.
             </AlertDialogDescription>
