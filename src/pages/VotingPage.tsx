@@ -186,7 +186,7 @@ export default function VotingPage() {
   const currentPosition = votablePositions[currentPositionIndex];
   
   let positionCandidates = candidates.filter(c => c.position === currentPosition.id);
-  if (currentPosition.strictGradeMapping && election?.gradeMappings && user?.gradeLevel) {
+  if (election?.gradeMappings && user?.gradeLevel) {
     const targetGrade = election.gradeMappings[user.gradeLevel];
     if (targetGrade) {
       positionCandidates = positionCandidates.filter(c => c.gradeLevel === targetGrade);
