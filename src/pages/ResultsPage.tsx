@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
@@ -21,21 +21,88 @@ import {
   ArrowLeft,
   AlertTriangle,
   Check,
-  FileDown
+  FileDown,
+  Save,
+  Edit2,
+  X
 } from 'lucide-react';
 import cpmnhsLogo from '@/assets/cpmnhs-logo.png';
 import depedLogo from '@/assets/deped-logo.png';
 import sslgLogo from '@/assets/sslg-logo.png';
 import type { TieResolution, VoteVerification } from '@/types/voting';
+import { useToast } from '@/hooks/use-toast';
 
 export default function ResultsPage() {
-  const { election, getResults, candidates, user, isLoggedIn, sessions, activeSessionId, switchSession } = useVoting();
+  const { election, getResults, candidates, user, isLoggedIn, sessions, activeSessionId, switchSession, updateElection } = useVoting();
   const printRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
   const [showPrintReport, setShowPrintReport] = useState(false);
   const [tieResolutions, setTieResolutions] = useState<TieResolution[]>([]);
   const [verifications, setVerifications] = useState<VoteVerification[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
+
+  const [showCommitteeForm, setShowCommitteeForm] = useState(false);
+  const [committeeChairperson, setCommitteeChairperson] = useState('');
+  const [committeeCoChairperson, setCommitteeCoChairperson] = useState('');
+  const [committeeMember, setCommitteeMember] = useState('');
+  const [committeeOfficer, setCommitteeOfficer] = useState('');
+  const [committeePrincipal, setCommitteePrincipal] = useState('');
+  const [isSavingCommittee, setIsSavingCommittee] = useState(false);
+
+  // Load existing committee data from election signatories
+  useEffect(() => {
+    if (election?.signatories) {
+      setCommitteeChairperson(election.signatories.chairperson?.name || '');
+      setCommitteeCoChairperson(election.signatories.coChairperson?.name || '');
+      setCommitteeMember(election.signatories.member?.name || '');
+      setCommitteeOfficer(election.signatories.preparedBy?.name || '');
+      setCommitteePrincipal(election.signatories.approvedBy?.name || '');
+    }
+  }, [election?.signatories]);
+
+  const handleSaveCommittee = useCallback(async () => {
+    setIsSavingCommittee(true);
+    try {
+      const signatories = {
+        ...(election?.signatories || {}),
+        chairperson: { name: committeeChairperson.toUpperCase(), position: 'Chairperson' },
+        coChairperson: { name: committeeCoChairperson.toUpperCase(), position: 'Co-Chairperson' },
+        member: { name: committeeMember.toUpperCase(), position: 'Member' },
+        preparedBy: { name: committeeOfficer.toUpperCase(), position: 'School Election Officer' },
+        approvedBy: { name: committeePrincipal.toUpperCase(), position: 'School Principal' },
+      };
+      await updateElection({ signatories });
+      setShowCommitteeForm(false);
+      toast({
+        title: 'Election Committee Saved',
+        description: 'Committee information has been saved successfully.',
+      });
+    } catch (error) {
+      console.error('Failed to save committee:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save committee information. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingCommittee(false);
+    }
+  }, [election?.signatories, committeeChairperson, committeeCoChairperson, committeeMember, committeeOfficer, committeePrincipal, updateElection, toast]);
+
+  const handlePrintWithValidation = useCallback(() => {
+    const officerName = election?.signatories?.preparedBy?.name?.trim();
+    const principalName = election?.signatories?.approvedBy?.name?.trim();
+    if (!officerName || !principalName) {
+      toast({
+        title: 'INCOMPLETE ELECTION COMMITTEE',
+        description: 'PLEASE COMPLETE THE ELECTION COMMITTEE INFORMATION BEFORE PRINTING THE FINAL RESULTS.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setShowPrintReport(true);
+  }, [election?.signatories, toast]);
 
   const results = getResults();
   const isAdmin = isLoggedIn && user?.role === 'admin';
@@ -302,17 +369,17 @@ export default function ResultsPage() {
             <tr>
               <td width="33%">
                 <div class="sig-line"></div>
-                <div class="sig-name">Signature over Printed Name</div>
+                <div class="sig-name">${(election?.signatories?.chairperson?.name || '').toUpperCase()}</div>
                 <div class="sig-title">Chairperson</div>
               </td>
               <td width="34%">
                 <div class="sig-line"></div>
-                <div class="sig-name">Signature over Printed Name</div>
+                <div class="sig-name">${(election?.signatories?.coChairperson?.name || '').toUpperCase()}</div>
                 <div class="sig-title">Co-Chairperson</div>
               </td>
               <td width="33%">
                 <div class="sig-line"></div>
-                <div class="sig-name">Signature over Printed Name</div>
+                <div class="sig-name">${(election?.signatories?.member?.name || '').toUpperCase()}</div>
                 <div class="sig-title">Member</div>
               </td>
             </tr>
@@ -322,12 +389,12 @@ export default function ResultsPage() {
             <tr>
               <td width="50%" style="text-align: left; padding-left: 40px;">
                 <div style="font-weight: bold; margin-bottom: 30px;">Certified Correct:</div>
-                <div class="sig-name" style="text-decoration: underline;">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div>
+                <div class="sig-name" style="text-decoration: underline;">${(election?.signatories?.preparedBy?.name || '').toUpperCase() || '\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0'}</div>
                 <div class="sig-title">${election?.signatories?.preparedBy?.position || 'School Election Officer'}</div>
               </td>
               <td width="50%" style="text-align: left; padding-left: 40px;">
                 <div style="font-weight: bold; margin-bottom: 30px;">Noted by:</div>
-                <div class="sig-name" style="text-decoration: underline;">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div>
+                <div class="sig-name" style="text-decoration: underline;">${(election?.signatories?.approvedBy?.name || '').toUpperCase() || '\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0'}</div>
                 <div class="sig-title">${election?.signatories?.approvedBy?.position || 'School Principal'}</div>
               </td>
             </tr>
@@ -638,10 +705,11 @@ export default function ResultsPage() {
               <div className="grid grid-cols-3 gap-6 sm:gap-10 text-center">
                 {/* Chairperson */}
                 <div className="flex flex-col items-center">
-                  <div className="w-full border-b border-slate-900 mb-1"></div>
-                  <span className="text-[11px] sm:text-xs text-slate-800 font-bold leading-tight">
-                    Signature over Printed Name
-                  </span>
+                  <div className="w-full border-b border-slate-900 mb-1">
+                    <span className="font-bold uppercase text-slate-900 text-[11px] sm:text-xs block">
+                      {election?.signatories?.chairperson?.name?.toUpperCase() || '\u00A0'}
+                    </span>
+                  </div>
                   <span className="text-[10px] sm:text-[11px] text-slate-600 font-medium">
                     Chairperson
                   </span>
@@ -649,10 +717,11 @@ export default function ResultsPage() {
 
                 {/* Co-Chairperson */}
                 <div className="flex flex-col items-center">
-                  <div className="w-full border-b border-slate-900 mb-1"></div>
-                  <span className="text-[11px] sm:text-xs text-slate-800 font-bold leading-tight">
-                    Signature over Printed Name
-                  </span>
+                  <div className="w-full border-b border-slate-900 mb-1">
+                    <span className="font-bold uppercase text-slate-900 text-[11px] sm:text-xs block">
+                      {election?.signatories?.coChairperson?.name?.toUpperCase() || '\u00A0'}
+                    </span>
+                  </div>
                   <span className="text-[10px] sm:text-[11px] text-slate-600 font-medium">
                     Co-Chairperson
                   </span>
@@ -660,10 +729,11 @@ export default function ResultsPage() {
 
                 {/* Member */}
                 <div className="flex flex-col items-center">
-                  <div className="w-full border-b border-slate-900 mb-1"></div>
-                  <span className="text-[11px] sm:text-xs text-slate-800 font-bold leading-tight">
-                    Signature over Printed Name
-                  </span>
+                  <div className="w-full border-b border-slate-900 mb-1">
+                    <span className="font-bold uppercase text-slate-900 text-[11px] sm:text-xs block">
+                      {election?.signatories?.member?.name?.toUpperCase() || '\u00A0'}
+                    </span>
+                  </div>
                   <span className="text-[10px] sm:text-[11px] text-slate-600 font-medium">
                     Member
                   </span>
@@ -680,7 +750,7 @@ export default function ResultsPage() {
                 </span>
                 <div className="w-full max-w-[240px] border-b border-slate-900 mb-1 h-5">
                   <span className="font-bold uppercase text-slate-900 text-xs sm:text-sm block">
-                    &nbsp;
+                    {election?.signatories?.preparedBy?.name?.toUpperCase() || '\u00A0'}
                   </span>
                 </div>
                 <span className="text-[11px] sm:text-xs text-slate-600 font-medium">
@@ -695,7 +765,7 @@ export default function ResultsPage() {
                 </span>
                 <div className="w-full max-w-[240px] border-b border-slate-900 mb-1 h-5">
                   <span className="font-bold uppercase text-slate-900 text-xs sm:text-sm block">
-                    &nbsp;
+                    {election?.signatories?.approvedBy?.name?.toUpperCase() || '\u00A0'}
                   </span>
                 </div>
                 <span className="text-[11px] sm:text-xs text-slate-600 font-medium">
@@ -799,7 +869,7 @@ export default function ResultsPage() {
               </div>
               {election?.resultsFinalized && (
                 <Button
-                  onClick={() => setShowPrintReport(true)}
+                  onClick={handlePrintWithValidation}
                   size="sm"
                   className="h-9 gap-1.5 text-xs sm:text-sm bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm rounded-xl"
                 >
@@ -835,6 +905,138 @@ export default function ResultsPage() {
                   </p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Election Committee Information */}
+          {isAdmin && election?.resultsFinalized && (
+            <div className="mb-6">
+              <Card className="border border-slate-200 shadow-sm rounded-xl overflow-hidden">
+                <CardContent className="p-0">
+                  <div className="flex items-center justify-between px-5 py-3 bg-slate-50 border-b border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-slate-500" />
+                      <h3 className="text-sm font-bold text-slate-800">Election Committee Information</h3>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowCommitteeForm(!showCommitteeForm)}
+                      className="h-8 gap-1.5 text-xs border-slate-200 text-slate-700 hover:bg-slate-100 rounded-lg"
+                    >
+                      {showCommitteeForm ? <X className="h-3.5 w-3.5" /> : <Edit2 className="h-3.5 w-3.5" />}
+                      {showCommitteeForm ? 'Cancel' : (election?.signatories?.preparedBy?.name ? 'Edit Committee' : 'Set Up Committee')}
+                    </Button>
+                  </div>
+
+                  {showCommitteeForm ? (
+                    <div className="p-5 space-y-4">
+                      <p className="text-xs text-slate-500">Enter the names of the Election Committee members. All names will be automatically converted to UPPERCASE.</p>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">Chairperson</label>
+                          <input
+                            type="text"
+                            value={committeeChairperson}
+                            onChange={(e) => setCommitteeChairperson(e.target.value)}
+                            placeholder="Enter chairperson name"
+                            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 uppercase"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">Co-Chairperson</label>
+                          <input
+                            type="text"
+                            value={committeeCoChairperson}
+                            onChange={(e) => setCommitteeCoChairperson(e.target.value)}
+                            placeholder="Enter co-chairperson name"
+                            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 uppercase"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">Member</label>
+                          <input
+                            type="text"
+                            value={committeeMember}
+                            onChange={(e) => setCommitteeMember(e.target.value)}
+                            placeholder="Enter member name"
+                            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 uppercase"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            School Election Officer <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={committeeOfficer}
+                            onChange={(e) => setCommitteeOfficer(e.target.value)}
+                            placeholder="Enter school election officer name"
+                            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 uppercase"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            School Principal <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={committeePrincipal}
+                            onChange={(e) => setCommitteePrincipal(e.target.value)}
+                            placeholder="Enter school principal name"
+                            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 uppercase"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-2">
+                        <Button
+                          onClick={handleSaveCommittee}
+                          disabled={isSavingCommittee}
+                          size="sm"
+                          className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg"
+                        >
+                          <Save className="h-4 w-4" />
+                          {isSavingCommittee ? 'Saving...' : 'Save / Confirm Election Committee'}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-5">
+                      {election?.signatories?.preparedBy?.name ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-center">
+                          <div>
+                            <p className="text-[10px] text-slate-500 font-medium">Chairperson</p>
+                            <p className="text-xs font-bold text-slate-800 uppercase">{election?.signatories?.chairperson?.name || '—'}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-slate-500 font-medium">Co-Chairperson</p>
+                            <p className="text-xs font-bold text-slate-800 uppercase">{election?.signatories?.coChairperson?.name || '—'}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-slate-500 font-medium">Member</p>
+                            <p className="text-xs font-bold text-slate-800 uppercase">{election?.signatories?.member?.name || '—'}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-slate-500 font-medium">School Election Officer</p>
+                            <p className="text-xs font-bold text-slate-800 uppercase">{election?.signatories?.preparedBy?.name || '—'}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] text-slate-500 font-medium">School Principal</p>
+                            <p className="text-xs font-bold text-slate-800 uppercase">{election?.signatories?.approvedBy?.name || '—'}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400 italic text-center">No committee information set. Click "Set Up Committee" to enter names.</p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           )}
 

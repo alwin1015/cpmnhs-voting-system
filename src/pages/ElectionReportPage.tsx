@@ -271,6 +271,20 @@ export default function ElectionReportPage() {
     }
   };
 
+  const handlePrintWithValidation = () => {
+    const officerName = election?.signatories?.preparedBy?.name?.trim();
+    const principalName = election?.signatories?.approvedBy?.name?.trim();
+    if (!officerName || !principalName) {
+      toast({
+        title: 'INCOMPLETE ELECTION COMMITTEE',
+        description: 'PLEASE COMPLETE THE ELECTION COMMITTEE INFORMATION BEFORE PRINTING THE FINAL RESULTS.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setShowOfficialReport(true);
+  };
+
   const getStatusBadge = (status: ElectionResult['status']) => {
     switch (status) {
       case 'winner':
@@ -511,10 +525,11 @@ export default function ElectionReportPage() {
               <div className="grid grid-cols-3 gap-6 sm:gap-10 text-center">
                 {/* Chairperson */}
                 <div className="flex flex-col items-center">
-                  <div className="w-full border-b border-slate-900 mb-1"></div>
-                  <span className="text-[11px] sm:text-xs text-slate-800 font-bold leading-tight">
-                    Signature over Printed Name
-                  </span>
+                  <div className="w-full border-b border-slate-900 mb-1">
+                    <span className="font-bold uppercase text-slate-900 text-[11px] sm:text-xs block">
+                      {election?.signatories?.chairperson?.name?.toUpperCase() || '\u00A0'}
+                    </span>
+                  </div>
                   <span className="text-[10px] sm:text-[11px] text-slate-600 font-medium">
                     Chairperson
                   </span>
@@ -522,10 +537,11 @@ export default function ElectionReportPage() {
 
                 {/* Co-Chairperson */}
                 <div className="flex flex-col items-center">
-                  <div className="w-full border-b border-slate-900 mb-1"></div>
-                  <span className="text-[11px] sm:text-xs text-slate-800 font-bold leading-tight">
-                    Signature over Printed Name
-                  </span>
+                  <div className="w-full border-b border-slate-900 mb-1">
+                    <span className="font-bold uppercase text-slate-900 text-[11px] sm:text-xs block">
+                      {election?.signatories?.coChairperson?.name?.toUpperCase() || '\u00A0'}
+                    </span>
+                  </div>
                   <span className="text-[10px] sm:text-[11px] text-slate-600 font-medium">
                     Co-Chairperson
                   </span>
@@ -533,10 +549,11 @@ export default function ElectionReportPage() {
 
                 {/* Member */}
                 <div className="flex flex-col items-center">
-                  <div className="w-full border-b border-slate-900 mb-1"></div>
-                  <span className="text-[11px] sm:text-xs text-slate-800 font-bold leading-tight">
-                    Signature over Printed Name
-                  </span>
+                  <div className="w-full border-b border-slate-900 mb-1">
+                    <span className="font-bold uppercase text-slate-900 text-[11px] sm:text-xs block">
+                      {election?.signatories?.member?.name?.toUpperCase() || '\u00A0'}
+                    </span>
+                  </div>
                   <span className="text-[10px] sm:text-[11px] text-slate-600 font-medium">
                     Member
                   </span>
@@ -553,7 +570,7 @@ export default function ElectionReportPage() {
                 </span>
                 <div className="w-full max-w-[240px] border-b border-slate-900 mb-1">
                   <span className="font-bold uppercase text-slate-900 text-xs sm:text-sm block">
-                    {election?.signatories?.preparedBy?.name || 'MS. LIZA MAY A. BELTRAN'}
+                    {election?.signatories?.preparedBy?.name?.toUpperCase() || '\u00A0'}
                   </span>
                 </div>
                 <span className="text-[11px] sm:text-xs text-slate-600 font-medium">
@@ -568,7 +585,7 @@ export default function ElectionReportPage() {
                 </span>
                 <div className="w-full max-w-[240px] border-b border-slate-900 mb-1">
                   <span className="font-bold uppercase text-slate-900 text-xs sm:text-sm block">
-                    {election?.signatories?.approvedBy?.name || 'DR. ROLANDO D. VILLARIN'}
+                    {election?.signatories?.approvedBy?.name?.toUpperCase() || '\u00A0'}
                   </span>
                 </div>
                 <span className="text-[11px] sm:text-xs text-slate-600 font-medium">
@@ -602,7 +619,7 @@ export default function ElectionReportPage() {
             <div className="flex items-center gap-2">
               {election?.resultsFinalized && (
                 <Button
-                  onClick={() => setShowOfficialReport(true)}
+                  onClick={handlePrintWithValidation}
                   className="gap-2 text-white bg-emerald-600 hover:bg-emerald-700"
                 >
                   <Printer className="h-4 w-4" />

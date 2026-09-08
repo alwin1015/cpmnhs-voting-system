@@ -76,6 +76,9 @@ export interface VotingSession {
     reviewedBy?: Signatory;
     notedBy?: Signatory;
     approvedBy?: Signatory;
+    chairperson?: Signatory;
+    coChairperson?: Signatory;
+    member?: Signatory;
   };
 }
 
