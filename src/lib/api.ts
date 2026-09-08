@@ -22,9 +22,11 @@ export const api = {
       gradeLevel: voter.grade_level,
       section: voter.section
     };
-    localStorage.setItem('voting_session', JSON.stringify({ user, has_voted: false }));
     
-    return { success: true, user, hasVoted: false };
+    const actuallyVoted = Boolean(voter.has_voted);
+    localStorage.setItem('voting_session', JSON.stringify({ user, has_voted: actuallyVoted }));
+    
+    return { success: true, user, hasVoted: actuallyVoted };
   },
 
   requestPasswordReset: async (lrn: string) => {
@@ -473,6 +475,18 @@ export const api = {
     if (!sessionStr) throw new Error('Not authenticated');
     const session = JSON.parse(sessionStr);
     const activeSessionId = sessionId || session.activeSessionId || '1';
+
+    // 0. Verify they haven't voted yet
+    const { data: existingSession } = await supabase
+      .from('voter_sessions')
+      .select('has_voted')
+      .eq('voter_id', session.user.id)
+      .eq('session_id', activeSessionId)
+      .maybeSingle();
+
+    if (existingSession?.has_voted) {
+      throw new Error('You have already voted in this election.');
+    }
 
     // 1. Insert votes with session_id
     const votesData = votes.map(v => ({

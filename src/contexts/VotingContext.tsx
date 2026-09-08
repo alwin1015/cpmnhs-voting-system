@@ -278,6 +278,16 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     }
   }, [activeSessionId, sessions, voters]);
 
+  // Sync global hasVoted state with current voter's session-specific status
+  useEffect(() => {
+    if (user && user.role === 'voter' && voters.length > 0) {
+      const currentVoter = voters.find(v => String(v.id) === String(user.id));
+      if (currentVoter) {
+        setHasVoted(currentVoter.hasVoted);
+      }
+    }
+  }, [voters, user, activeSessionId]);
+
   // On mount: check auth and load initial data
   useEffect(() => {
     let isMounted = true;
@@ -432,7 +442,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             gradeLevel: data.user.gradeLevel,
             section: data.user.section,
           });
-          setHasVoted(false); // Reset — will be checked per-session
+          setHasVoted(data.hasVoted ?? false);
           refreshData();
           return true;
         }

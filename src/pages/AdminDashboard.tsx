@@ -289,7 +289,7 @@ export default function AdminDashboard() {
 
     if (election.isActive) {
       // End election
-      await updateElection({ isActive: false, scheduleStatus: 'completed' });
+      await updateElection({ isActive: false, status: 'completed', scheduleStatus: 'completed' });
       toast({ title: 'Election Ended', description: 'Voting has been closed.' });
     } else {
       // Check if schedule is authorized before launching
@@ -298,9 +298,7 @@ export default function AdminDashboard() {
         return;
       }
 
-
-
-      await updateElection({ isActive: true, scheduleStatus: 'ongoing' });
+      await updateElection({ isActive: true, status: 'active', scheduleStatus: 'ongoing' });
       toast({ title: 'Election Launched!', description: 'Students can now cast their votes.' });
     }
   };

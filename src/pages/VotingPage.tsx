@@ -100,6 +100,47 @@ export default function VotingPage() {
     );
   }
 
+  // Show thank you page if already voted
+  if (hasVoted) {
+    return (
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        <Header />
+        <main className="flex-1 flex items-center justify-center p-4">
+          <Card className="max-w-md w-full text-center p-6 sm:p-8 bg-white border border-slate-200/80 shadow-xl rounded-2xl animate-scale-in">
+            <CardContent className="pt-4 sm:pt-6">
+              <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4 shadow-xs">
+                <CheckCircle className="h-8 w-8 stroke-[2.5]" />
+              </div>
+              <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-1">YOU HAVE ALREADY VOTED.</h2>
+              <p className="text-xs sm:text-sm text-slate-500 mb-6 leading-relaxed">
+                Thank you, <strong>{user?.name}</strong>! Your official ballot has been securely counted and recorded for this election.
+              </p>
+              <Button 
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-11 text-sm font-semibold shadow-xs"
+                onClick={() => navigate('/')}
+              >
+                Return to Home
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  // Wait for initial data load to accurately check hasVoted state before rendering ballot
+  if (voters.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+          <p className="text-slate-500 font-medium">Checking your voting status...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Check if election is active
   if (election && !election.isActive) {
     return (
@@ -121,35 +162,6 @@ export default function VotingPage() {
                 className="w-full rounded-xl h-11 text-sm font-medium"
               >
                 Return Home
-              </Button>
-            </CardContent>
-          </Card>
-        </main>
-        <Footer />
-      </div>
-    );
-  }
-
-  // Show thank you page if already voted
-  if (hasVoted) {
-    return (
-      <div className="min-h-screen flex flex-col bg-slate-50">
-        <Header />
-        <main className="flex-1 flex items-center justify-center p-4">
-          <Card className="max-w-md w-full text-center p-6 sm:p-8 bg-white border border-slate-200/80 shadow-xl rounded-2xl animate-scale-in">
-            <CardContent className="pt-4 sm:pt-6">
-              <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4 shadow-xs">
-                <CheckCircle className="h-8 w-8 stroke-[2.5]" />
-              </div>
-              <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-1">Vote Submitted Successfully!</h2>
-              <p className="text-xs sm:text-sm text-slate-500 mb-6 leading-relaxed">
-                Thank you, <strong>{user?.name}</strong>! Your official ballot has been securely counted and recorded for this election.
-              </p>
-              <Button 
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-11 text-sm font-semibold shadow-xs"
-                onClick={() => navigate('/')}
-              >
-                Return to Home
               </Button>
             </CardContent>
           </Card>
