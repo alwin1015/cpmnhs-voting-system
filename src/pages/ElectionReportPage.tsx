@@ -421,28 +421,6 @@ export default function ElectionReportPage() {
             </div>
           )}
 
-          {/* Locked & Finalized Results vs Working Table */}
-          {election?.resultsFinalized ? (
-            <div className="mb-8 animate-fade-in">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900">Official Locked & Finalized Results</h2>
-                  <p className="text-xs text-slate-500">Official election report matching the standardized DepEd format.</p>
-                </div>
-                <Button
-                  onClick={handlePrintWithValidation}
-                  size="sm"
-                  className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-sm"
-                >
-                  <Printer className="h-4 w-4" /> Print Final Results
-                </Button>
-              </div>
-
-              {/* Exact same result format, layout, and design */}
-              <OfficialResultsSheet tieResolutions={tieResolutions} />
-            </div>
-          ) : (
-            <>
           {/* Filter Bar */}
           <Card className="border border-gray-100 shadow-sm mb-6 animate-fade-in" style={{ background: 'rgba(255,255,255,0.95)' }}>
             <CardContent className="py-4 px-6">
@@ -550,10 +528,6 @@ export default function ElectionReportPage() {
               </div>
             </CardContent>
           </Card>
-
-
-            </>
-          )}
 
           {/* Tie Detection & Verification Section */}
           {ties.length > 0 && !election?.resultsFinalized && (
