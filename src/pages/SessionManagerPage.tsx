@@ -39,7 +39,6 @@ import {
   ArrowRight,
   CheckCircle2,
   AlertTriangle,
-  ArrowLeft,
   RefreshCw,
   FolderKanban,
   Check,
@@ -262,17 +261,8 @@ export default function SessionManagerPage() {
       <Header />
 
       <main className="flex-1 container mx-auto px-4 py-8 max-w-6xl">
-        {/* Top Navigation & Breadcrumbs */}
-        <div className="flex items-center justify-between gap-4 mb-6">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate('/admin')}
-            className="text-slate-600 hover:text-slate-900 hover:bg-white/80 rounded-xl gap-2 font-medium"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Dashboard
-          </Button>
+        {/* Top Actions */}
+        <div className="flex items-center justify-end gap-4 mb-6">
 
           <Button
             variant="outline"
