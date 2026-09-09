@@ -869,36 +869,67 @@ export const api = {
   },
 
   getElectionHistoryDetail: async (sessionId: string) => {
-    const [sessionRes, candidatesRes, positionsRes, voterSessionsRes, tieResolutionsRes, verificationsRes] = await Promise.all([
-      supabase.from('voting_sessions').select('*').eq('id', sessionId).single(),
-      supabase.from('candidates').select('*').eq('session_id', sessionId),
-      supabase.from('positions').select('*').eq('session_id', sessionId).order('display_order', { ascending: true }),
-      supabase.from('voter_sessions').select('*').eq('session_id', sessionId),
-      supabase.from('tie_resolutions').select('*, vote_verifications!inner(session_id)').eq('vote_verifications.session_id', sessionId).then(r => r).catch(() => ({ data: [], error: null })),
-      supabase.from('vote_verifications').select('*').eq('session_id', sessionId),
-    ]);
+    try {
+      const [sessionRes, candidatesRes, positionsRes, voterSessionsRes, verificationsRes] = await Promise.all([
+        supabase.from('voting_sessions').select('*').eq('id', sessionId).maybeSingle(),
+        supabase.from('candidates').select('*').eq('session_id', sessionId),
+        supabase.from('positions').select('*').eq('session_id', sessionId).order('display_order', { ascending: true }),
+        supabase.from('voter_sessions').select('*').eq('session_id', sessionId),
+        supabase.from('vote_verifications').select('*').eq('session_id', sessionId),
+      ]);
 
-    if (sessionRes.error) throw new Error(sessionRes.error.message);
+      if (sessionRes.error) {
+        console.error('Session fetch error:', sessionRes.error);
+        throw new Error(sessionRes.error.message);
+      }
 
-    // Count total approved voters and those who voted in this session
-    const voterSessions = voterSessionsRes.data || [];
-    const totalVoted = voterSessions.filter((vs: any) => vs.has_voted).length;
+      if (!sessionRes.data) {
+        throw new Error(`Election session #${sessionId} not found.`);
+      }
 
-    // Get total approved voters count
-    const { count: totalVoters } = await supabase
-      .from('voters')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'approved');
+      // Fetch tie resolutions safely if verifications exist
+      let tieResolutions: any[] = [];
+      const verifications = verificationsRes.data || [];
+      const vIds = verifications.map((v: any) => v.id).filter(Boolean);
+      if (vIds.length > 0) {
+        const { data: ties, error: tErr } = await supabase
+          .from('tie_resolutions')
+          .select('*')
+          .in('verification_id', vIds);
+        if (!tErr && ties) tieResolutions = ties;
+      }
 
-    return {
-      session: sessionRes.data,
-      candidates: candidatesRes.data || [],
-      positions: positionsRes.data || [],
-      voterSessions,
-      tieResolutions: tieResolutionsRes.data || [],
-      verifications: verificationsRes.data || [],
-      totalVoters: totalVoters || 0,
-      totalVoted,
-    };
+      // Count total approved voters and those who voted in this session
+      const voterSessions = voterSessionsRes.data || [];
+      const totalVoted = voterSessions.filter((vs: any) => vs.has_voted).length;
+
+      // Get total approved voters count safely
+      let totalVoters = voterSessions.length;
+      try {
+        const { count, error: vErr } = await supabase
+          .from('voters')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'approved');
+        if (!vErr && typeof count === 'number' && count > 0) {
+          totalVoters = count;
+        }
+      } catch (err) {
+        console.warn('Could not fetch global voters count, using voterSessions count:', err);
+      }
+
+      return {
+        session: sessionRes.data,
+        candidates: candidatesRes.data || [],
+        positions: positionsRes.data || [],
+        voterSessions,
+        tieResolutions,
+        verifications,
+        totalVoters: totalVoters || 0,
+        totalVoted,
+      };
+    } catch (error) {
+      console.error('getElectionHistoryDetail failed:', error);
+      throw error;
+    }
   },
 };

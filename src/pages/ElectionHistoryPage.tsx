@@ -8,10 +8,12 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { api } from '@/lib/api';
 import type { TieResolution } from '@/types/voting';
-import { OfficialResultsSheet } from '@/components/OfficialResultsSheet';
+import cpmnhsLogo from '@/assets/cpmnhs-logo.png';
+import depedLogo from '@/assets/deped-logo.png';
+import sslgLogo from '@/assets/sslg-logo.png';
 import {
   History, ArrowLeft, Search, Filter, Calendar, Users, CheckCircle2, Trophy,
-  Printer, Eye, Clock, Award, AlertCircle, Lock, BarChart3, ChevronDown
+  Printer, Eye, Clock, Award, AlertCircle, Lock, BarChart3, ChevronDown, Loader2
 } from 'lucide-react';
 
 interface HistorySession {
@@ -41,8 +43,32 @@ interface HistoryDetailData {
 }
 
 function parseHistorySession(s: any): HistorySession {
+  if (!s) {
+    return {
+      id: '',
+      name: 'Untitled Election',
+      schoolYear: '2026-2027',
+      startDate: null,
+      endDate: null,
+      status: 'completed',
+      resultsFinalized: false,
+      finalizedBy: null,
+      finalizedAt: null,
+      totalVoters: 0,
+      totalVoted: 0,
+      signatories: {},
+    };
+  }
+  let parsedSignatories = {};
+  if (s.signatories) {
+    try {
+      parsedSignatories = typeof s.signatories === 'string' ? JSON.parse(s.signatories) : s.signatories;
+    } catch (_) {
+      parsedSignatories = {};
+    }
+  }
   return {
-    id: String(s.id),
+    id: String(s.id || ''),
     name: s.name || 'Untitled Election',
     schoolYear: s.school_year || '2026-2027',
     startDate: s.start_date ? new Date(s.start_date) : null,
@@ -51,9 +77,9 @@ function parseHistorySession(s: any): HistorySession {
     resultsFinalized: Boolean(s.results_finalized),
     finalizedBy: s.finalized_by || null,
     finalizedAt: s.finalized_at ? new Date(s.finalized_at) : null,
-    totalVoters: s.total_voters,
-    totalVoted: s.total_voted,
-    signatories: s.signatories ? (typeof s.signatories === 'string' ? JSON.parse(s.signatories) : s.signatories) : {},
+    totalVoters: s.total_voters || 0,
+    totalVoted: s.total_voted || 0,
+    signatories: parsedSignatories,
   };
 }
 
@@ -69,7 +95,7 @@ export default function ElectionHistoryPage() {
   // Detail view state
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [detailData, setDetailData] = useState<HistoryDetailData | null>(null);
-  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
   const [showPrintView, setShowPrintView] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -94,15 +120,23 @@ export default function ElectionHistoryPage() {
 
   // Load detail for selected session
   const loadDetail = useCallback(async (sessionId: string) => {
-    setIsLoadingDetail(true);
+    setLoadingSessionId(sessionId);
     try {
       const data = await api.getElectionHistoryDetail(sessionId);
+      if (!data || !data.session) {
+        throw new Error('Election data could not be retrieved.');
+      }
       setDetailData(data);
       setSelectedSessionId(sessionId);
     } catch (error: any) {
-      toast({ title: 'Error', description: error.message || 'Failed to load election details.', variant: 'destructive' });
+      console.error('Failed to load election details:', error);
+      toast({ 
+        title: 'Unable to Load Results', 
+        description: error.message || 'Failed to load election details. Please try again.', 
+        variant: 'destructive' 
+      });
     } finally {
-      setIsLoadingDetail(false);
+      setLoadingSessionId(null);
     }
   }, [toast]);
 
@@ -263,8 +297,8 @@ export default function ElectionHistoryPage() {
     }));
 
     const histSession = parseHistorySession(detailData.session);
-    const turnoutPercent = detailData.totalVoters > 0
-      ? ((detailData.totalVoted / detailData.totalVoters) * 100).toFixed(1)
+    const turnoutPercent = (detailData.totalVoters || 0) > 0
+      ? (((detailData.totalVoted || 0) / detailData.totalVoters) * 100).toFixed(1)
       : '0.0';
 
     const results = parsedPositions.map((position: any) => ({
@@ -327,8 +361,8 @@ export default function ElectionHistoryPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
             {[
               { title: 'Election Date', value: formatDate(histSession.startDate), icon: Calendar, iconBg: 'bg-blue-50', iconColor: 'text-blue-600' },
-              { title: 'Registered Voters', value: detailData.totalVoters.toLocaleString(), icon: Users, iconBg: 'bg-indigo-50', iconColor: 'text-indigo-600' },
-              { title: 'Votes Cast', value: detailData.totalVoted.toLocaleString(), icon: CheckCircle2, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600' },
+              { title: 'Registered Voters', value: (detailData.totalVoters || 0).toLocaleString(), icon: Users, iconBg: 'bg-indigo-50', iconColor: 'text-indigo-600' },
+              { title: 'Votes Cast', value: (detailData.totalVoted || 0).toLocaleString(), icon: CheckCircle2, iconBg: 'bg-emerald-50', iconColor: 'text-emerald-600' },
               { title: 'Voter Turnout', value: `${turnoutPercent}%`, icon: BarChart3, iconBg: 'bg-amber-50', iconColor: 'text-amber-600' },
             ].map((stat) => (
               <Card key={stat.title} className="border border-slate-200/80 shadow-xs bg-white rounded-xl">
@@ -555,11 +589,20 @@ export default function ElectionHistoryPage() {
                           <Button
                             size="sm"
                             onClick={() => loadDetail(session.id)}
-                            disabled={isLoadingDetail}
-                            className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg text-xs shadow-xs"
+                            disabled={loadingSessionId !== null}
+                            className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg text-xs shadow-xs min-w-[110px]"
                           >
-                            <Eye className="h-3.5 w-3.5" />
-                            View Results
+                            {loadingSessionId === session.id ? (
+                              <>
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                Loading...
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="h-3.5 w-3.5" />
+                                View Results
+                              </>
+                            )}
                           </Button>
                         </div>
                       </div>
@@ -579,9 +622,6 @@ export default function ElectionHistoryPage() {
 // ========== SELF-CONTAINED PRINT SHEET FOR HISTORY ==========
 // This is a simplified version of OfficialResultsSheet that accepts props
 // instead of reading from VotingContext, so it works for historical elections.
-import cpmnhsLogo from '@/assets/cpmnhs-logo.png';
-import depedLogo from '@/assets/deped-logo.png';
-import sslgLogo from '@/assets/sslg-logo.png';
 
 function HistoryResultsSheet({ election, positions, candidates, results, tieResolutions }: {
   election: any;
