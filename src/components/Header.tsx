@@ -44,14 +44,8 @@ export function Header() {
           </div>
         </Link>
 
-        {/* Center Title for Admins on large screens */}
-        {centerTitle && (
-          <div className="hidden lg:block absolute left-1/2 transform -translate-x-1/2">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-600 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
-              {centerTitle}
-            </span>
-          </div>
-        )}
+
+
 
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-5">
