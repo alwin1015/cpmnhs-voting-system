@@ -273,10 +273,10 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         });
       }
     } else if (sessions.length > 0) {
-      // Default to first session
-      const defaultSession = sessions[0];
+      // Prefer an active/launched session as the default
+      const activeDefault = sessions.find(s => s.isActive && s.status === 'active') || sessions[0];
       setElection({
-        ...defaultSession,
+        ...activeDefault,
         totalVoters: voters.filter(v => v.status === 'approved').length,
         totalVoted: voters.filter(v => v.status === 'approved' && v.hasVoted).length,
       });
@@ -351,7 +351,9 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           if (savedSessionId && parsed.find((s: VotingSession) => s.id === savedSessionId)) {
             resolvedSessionId = savedSessionId;
           } else if (parsed.length > 0) {
-            resolvedSessionId = parsed[0].id;
+            // Prefer an active/launched session over the newest one
+            const activeSession = parsed.find((s: VotingSession) => s.isActive && s.status === 'active');
+            resolvedSessionId = activeSession ? activeSession.id : parsed[0].id;
           }
           if (resolvedSessionId) {
             setActiveSessionId(resolvedSessionId);

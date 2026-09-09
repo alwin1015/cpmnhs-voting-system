@@ -282,7 +282,7 @@ export default function AdminDashboard() {
     updateElection({ gradeMappings: editMappings }).catch(err => console.error('Save mappings error:', err));
   };
 
-  const canLaunchElection = scheduleStatus === 'authorized' || scheduleStatus === 'scheduled';
+  const canLaunchElection = scheduleStatus === 'authorized' || scheduleStatus === 'scheduled' || scheduleStatus === 'ongoing' || scheduleStatus === 'completed';
 
   const handleToggleElection = async () => {
     if (!election) return;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
@@ -41,15 +41,21 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const checkAndTriggerApprovalNotification = (targetLrn: string) => {
+  // Track previous voter status to detect approval transition
+  const previousVoterStatusRef = React.useRef<string | null>(null);
+
+  const checkAndTriggerApprovalNotification = (targetLrn: string, forceShow?: boolean) => {
     if (!targetLrn || targetLrn.length !== 12 || !voters || voters.length === 0) return;
 
     const voter = voters.find(v => v.lrn === targetLrn);
     if (!voter) return;
 
-    // Show only to students who are approved and eligible for the current voting session
-    // Do not show to pending, rejected, or unregistered students
-    if (voter.status !== 'approved') return;
+    // Show only to students who are approved
+    if (voter.status !== 'approved') {
+      // Track status so we can detect when it changes to 'approved'
+      previousVoterStatusRef.current = voter.status;
+      return;
+    }
 
     const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
     const eligibleSession = activeSessions.find(s => {
@@ -60,34 +66,52 @@ export default function LoginPage() {
 
     const sessionId = eligibleSession ? eligibleSession.id : (election?.id || 'current');
 
-    // Tie notification to current voting session: after displayed once, do not show again
-    const notificationKey = `approval_notice_shown_${voter.id}_${sessionId}`;
-    if (localStorage.getItem(notificationKey)) {
+    // Check if this notification was already dismissed by the student
+    const dismissKey = `approval_dismissed_${voter.id}_${sessionId}`;
+    if (localStorage.getItem(dismissKey)) {
       return;
     }
 
-    // Mark as shown
-    localStorage.setItem(notificationKey, 'true');
+    // Detect if this is a live approval transition (status just changed from pending/rejected to approved)
+    const wasJustApproved = forceShow || 
+      (previousVoterStatusRef.current && previousVoterStatusRef.current !== 'approved');
+    previousVoterStatusRef.current = voter.status;
 
-    // Show popup
-    setShowApprovalBanner(true);
-    setIsBannerFadingOut(false);
+    // Show the persistent banner (stays until dismissed or login)
+    if (!showApprovalBanner || wasJustApproved) {
+      setShowApprovalBanner(true);
+      setIsBannerFadingOut(false);
+    }
+  };
 
-    // Keep visible for approximately 3 seconds, then fade out and disappear
-    setTimeout(() => {
-      setIsBannerFadingOut(true);
-    }, 3000);
-
+  const dismissApprovalBanner = () => {
+    setIsBannerFadingOut(true);
     setTimeout(() => {
       setShowApprovalBanner(false);
       setIsBannerFadingOut(false);
-    }, 3500);
+    }, 400);
+
+    // Mark as dismissed so it doesn't show again for this session
+    const knownLrn = lrn || localStorage.getItem('student_device_lrn');
+    if (knownLrn && voters) {
+      const voter = voters.find(v => v.lrn === knownLrn);
+      if (voter) {
+        const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
+        const eligibleSession = activeSessions.find(s => {
+          const gradeOk = !s.eligibleGradeLevels || s.eligibleGradeLevels.length === 0 || s.eligibleGradeLevels.includes(voter.gradeLevel || '');
+          const sectionOk = !s.eligibleSections || s.eligibleSections.length === 0 || s.eligibleSections.includes(voter.section || '');
+          return gradeOk && sectionOk;
+        }) || (activeSessions.length > 0 ? activeSessions[0] : null);
+        const sessionId = eligibleSession ? eligibleSession.id : (election?.id || 'current');
+        localStorage.setItem(`approval_dismissed_${voter.id}_${sessionId}`, 'true');
+      }
+    }
   };
 
-  // Automatically check approval status on page load or when voters/sessions update
+  // Automatically check approval status on page load or when voters/sessions update (realtime)
   useEffect(() => {
     if (isRegisterMode) return;
-    const knownLrn = localStorage.getItem('student_device_lrn');
+    const knownLrn = lrn || localStorage.getItem('student_device_lrn');
     if (knownLrn && knownLrn.length === 12) {
       if (!lrn) {
         setLrn(knownLrn);
@@ -501,7 +525,7 @@ export default function LoginPage() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => setShowApprovalBanner(false)}
+                          onClick={dismissApprovalBanner}
                           className="text-emerald-500 hover:text-emerald-800 text-xs p-1 rounded-md transition-colors"
                           title="Dismiss"
                         >

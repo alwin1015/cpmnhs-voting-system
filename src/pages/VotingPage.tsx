@@ -147,6 +147,27 @@ export default function VotingPage() {
 
   // Check if election is active
   if (election && !election.isActive) {
+    // Before showing the error, check if there's an active session the voter is eligible for
+    // that just hasn't been auto-selected yet (race condition on initial load)
+    const hasEligibleActiveSession = sessions.some(s => {
+      if (!s.isActive || s.status !== 'active') return false;
+      const gradeOk = !s.eligibleGradeLevels || s.eligibleGradeLevels.length === 0 || s.eligibleGradeLevels.includes(user?.gradeLevel || '');
+      const sectionOk = !s.eligibleSections || s.eligibleSections.length === 0 || s.eligibleSections.includes(user?.section || '');
+      return gradeOk && sectionOk;
+    });
+
+    if (hasEligibleActiveSession) {
+      // An active session exists but hasn't been selected yet — wait for auto-select
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+            <p className="text-slate-500 font-medium">Loading election...</p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen flex flex-col bg-slate-50">
         <Header />
