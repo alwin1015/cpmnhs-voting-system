@@ -320,11 +320,13 @@ export default function LoginPage() {
               <div className="flex justify-center mb-4">
                 <div className="relative">
                   <div className="absolute inset-0 bg-blue-500/20 rounded-full blur-xl" />
-                  <img 
-                    src={schoolLogo} 
-                    alt="CPMNHS Logo" 
-                    className="relative w-20 h-20 rounded-full object-cover shadow-lg border-2 border-white"
-                  />
+                  <div className="relative w-20 h-20 rounded-full overflow-hidden shadow-lg border-2 border-white">
+                    <img 
+                      src={schoolLogo} 
+                      alt="CPMNHS Logo" 
+                      className="w-full h-full object-cover scale-[1.18]"
+                    />
+                  </div>
                 </div>
               </div>
               <CardTitle className="font-display text-2xl font-bold">

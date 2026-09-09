@@ -29,11 +29,13 @@ export function Header() {
       <div className="container mx-auto flex h-12 md:h-14 items-center justify-between px-3 sm:px-4">
         {/* Brand Logo & Name */}
         <Link to="/" className="flex items-center gap-2 sm:gap-2.5 group">
-          <img
-            src={schoolLogo}
-            alt="CPMNHS Logo"
-            className="w-8 h-8 sm:w-9 sm:h-9 object-contain rounded-full border border-slate-200 shadow-2xs group-hover:scale-105 transition-transform"
-          />
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full overflow-hidden border border-slate-200 shadow-2xs group-hover:scale-105 transition-transform">
+            <img
+              src={schoolLogo}
+              alt="CPMNHS Logo"
+              className="w-full h-full object-cover scale-[1.18]"
+            />
+          </div>
           <div className="flex flex-col">
             <span className="text-xs sm:text-sm font-black text-slate-900 leading-none tracking-tight">
               CPMNHS iVote
