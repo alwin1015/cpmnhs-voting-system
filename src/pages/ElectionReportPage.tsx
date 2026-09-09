@@ -41,6 +41,7 @@ export default function ElectionReportPage() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
+  const [showUnfinalizeDialog, setShowUnfinalizeDialog] = useState(false);
   const [showOfficialReport, setShowOfficialReport] = useState(false);
   const [verificationNotes, setVerificationNotes] = useState('');
   const [tieResolveReason, setTieResolveReason] = useState('');
@@ -263,7 +264,20 @@ export default function ElectionReportPage() {
       toast({ title: 'Results Finalized', description: 'Election results have been locked and finalized.' });
       setShowFinalizeDialog(false);
     } catch (error: any) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      toast({ title: 'Error', description: error.message || 'Failed to finalize results.', variant: 'destructive' });
+    } finally {
+      setIsFinalizing(false);
+    }
+  };
+
+  const handleUnfinalizeResults = async () => {
+    setIsFinalizing(true);
+    try {
+      await unfinalizeResults();
+      toast({ title: 'Results Unlocked', description: 'Election results have been unlocked and returned to real-time counting.' });
+      setShowUnfinalizeDialog(false);
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to unlock results.', variant: 'destructive' });
     } finally {
       setIsFinalizing(false);
     }
@@ -720,7 +734,7 @@ export default function ElectionReportPage() {
           )}
 
           {/* Finalize Button */}
-          {!election?.resultsFinalized && (
+          {!election?.resultsFinalized ? (
             <div className="text-center py-6">
               <Button
                 onClick={() => setShowFinalizeDialog(true)}
@@ -734,11 +748,25 @@ export default function ElectionReportPage() {
                 }}
               >
                 <Lock className="h-5 w-5" />
-                {isFinalizing ? 'Finalizing...' : 'Finalize Election Results'}
+                {isFinalizing ? 'Finalizing...' : 'LOCK & FINALIZE RESULTS'}
               </Button>
               {!allTiesResolved && (
                 <p className="text-sm text-gray-400 mt-2">All ties must be resolved before finalizing results.</p>
               )}
+            </div>
+          ) : (
+            <div className="text-center py-6">
+              <Button
+                onClick={() => setShowUnfinalizeDialog(true)}
+                disabled={isFinalizing}
+                size="lg"
+                variant="outline"
+                className="gap-2 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 shadow-sm"
+              >
+                <Lock className="h-5 w-5" />
+                {isFinalizing ? 'Unlocking...' : 'UNLOCK RESULTS'}
+              </Button>
+              <p className="text-sm text-gray-500 mt-2">Reopens results for authorized changes and returns them to real-time counting.</p>
             </div>
           )}
 
@@ -768,6 +796,37 @@ export default function ElectionReportPage() {
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   Yes, Finalize Results
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* Unfinalize Confirmation Dialog */}
+          <AlertDialog open={showUnfinalizeDialog} onOpenChange={setShowUnfinalizeDialog}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+                  <AlertTriangle className="h-5 w-5" />
+                  Unlock Election Results
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you absolutely sure you want to unlock the election results?
+                  <br /><br />
+                  <strong>This action will:</strong>
+                  <ul className="list-disc list-inside mt-2 space-y-1 text-slate-700">
+                    <li>Reopen the election for real-time counting</li>
+                    <li>Remove the official finalized timestamp and signature</li>
+                    <li>Allow active voting to resume modifying these totals (if election is active)</li>
+                  </ul>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleUnfinalizeResults}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  Yes, Unlock Results
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

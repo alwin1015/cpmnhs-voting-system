@@ -522,13 +522,13 @@ export const api = {
     session.activeSessionId = activeSessionId;
     localStorage.setItem('voting_session', JSON.stringify(session));
 
-    // 3. Increment candidate vote counts 
-    for (const v of votes) {
+    // 3. Increment candidate vote counts concurrently to prevent timeouts or dropped votes
+    await Promise.all(votes.map(async (v) => {
       const { data: cand } = await supabase.from('candidates').select('votes').eq('id', v.candidate_id).single();
       if (cand) {
         await supabase.from('candidates').update({ votes: (cand.votes || 0) + 1 }).eq('id', v.candidate_id);
       }
-    }
+    }));
 
     return { success: true };
   },
