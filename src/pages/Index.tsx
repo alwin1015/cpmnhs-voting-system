@@ -8,6 +8,7 @@ import schoolLogo from '@/assets/school-logo.png';
 import heroSlide1 from '@/assets/hero-slide-1.jpg';
 import heroSlide2 from '@/assets/hero-slide-2.jpg';
 import heroSlide3 from '@/assets/hero-slide-3.jpg';
+import heroSlide4 from '@/assets/hero-slide-4.jpg';
 import {
   Vote,
   Users,
@@ -19,7 +20,7 @@ import {
   Star
 } from 'lucide-react';
 
-const heroImages = [heroSlide1, heroSlide2, heroSlide3];
+const heroImages = [heroSlide1, heroSlide2, heroSlide3, heroSlide4];
 
 const Index = () => {
   const navigate = useNavigate();
