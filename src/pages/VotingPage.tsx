@@ -24,6 +24,7 @@ export default function VotingPage() {
   const [currentPositionIndex, setCurrentPositionIndex] = useState(0);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [justVoted, setJustVoted] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -111,7 +112,9 @@ export default function VotingPage() {
               <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4 shadow-xs">
                 <CheckCircle className="h-8 w-8 stroke-[2.5]" />
               </div>
-              <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-1">YOU HAVE ALREADY VOTED.</h2>
+              <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-1">
+                {justVoted ? "Vote Submitted Successfully!" : "YOU HAVE ALREADY VOTED."}
+              </h2>
               <p className="text-xs sm:text-sm text-slate-500 mb-6 leading-relaxed">
                 Thank you, <strong>{user?.name}</strong>! Your official ballot has been securely counted and recorded for this election.
               </p>
@@ -273,6 +276,7 @@ export default function VotingPage() {
           title: 'Ballot Submitted Successfully!',
           description: 'Your votes have been recorded.',
         });
+        setJustVoted(true);
       } else {
         toast({
           title: 'Submission Failed',
