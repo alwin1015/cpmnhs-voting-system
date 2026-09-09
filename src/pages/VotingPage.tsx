@@ -132,17 +132,6 @@ export default function VotingPage() {
     );
   }
 
-  // Wait for initial data load to accurately check hasVoted state before rendering ballot
-  if (voters.length === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-          <p className="text-slate-500 font-medium">Checking your voting status...</p>
-        </div>
-      </div>
-    );
-  }
 
   // Check if election is active
   if (election && !election.isActive) {
