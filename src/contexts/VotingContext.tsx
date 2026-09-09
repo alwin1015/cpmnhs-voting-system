@@ -59,6 +59,7 @@ interface VotingContextType {
   updateMySection: (voterId: string, newSection: string) => Promise<void>;
   rejectVoter: (id: string) => Promise<boolean>;
   deleteVoter: (id: string) => Promise<boolean>;
+  isInitializing: boolean;
 }
 
 const VotingContext = createContext<VotingContextType | undefined>(undefined);
@@ -129,6 +130,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<VotingSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [currentSchoolYear, setCurrentSchoolYear] = useState<string>('2026-2027');
+  const [isInitializing, setIsInitializing] = useState<boolean>(true);
 
   // Computed active session
   const activeSession = sessions.find(s => s.id === activeSessionId) || null;
@@ -278,15 +280,22 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     }
   }, [activeSessionId, sessions, voters]);
 
-  // Sync global hasVoted state with current voter's session-specific status
+  // Securely fetch and sync hasVoted state directly from database for the active session
   useEffect(() => {
-    if (user && user.role === 'voter' && voters.length > 0) {
-      const currentVoter = voters.find(v => String(v.id) === String(user.id));
-      if (currentVoter) {
-        setHasVoted(currentVoter.hasVoted);
+    if (user && user.role === 'voter') {
+      if (activeSessionId) {
+        setIsInitializing(true);
+        api.getVoterSessionStatus(user.id, activeSessionId)
+          .then(status => {
+            setHasVoted(status.hasVoted);
+          })
+          .catch(console.error)
+          .finally(() => setIsInitializing(false));
       }
+    } else {
+      setIsInitializing(false);
     }
-  }, [voters, user, activeSessionId]);
+  }, [user, activeSessionId]);
 
   // On mount: check auth and load initial data
   useEffect(() => {
@@ -927,6 +936,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         updateMySection,
         rejectVoter,
         deleteVoter,
+        isInitializing
       }}
     >
       {children}
