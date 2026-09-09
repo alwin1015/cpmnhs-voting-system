@@ -856,4 +856,49 @@ export const api = {
     }
     return { success: true };
   },
+
+  // ==================== Election History ====================
+  getElectionHistory: async () => {
+    const { data, error } = await supabase
+      .from('voting_sessions')
+      .select('*')
+      .in('status', ['completed', 'finalized'])
+      .order('created_at', { ascending: false });
+    if (error) throw new Error(error.message);
+    return data || [];
+  },
+
+  getElectionHistoryDetail: async (sessionId: string) => {
+    const [sessionRes, candidatesRes, positionsRes, voterSessionsRes, tieResolutionsRes, verificationsRes] = await Promise.all([
+      supabase.from('voting_sessions').select('*').eq('id', sessionId).single(),
+      supabase.from('candidates').select('*').eq('session_id', sessionId),
+      supabase.from('positions').select('*').eq('session_id', sessionId).order('display_order', { ascending: true }),
+      supabase.from('voter_sessions').select('*').eq('session_id', sessionId),
+      supabase.from('tie_resolutions').select('*, vote_verifications!inner(session_id)').eq('vote_verifications.session_id', sessionId).then(r => r).catch(() => ({ data: [], error: null })),
+      supabase.from('vote_verifications').select('*').eq('session_id', sessionId),
+    ]);
+
+    if (sessionRes.error) throw new Error(sessionRes.error.message);
+
+    // Count total approved voters and those who voted in this session
+    const voterSessions = voterSessionsRes.data || [];
+    const totalVoted = voterSessions.filter((vs: any) => vs.has_voted).length;
+
+    // Get total approved voters count
+    const { count: totalVoters } = await supabase
+      .from('voters')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'approved');
+
+    return {
+      session: sessionRes.data,
+      candidates: candidatesRes.data || [],
+      positions: positionsRes.data || [],
+      voterSessions,
+      tieResolutions: tieResolutionsRes.data || [],
+      verifications: verificationsRes.data || [],
+      totalVoters: totalVoters || 0,
+      totalVoted,
+    };
+  },
 };

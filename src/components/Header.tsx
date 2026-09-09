@@ -2,7 +2,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useVoting } from '@/contexts/VotingContext';
 import { Button } from '@/components/ui/button';
 import schoolLogo from '@/assets/school-logo.png';
-import { LogOut, User, Menu, X, Vote, CalendarDays } from 'lucide-react';
+import { LogOut, User, Menu, X, Vote, CalendarDays, History } from 'lucide-react';
 import { useState } from 'react';
 
 export function Header() {
@@ -71,6 +71,10 @@ export function Header() {
                   </Link>
                   <Link to="/results" className="text-xs sm:text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors">
                     Live Results
+                  </Link>
+                  <Link to="/history" className="text-xs sm:text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors flex items-center gap-1.5">
+                    <History className="h-3.5 w-3.5" />
+                    History
                   </Link>
                 </>
               )}
@@ -169,6 +173,14 @@ export function Header() {
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Live Results
+                </Link>
+                <Link 
+                  to="/history" 
+                  className="text-sm font-semibold py-2 px-2.5 rounded-lg text-slate-700 hover:bg-slate-100 flex items-center gap-2" 
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <History className="h-4 w-4 text-slate-500" />
+                  Election History
                 </Link>
                 <Link 
                   to="/admin" 

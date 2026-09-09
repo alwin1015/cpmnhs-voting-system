@@ -17,6 +17,7 @@ import SectionsPage from "./pages/SectionsPage";
 import PositionsPage from "./pages/PositionsPage";
 import ElectionReportPage from "./pages/ElectionReportPage";
 import SessionManagerPage from '@/pages/SessionManagerPage';
+import ElectionHistoryPage from '@/pages/ElectionHistoryPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 const queryClient = new QueryClient();
@@ -43,6 +44,7 @@ const App = () => (
             <Route path="/sections" element={<SectionsPage />} />
             <Route path="/positions" element={<PositionsPage />} />
             <Route path="/election-report" element={<ElectionReportPage />} />
+            <Route path="/history" element={<ElectionHistoryPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
