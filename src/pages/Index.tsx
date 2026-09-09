@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { useVoting } from '@/contexts/VotingContext';
-import schoolLogo from '@/assets/school-logo.png';
+import homeLogo from '@/assets/home-logo.png';
 import heroSlide1 from '@/assets/hero-slide-1.jpg';
 import heroSlide2 from '@/assets/hero-slide-2.jpg';
 import heroSlide3 from '@/assets/hero-slide-3.jpg';
@@ -141,9 +141,9 @@ const Index = () => {
                 <div className="relative transform-gpu transition-all duration-700 hover:scale-105 hover:rotate-2">
                   <div className="absolute inset-0 bg-blue-400/30 rounded-full blur-3xl animate-pulse" />
                   <img
-                    src={schoolLogo}
-                    alt="CPMNHS Logo"
-                    className="relative w-56 h-56 md:w-72 md:h-72 lg:w-96 lg:h-96 rounded-full object-cover shadow-2xl border-[6px] border-white/10"
+                    src={homeLogo}
+                    alt="CPMNHS SSLG Logo"
+                    className="relative w-56 h-56 md:w-72 md:h-72 lg:w-96 lg:h-96 object-contain drop-shadow-[0_20px_40px_rgba(0,0,0,0.6)]"
                   />
                 </div>
               </div>
