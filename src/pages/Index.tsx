@@ -1,9 +1,13 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { useVoting } from '@/contexts/VotingContext';
 import schoolLogo from '@/assets/school-logo.png';
+import heroSlide1 from '@/assets/hero-slide-1.jpg';
+import heroSlide2 from '@/assets/hero-slide-2.jpg';
+import heroSlide3 from '@/assets/hero-slide-3.jpg';
 import {
   Vote,
   Users,
@@ -15,9 +19,20 @@ import {
   Star
 } from 'lucide-react';
 
+const heroImages = [heroSlide1, heroSlide2, heroSlide3];
+
 const Index = () => {
   const navigate = useNavigate();
   const { election, isLoggedIn, user } = useVoting();
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentImageIndex((prevIndex) => (prevIndex + 1) % heroImages.length);
+    }, 4500);
+
+    return () => clearInterval(timer);
+  }, []);
 
   const features = [
     {
@@ -45,10 +60,26 @@ const Index = () => {
       <main className="flex-1">
         {/* Hero Section */}
         <section className="relative overflow-hidden min-h-[100dvh] flex items-center">
-          {/* Professional Blue Background */}
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-900 via-blue-800 to-blue-950" />
-          {/* Subtle pattern overlay for texture */}
-          <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:20px_20px]" />
+          {/* Automatic Image Carousel Background */}
+          <div className="absolute inset-0 w-full h-full overflow-hidden">
+            {heroImages.map((image, index) => (
+              <div
+                key={index}
+                className={`absolute inset-0 w-full h-full transition-opacity duration-1000 ease-in-out ${
+                  index === currentImageIndex ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                }`}
+              >
+                <img
+                  src={image}
+                  alt={`CPMNHS Campus Slide ${index + 1}`}
+                  className="w-full h-full object-cover object-center"
+                />
+              </div>
+            ))}
+            {/* Elegant overlay so existing text & content remain crisp and legible */}
+            <div className="absolute inset-0 bg-slate-950/60" />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/40 to-slate-950/70" />
+          </div>
 
           {/* Admin Access at Top Right */}
           <div className="absolute top-4 right-4 md:right-8 z-20">
@@ -116,6 +147,22 @@ const Index = () => {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Carousel Slide Indicators */}
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2.5">
+            {heroImages.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={() => setCurrentImageIndex(idx)}
+                aria-label={`Go to slide ${idx + 1}`}
+                className={`transition-all duration-500 rounded-full ${
+                  idx === currentImageIndex
+                    ? 'w-8 h-2 bg-white shadow-lg'
+                    : 'w-2 h-2 bg-white/40 hover:bg-white/70'
+                }`}
+              />
+            ))}
           </div>
         </section>
 
