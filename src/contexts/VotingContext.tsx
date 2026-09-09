@@ -376,7 +376,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
           if (isMounted) refreshData();
-        }, 1200);
+        }, 300);
       };
 
       const channel = supabase
