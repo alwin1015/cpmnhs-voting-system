@@ -60,6 +60,7 @@ interface VotingContextType {
   rejectVoter: (id: string) => Promise<boolean>;
   deleteVoter: (id: string) => Promise<boolean>;
   isInitializing: boolean;
+  isDataLoaded: boolean;
 }
 
 const VotingContext = createContext<VotingContextType | undefined>(undefined);
@@ -131,6 +132,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [currentSchoolYear, setCurrentSchoolYear] = useState<string>('2026-2027');
   const [isInitializing, setIsInitializing] = useState<boolean>(true);
+  const [isDataLoaded, setIsDataLoaded] = useState<boolean>(false);
 
   // Computed active session
   const activeSession = sessions.find(s => s.id === activeSessionId) || null;
@@ -255,6 +257,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       console.error('Failed to refresh data:', error);
     } finally {
       isRefreshingRef.current = false;
+      setIsDataLoaded(true);
     }
   }, [activeSessionId]);
 
@@ -936,7 +939,8 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         updateMySection,
         rejectVoter,
         deleteVoter,
-        isInitializing
+        isInitializing,
+        isDataLoaded
       }}
     >
       {children}

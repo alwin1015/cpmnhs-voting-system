@@ -20,7 +20,7 @@ import {
 import { Vote, CheckCircle, ArrowRight, ArrowLeft, Send, Clock, User, Check } from 'lucide-react';
 
 export default function VotingPage() {
-  const { candidates, positions, votes, setVote, submitVotes, hasVoted, isLoggedIn, user, election, logout, sessions, activeSessionId, switchSession, voters, isInitializing } = useVoting();
+  const { candidates, positions, votes, setVote, submitVotes, hasVoted, isLoggedIn, user, election, logout, sessions, activeSessionId, switchSession, voters, isInitializing, isDataLoaded } = useVoting();
   const [currentPositionIndex, setCurrentPositionIndex] = useState(0);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -102,7 +102,7 @@ export default function VotingPage() {
   }
 
   // Wait for initial data load to accurately check hasVoted state before rendering ballot
-  if (isInitializing) {
+  if (isInitializing || !isDataLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="flex flex-col items-center gap-3">
