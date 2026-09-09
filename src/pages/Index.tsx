@@ -140,13 +140,11 @@ const Index = () => {
               <div className="flex-shrink-0 order-1 lg:order-2 perspective-1000">
                 <div className="relative transform-gpu transition-all duration-700 hover:scale-105 hover:rotate-2">
                   <div className="absolute inset-0 bg-blue-400/30 rounded-full blur-3xl animate-pulse" />
-                  <div className="relative w-56 h-56 md:w-72 md:h-72 lg:w-96 lg:h-96 rounded-full overflow-hidden shadow-2xl border-[6px] border-white/10">
-                    <img
-                      src={schoolLogo}
-                      alt="CPMNHS Logo"
-                      className="w-full h-full object-cover scale-[1.18]"
-                    />
-                  </div>
+                  <img
+                    src={schoolLogo}
+                    alt="CPMNHS Logo"
+                    className="relative w-56 h-56 md:w-72 md:h-72 lg:w-96 lg:h-96 object-contain drop-shadow-2xl"
+                  />
                 </div>
               </div>
             </div>

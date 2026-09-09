@@ -6,13 +6,11 @@ export function Footer() {
       <div className="container mx-auto px-4 py-6">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-full overflow-hidden shadow-sm">
-              <img 
-                src={schoolLogo} 
-                alt="CPMNHS Logo" 
-                className="w-full h-full object-cover scale-[1.18]"
-              />
-            </div>
+            <img 
+              src={schoolLogo} 
+              alt="CPMNHS Logo" 
+              className="h-10 w-10 object-contain drop-shadow-sm"
+            />
             <div>
               <h3 className="font-bold text-gray-800 text-sm">Congressman Pablo Malasarte National High School</h3>
               <p className="text-xs text-gray-400">Cabad, Balilihan, Bohol</p>
