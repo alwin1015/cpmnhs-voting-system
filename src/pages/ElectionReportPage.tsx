@@ -56,16 +56,21 @@ export default function ElectionReportPage() {
         api.getVerifications(),
         api.getTieResolutions(),
       ]);
+      const parseJsonSafe = (val: any, fallback: any) => {
+        if (!val) return fallback;
+        if (typeof val !== 'string') return val;
+        try { return JSON.parse(val); } catch { return fallback; }
+      };
       setVerifications(vData.map((v: any) => ({
         id: String(v.id),
         positionId: String(v.position_id),
-        tiedCandidateIds: JSON.parse(v.tied_candidate_ids || '[]'),
-        selectedVoterIds: JSON.parse(v.selected_voter_ids || '[]'),
+        tiedCandidateIds: parseJsonSafe(v.tied_candidate_ids, []),
+        selectedVoterIds: parseJsonSafe(v.selected_voter_ids, []),
         verificationStatus: v.verification_status,
         verifiedBy: v.verified_by,
         verifiedAt: v.verified_at ? new Date(v.verified_at) : undefined,
         notes: v.notes,
-        originalVoteCounts: JSON.parse(v.original_vote_counts || '{}'),
+        originalVoteCounts: parseJsonSafe(v.original_vote_counts, {}),
         createdAt: new Date(v.created_at),
       })));
       setTieResolutions(tData.map((t: any) => ({
@@ -207,7 +212,10 @@ export default function ElectionReportPage() {
       });
 
       const verification = await api.initiateVerification(positionId, tiedCandidateIds, voteCounts);
-      toast({ title: 'Verification Initiated', description: `${JSON.parse(verification.selected_voter_ids).length} voters randomly selected for verification.` });
+      const selectedCount = Array.isArray(verification.selected_voter_ids)
+        ? verification.selected_voter_ids.length
+        : (() => { try { return JSON.parse(verification.selected_voter_ids || '[]').length; } catch { return 0; } })();
+      toast({ title: 'Verification Initiated', description: `${selectedCount} voters randomly selected for verification.` });
       await loadVerificationData();
     } catch (error: any) {
       toast({ title: 'Error', description: error.message || 'Failed to initiate verification.', variant: 'destructive' });

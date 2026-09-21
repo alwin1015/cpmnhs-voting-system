@@ -123,18 +123,25 @@ export default function ResultsPage() {
           })));
         }
         if (Array.isArray(vData)) {
-          setVerifications(vData.map((v: any) => ({
-            id: String(v.id),
-            positionId: String(v.position_id),
-            tiedCandidateIds: JSON.parse(v.tied_candidate_ids || '[]'),
-            selectedVoterIds: JSON.parse(v.selected_voter_ids || '[]'),
-            verificationStatus: v.verification_status,
-            verifiedBy: v.verified_by,
-            verifiedAt: v.verified_at ? new Date(v.verified_at) : undefined,
-            notes: v.notes,
-            originalVoteCounts: JSON.parse(v.original_vote_counts || '{}'),
-            createdAt: new Date(v.created_at),
-          })));
+          setVerifications(vData.map((v: any) => {
+            const parseJsonSafe = (val: any, fallback: any) => {
+              if (!val) return fallback;
+              if (typeof val !== 'string') return val;
+              try { return JSON.parse(val); } catch { return fallback; }
+            };
+            return {
+              id: String(v.id),
+              positionId: String(v.position_id),
+              tiedCandidateIds: parseJsonSafe(v.tied_candidate_ids, []),
+              selectedVoterIds: parseJsonSafe(v.selected_voter_ids, []),
+              verificationStatus: v.verification_status,
+              verifiedBy: v.verified_by,
+              verifiedAt: v.verified_at ? new Date(v.verified_at) : undefined,
+              notes: v.notes,
+              originalVoteCounts: parseJsonSafe(v.original_vote_counts, {}),
+              createdAt: new Date(v.created_at),
+            };
+          }));
         }
       });
     }

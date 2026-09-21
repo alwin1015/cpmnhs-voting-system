@@ -33,6 +33,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
+const STANDARD_GRADES = ['7', '8', '9', '10', '11', '12'];
+
 export default function VotersPage() {
   const { voters, sections, user, isLoggedIn, deleteVoter } = useVoting();
   const { toast } = useToast();
@@ -79,14 +81,11 @@ export default function VotersPage() {
     }
   };
 
-  // Standard grade levels
-  const standardGrades = ['7', '8', '9', '10', '11', '12'];
-
   // Dynamically extract all grades present in sections or standardGrades
   const allGrades = useMemo(() => {
     const sectionGrades = sections.map((s) => s.gradeLevel);
     const voterGrades = voters.map((v) => v.gradeLevel);
-    const combined = [...new Set([...standardGrades, ...sectionGrades, ...voterGrades])]
+    const combined = [...new Set([...STANDARD_GRADES, ...sectionGrades, ...voterGrades])]
       .filter(Boolean)
       .sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0));
     return combined;
