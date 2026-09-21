@@ -54,12 +54,18 @@ export const api = {
       isValid = password === admin.password_hash;
       if (isValid) {
         const hash = await bcrypt.hash(password, SALT_ROUNDS);
-        await supabase.from('admins').update({
-          password_hash: hash,
-          must_change_password: true,
-        }).eq('id', admin.id);
-        // Update admin object so must_change_password is reflected
-        admin.must_change_password = true;
+        try {
+          const { error: updErr } = await supabase.from('admins').update({
+            password_hash: hash,
+            must_change_password: true,
+          }).eq('id', admin.id);
+          if (updErr) {
+            await supabase.from('admins').update({ password_hash: hash }).eq('id', admin.id);
+          }
+        } catch (_) {
+          await supabase.from('admins').update({ password_hash: hash }).eq('id', admin.id);
+        }
+        admin.password_hash = hash;
       }
     }
 
@@ -68,7 +74,11 @@ export const api = {
     const user = { id: admin.id, role: 'admin', name: admin.username, email: admin.email };
     localStorage.setItem('voting_session', JSON.stringify({ user, has_voted: false }));
 
-    return { success: true, user, mustChangePassword: Boolean(admin.must_change_password) };
+    // Detect if admin is still using temporary default password 'admin123'
+    // or if must_change_password flag is explicitly set in database
+    const isDefaultPassword = password === 'admin123' || Boolean(admin.must_change_password);
+
+    return { success: true, user, mustChangePassword: isDefaultPassword };
   },
 
   adminChangePassword: async (adminId: string, currentPassword: string, newPassword: string) => {
@@ -87,11 +97,26 @@ export const api = {
 
     // Hash and save new password
     const hash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-    const { error: updateError } = await supabase.from('admins').update({
-      password_hash: hash,
-      must_change_password: false,
-    }).eq('id', adminId);
-    if (updateError) throw new Error(updateError.message);
+    
+    // Try updating with must_change_password, fallback to password_hash only if column doesn't exist
+    try {
+      const { error: updateError } = await supabase.from('admins').update({
+        password_hash: hash,
+        must_change_password: false,
+      }).eq('id', adminId);
+
+      if (updateError) {
+        const { error: fallbackError } = await supabase.from('admins').update({
+          password_hash: hash,
+        }).eq('id', adminId);
+        if (fallbackError) throw new Error(fallbackError.message);
+      }
+    } catch {
+      const { error: fallbackError } = await supabase.from('admins').update({
+        password_hash: hash,
+      }).eq('id', adminId);
+      if (fallbackError) throw new Error(fallbackError.message);
+    }
 
     return { success: true };
   },
