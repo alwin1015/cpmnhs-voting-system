@@ -1,12 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { Candidate, Position, Voter, Section, Election, VotingSession, User } from '@/types/voting';
-import { api as onlineApi } from '@/lib/api';
-import { offlineApi, seedDefaults } from '@/lib/offlineApi';
+import { api } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
-
-// ⚡ OFFLINE MODE TOGGLE
-const OFFLINE_MODE = false;
-const api = OFFLINE_MODE ? offlineApi : onlineApi;
 
 interface VotingContextType {
   user: User | null;
@@ -351,21 +346,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
-    // OFFLINE MODE: seed data into localStorage from offlineSeed
-    if (OFFLINE_MODE) {
-      if (!localStorage.getItem('offline_synced_v3')) {
-        // Clear stale data, re-seed from fresh offlineSeed
-        Object.keys(localStorage).forEach(key => {
-          if (key.startsWith('offline_') && key !== 'offline_session') {
-            localStorage.removeItem(key);
-          }
-        });
-        localStorage.setItem('offline_synced_v3', 'true');
-      }
-      // Always ensure seed is present (runs only if keys are missing)
-      seedDefaults();
-    }
-
     const init = async () => {
       try {
         const meData = await api.getMe();
@@ -417,117 +397,111 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     };
     init();
 
-    if (!OFFLINE_MODE) {
-      // --- Targeted real-time handlers (no full refresh) ---
-      const handleVoters = (payload: any) => {
-        if (!isMounted) return;
-        const { eventType, new: newRow, old: oldRow } = payload;
-        if (eventType === 'INSERT' && newRow) {
-          setVoters(prev => {
-            if (prev.some(v => v.id === String(newRow.id))) return prev;
-            return [mapVoterRow(newRow), ...prev];
-          });
-        } else if (eventType === 'UPDATE' && newRow) {
-          const id = String(newRow.id);
-          setVoters(prev => prev.map(v => v.id === id ? { ...v, ...mapVoterRow(newRow), hasVoted: v.hasVoted, votedAt: v.votedAt } : v));
-        } else if (eventType === 'DELETE' && oldRow) {
-          setVoters(prev => prev.filter(v => v.id !== String(oldRow.id)));
-        }
-      };
+    // --- Targeted real-time handlers (no full refresh) ---
+    const handleVoters = (payload: any) => {
+      if (!isMounted) return;
+      const { eventType, new: newRow, old: oldRow } = payload;
+      if (eventType === 'INSERT' && newRow) {
+        setVoters(prev => {
+          if (prev.some(v => v.id === String(newRow.id))) return prev;
+          return [mapVoterRow(newRow), ...prev];
+        });
+      } else if (eventType === 'UPDATE' && newRow) {
+        const id = String(newRow.id);
+        setVoters(prev => prev.map(v => v.id === id ? { ...v, ...mapVoterRow(newRow), hasVoted: v.hasVoted, votedAt: v.votedAt } : v));
+      } else if (eventType === 'DELETE' && oldRow) {
+        setVoters(prev => prev.filter(v => v.id !== String(oldRow.id)));
+      }
+    };
 
-      const handleCandidates = (payload: any) => {
-        if (!isMounted) return;
-        const { eventType, new: newRow, old: oldRow } = payload;
-        if (eventType === 'INSERT' && newRow) {
-          setCandidates(prev => {
-            if (prev.some(c => c.id === String(newRow.id))) return prev;
-            return [...prev, mapCandidateRow(newRow)];
-          });
-        } else if (eventType === 'UPDATE' && newRow) {
-          const id = String(newRow.id);
-          setCandidates(prev => prev.map(c => c.id === id ? mapCandidateRow(newRow) : c));
-        } else if (eventType === 'DELETE' && oldRow) {
-          setCandidates(prev => prev.filter(c => c.id !== String(oldRow.id)));
-        }
-      };
+    const handleCandidates = (payload: any) => {
+      if (!isMounted) return;
+      const { eventType, new: newRow, old: oldRow } = payload;
+      if (eventType === 'INSERT' && newRow) {
+        setCandidates(prev => {
+          if (prev.some(c => c.id === String(newRow.id))) return prev;
+          return [...prev, mapCandidateRow(newRow)];
+        });
+      } else if (eventType === 'UPDATE' && newRow) {
+        const id = String(newRow.id);
+        setCandidates(prev => prev.map(c => c.id === id ? mapCandidateRow(newRow) : c));
+      } else if (eventType === 'DELETE' && oldRow) {
+        setCandidates(prev => prev.filter(c => c.id !== String(oldRow.id)));
+      }
+    };
 
-      const handlePositions = (payload: any) => {
-        if (!isMounted) return;
-        const { eventType, new: newRow, old: oldRow } = payload;
-        if (eventType === 'INSERT' && newRow) {
-          setPositions(prev => {
-            if (prev.some(p => p.id === String(newRow.id))) return prev;
-            return [...prev, mapPositionRow(newRow)].sort((a, b) => a.order - b.order);
-          });
-        } else if (eventType === 'UPDATE' && newRow) {
-          const id = String(newRow.id);
-          setPositions(prev => prev.map(p => p.id === id ? mapPositionRow(newRow) : p).sort((a, b) => a.order - b.order));
-        } else if (eventType === 'DELETE' && oldRow) {
-          setPositions(prev => prev.filter(p => p.id !== String(oldRow.id)));
-        }
-      };
+    const handlePositions = (payload: any) => {
+      if (!isMounted) return;
+      const { eventType, new: newRow, old: oldRow } = payload;
+      if (eventType === 'INSERT' && newRow) {
+        setPositions(prev => {
+          if (prev.some(p => p.id === String(newRow.id))) return prev;
+          return [...prev, mapPositionRow(newRow)].sort((a, b) => a.order - b.order);
+        });
+      } else if (eventType === 'UPDATE' && newRow) {
+        const id = String(newRow.id);
+        setPositions(prev => prev.map(p => p.id === id ? mapPositionRow(newRow) : p).sort((a, b) => a.order - b.order));
+      } else if (eventType === 'DELETE' && oldRow) {
+        setPositions(prev => prev.filter(p => p.id !== String(oldRow.id)));
+      }
+    };
 
-      const handleSessions = (payload: any) => {
-        if (!isMounted) return;
-        const { eventType, new: newRow, old: oldRow } = payload;
-        if (eventType === 'INSERT' && newRow) {
-          setSessions(prev => {
-            if (prev.some(s => s.id === String(newRow.id))) return prev;
-            return [parseSession(newRow), ...prev];
-          });
-        } else if (eventType === 'UPDATE' && newRow) {
-          const id = String(newRow.id);
-          setSessions(prev => prev.map(s => s.id === id ? parseSession(newRow) : s));
-        } else if (eventType === 'DELETE' && oldRow) {
-          setSessions(prev => prev.filter(s => s.id !== String(oldRow.id)));
-        }
-      };
+    const handleSessions = (payload: any) => {
+      if (!isMounted) return;
+      const { eventType, new: newRow, old: oldRow } = payload;
+      if (eventType === 'INSERT' && newRow) {
+        setSessions(prev => {
+          if (prev.some(s => s.id === String(newRow.id))) return prev;
+          return [parseSession(newRow), ...prev];
+        });
+      } else if (eventType === 'UPDATE' && newRow) {
+        const id = String(newRow.id);
+        setSessions(prev => prev.map(s => s.id === id ? parseSession(newRow) : s));
+      } else if (eventType === 'DELETE' && oldRow) {
+        setSessions(prev => prev.filter(s => s.id !== String(oldRow.id)));
+      }
+    };
 
-      const handleVoterSessions = (payload: any) => {
-        if (!isMounted) return;
-        const { eventType, new: newRow } = payload;
-        if ((eventType === 'INSERT' || eventType === 'UPDATE') && newRow) {
-          const voterId = String(newRow.voter_id);
-          const voted = Boolean(newRow.has_voted);
-          const votedAt = newRow.voted_at ? new Date(newRow.voted_at) : undefined;
-          setVoters(prev => prev.map(v => v.id === voterId ? { ...v, hasVoted: voted, votedAt } : v));
-        }
-      };
+    const handleVoterSessions = (payload: any) => {
+      if (!isMounted) return;
+      const { eventType, new: newRow } = payload;
+      if ((eventType === 'INSERT' || eventType === 'UPDATE') && newRow) {
+        const voterId = String(newRow.voter_id);
+        const voted = Boolean(newRow.has_voted);
+        const votedAt = newRow.voted_at ? new Date(newRow.voted_at) : undefined;
+        setVoters(prev => prev.map(v => v.id === voterId ? { ...v, hasVoted: voted, votedAt } : v));
+      }
+    };
 
-      const handleVotes = (payload: any) => {
-        if (!isMounted) return;
-        const { eventType, new: newRow } = payload;
-        // When a vote is inserted, increment the candidate's vote count
-        if (eventType === 'INSERT' && newRow) {
-          const candidateId = String(newRow.candidate_id);
-          setCandidates(prev => prev.map(c => c.id === candidateId ? { ...c, votes: c.votes + 1 } : c));
-        }
-      };
+    const handleVotes = (payload: any) => {
+      if (!isMounted) return;
+      const { eventType, new: newRow } = payload;
+      // When a vote is inserted, increment the candidate's vote count
+      if (eventType === 'INSERT' && newRow) {
+        const candidateId = String(newRow.candidate_id);
+        setCandidates(prev => prev.map(c => c.id === candidateId ? { ...c, votes: c.votes + 1 } : c));
+      }
+    };
 
-      const channel = supabase
-        .channel('db-realtime-sync')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, handleCandidates)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, handleVotes)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, handleVoters)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'voter_sessions' }, handleVoterSessions)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'voting_sessions' }, handleSessions)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'positions' }, handlePositions)
-        .subscribe();
+    const channel = supabase
+      .channel('db-realtime-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, handleCandidates)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, handleVotes)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, handleVoters)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'voter_sessions' }, handleVoterSessions)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'voting_sessions' }, handleSessions)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'positions' }, handlePositions)
+      .subscribe();
 
-      // Safety polling every 5 minutes (rare fallback only)
-      const pollInterval = setInterval(() => {
-        if (isMounted) refreshData();
-      }, 300000);
-
-      return () => {
-        isMounted = false;
-        clearInterval(pollInterval);
-        supabase.removeChannel(channel);
-      };
-    }
+    // Safety polling every 5 minutes (rare fallback only)
+    const pollInterval = setInterval(() => {
+      if (isMounted) refreshData();
+    }, 300000);
 
     return () => {
       isMounted = false;
+      clearInterval(pollInterval);
+      supabase.removeChannel(channel);
     };
   }, [refreshData]);
 
