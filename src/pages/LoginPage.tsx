@@ -362,7 +362,7 @@ export default function LoginPage() {
                         <Input
                           id="reg-first-name"
                           value={regFirstName}
-                          onChange={(e) => setRegFirstName(e.target.value)}
+                          onChange={(e) => setRegFirstName(e.target.value.replace(/\b\w/g, c => c.toUpperCase()))}
                           className="pl-9 bg-white/50"
                           disabled={isLoading}
                         />
@@ -376,7 +376,7 @@ export default function LoginPage() {
                         <Input
                           id="reg-last-name"
                           value={regLastName}
-                          onChange={(e) => setRegLastName(e.target.value)}
+                          onChange={(e) => setRegLastName(e.target.value.replace(/\b\w/g, c => c.toUpperCase()))}
                           className="pl-9 bg-white/50"
                           disabled={isLoading}
                         />
