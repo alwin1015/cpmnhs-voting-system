@@ -51,8 +51,8 @@ export default function AdminLoginPage() {
           setCurrentPassword(password);
           setShowChangePassword(true);
           toast({
-            title: 'Password Change Required',
-            description: 'You must change your password before continuing.',
+            title: 'Password Update Recommended',
+            description: 'You can update your password now or skip for later.',
           });
         } else {
           toast({
@@ -147,6 +147,14 @@ export default function AdminLoginPage() {
     }
   };
 
+  const handleSkipPasswordChange = () => {
+    toast({
+      title: 'Admin Login Successful',
+      description: 'Welcome to the Admin Panel!',
+    });
+    navigate('/admin');
+  };
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
 <main className="flex-1 flex items-center justify-center p-4 py-12 relative overflow-x-hidden overflow-y-auto min-h-[min-content]">
@@ -170,7 +178,7 @@ export default function AdminLoginPage() {
               </CardTitle>
               <CardDescription className="text-gray-600">
                 {showChangePassword
-                  ? 'You must set a new password before continuing'
+                  ? 'Update your password now or choose "Not now" to skip'
                   : 'Enter your admin credentials to access the control panel'}
               </CardDescription>
             </CardHeader>
@@ -281,25 +289,38 @@ export default function AdminLoginPage() {
                     </div>
                   </div>
 
-                  <Button 
-                    type="submit" 
-                    size="lg" 
-                    className="w-full text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50"
-                    style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)' }}
-                    disabled={isChangingPassword}
-                  >
-                    {isChangingPassword ? (
-                      <span className="flex items-center gap-2">
-                        <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Updating Password...
-                      </span>
-                    ) : (
-                      <>
-                        <Lock className="h-5 w-5 mr-2" />
-                        Set New Password
-                      </>
-                    )}
-                  </Button>
+                  <div className="space-y-2 pt-2">
+                    <Button 
+                      type="submit" 
+                      size="lg" 
+                      className="w-full text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50"
+                      style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)' }}
+                      disabled={isChangingPassword}
+                    >
+                      {isChangingPassword ? (
+                        <span className="flex items-center gap-2">
+                          <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Updating Password...
+                        </span>
+                      ) : (
+                        <>
+                          <Lock className="h-5 w-5 mr-2" />
+                          Set New Password
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="lg"
+                      className="w-full text-gray-600 hover:text-gray-900 hover:bg-black/5 font-medium"
+                      onClick={handleSkipPasswordChange}
+                      disabled={isChangingPassword}
+                    >
+                      Not now
+                    </Button>
+                  </div>
                 </form>
               )}
             </CardContent>
