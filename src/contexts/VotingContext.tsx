@@ -120,6 +120,53 @@ function parseSession(eData: any, voters?: Voter[]): VotingSession {
 }
 
 export function VotingProvider({ children }: { children: ReactNode }) {
+  // Helper mappers for real-time payloads
+  const mapVoterRow = (v: any): Voter => {
+    let academicHistory: any[] = [];
+    try {
+      academicHistory = v.academic_history ? (typeof v.academic_history === 'string' ? JSON.parse(v.academic_history) : v.academic_history) : [];
+    } catch (_) {}
+    return {
+      id: String(v.id),
+      lrn: v.lrn,
+      name: v.name,
+      gradeLevel: v.grade_level ?? v.gradeLevel ?? '',
+      section: v.section ?? '',
+      hasVoted: false,
+      votedAt: undefined,
+      status: v.status ?? 'pending',
+      createdAt: v.created_at ? new Date(v.created_at) : v.createdAt ? new Date(v.createdAt) : undefined,
+      academicHistory,
+    };
+  };
+
+  const mapCandidateRow = (c: any, sessionId?: string): Candidate => ({
+    id: String(c.id),
+    name: c.name,
+    position: String(c.position_id ?? c.position),
+    party: c.party ?? '',
+    photo: c.photo_url ?? c.photo ?? '',
+    motto: c.motto ?? '',
+    gradeLevel: c.grade_level ?? c.gradeLevel ?? '',
+    section: c.section ?? '',
+    votes: Number(c.votes ?? 0),
+    sessionId: String(c.session_id ?? sessionId ?? '1'),
+  });
+
+  const mapPositionRow = (p: any, sessionId?: string): Position => ({
+    id: String(p.id),
+    name: p.name,
+    order: Number(p.display_order ?? p.order ?? 0),
+    maxVotes: Number(p.max_votes ?? p.maxVotes ?? 1),
+    strictGradeMapping: Boolean(p.strict_grade_mapping ?? p.strictGradeMapping ?? false),
+    sessionId: String(p.session_id ?? sessionId ?? '1'),
+  });
+
+  const mapSectionRow = (s: any): Section => ({
+    id: String(s.id),
+    name: s.name,
+    gradeLevel: s.grade_level ?? s.gradeLevel ?? '',
+  });
   const [user, setUser] = useState<User | null>(null);
   const [hasVoted, setHasVoted] = useState(false);
   const [votes, setVotes] = useState<Record<string, string>>({});
@@ -371,32 +418,109 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     init();
 
     if (!OFFLINE_MODE) {
-      let debounceTimer: any = null;
-      const debouncedRefresh = () => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          if (isMounted) refreshData();
-        }, 300);
+      // --- Targeted real-time handlers (no full refresh) ---
+      const handleVoters = (payload: any) => {
+        if (!isMounted) return;
+        const { eventType, new: newRow, old: oldRow } = payload;
+        if (eventType === 'INSERT' && newRow) {
+          setVoters(prev => {
+            if (prev.some(v => v.id === String(newRow.id))) return prev;
+            return [mapVoterRow(newRow), ...prev];
+          });
+        } else if (eventType === 'UPDATE' && newRow) {
+          const id = String(newRow.id);
+          setVoters(prev => prev.map(v => v.id === id ? { ...v, ...mapVoterRow(newRow), hasVoted: v.hasVoted, votedAt: v.votedAt } : v));
+        } else if (eventType === 'DELETE' && oldRow) {
+          setVoters(prev => prev.filter(v => v.id !== String(oldRow.id)));
+        }
+      };
+
+      const handleCandidates = (payload: any) => {
+        if (!isMounted) return;
+        const { eventType, new: newRow, old: oldRow } = payload;
+        if (eventType === 'INSERT' && newRow) {
+          setCandidates(prev => {
+            if (prev.some(c => c.id === String(newRow.id))) return prev;
+            return [...prev, mapCandidateRow(newRow)];
+          });
+        } else if (eventType === 'UPDATE' && newRow) {
+          const id = String(newRow.id);
+          setCandidates(prev => prev.map(c => c.id === id ? mapCandidateRow(newRow) : c));
+        } else if (eventType === 'DELETE' && oldRow) {
+          setCandidates(prev => prev.filter(c => c.id !== String(oldRow.id)));
+        }
+      };
+
+      const handlePositions = (payload: any) => {
+        if (!isMounted) return;
+        const { eventType, new: newRow, old: oldRow } = payload;
+        if (eventType === 'INSERT' && newRow) {
+          setPositions(prev => {
+            if (prev.some(p => p.id === String(newRow.id))) return prev;
+            return [...prev, mapPositionRow(newRow)].sort((a, b) => a.order - b.order);
+          });
+        } else if (eventType === 'UPDATE' && newRow) {
+          const id = String(newRow.id);
+          setPositions(prev => prev.map(p => p.id === id ? mapPositionRow(newRow) : p).sort((a, b) => a.order - b.order));
+        } else if (eventType === 'DELETE' && oldRow) {
+          setPositions(prev => prev.filter(p => p.id !== String(oldRow.id)));
+        }
+      };
+
+      const handleSessions = (payload: any) => {
+        if (!isMounted) return;
+        const { eventType, new: newRow, old: oldRow } = payload;
+        if (eventType === 'INSERT' && newRow) {
+          setSessions(prev => {
+            if (prev.some(s => s.id === String(newRow.id))) return prev;
+            return [parseSession(newRow), ...prev];
+          });
+        } else if (eventType === 'UPDATE' && newRow) {
+          const id = String(newRow.id);
+          setSessions(prev => prev.map(s => s.id === id ? parseSession(newRow) : s));
+        } else if (eventType === 'DELETE' && oldRow) {
+          setSessions(prev => prev.filter(s => s.id !== String(oldRow.id)));
+        }
+      };
+
+      const handleVoterSessions = (payload: any) => {
+        if (!isMounted) return;
+        const { eventType, new: newRow } = payload;
+        if ((eventType === 'INSERT' || eventType === 'UPDATE') && newRow) {
+          const voterId = String(newRow.voter_id);
+          const voted = Boolean(newRow.has_voted);
+          const votedAt = newRow.voted_at ? new Date(newRow.voted_at) : undefined;
+          setVoters(prev => prev.map(v => v.id === voterId ? { ...v, hasVoted: voted, votedAt } : v));
+        }
+      };
+
+      const handleVotes = (payload: any) => {
+        if (!isMounted) return;
+        const { eventType, new: newRow } = payload;
+        // When a vote is inserted, increment the candidate's vote count
+        if (eventType === 'INSERT' && newRow) {
+          const candidateId = String(newRow.candidate_id);
+          setCandidates(prev => prev.map(c => c.id === candidateId ? { ...c, votes: c.votes + 1 } : c));
+        }
       };
 
       const channel = supabase
         .channel('db-realtime-sync')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, () => debouncedRefresh())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, () => debouncedRefresh())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => debouncedRefresh())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'voter_sessions' }, () => debouncedRefresh())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'voting_sessions' }, () => debouncedRefresh())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'positions' }, () => debouncedRefresh())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, handleCandidates)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, handleVotes)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, handleVoters)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'voter_sessions' }, handleVoterSessions)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'voting_sessions' }, handleSessions)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'positions' }, handlePositions)
         .subscribe();
 
-      // Gentle polling every 45 seconds only as safety fallback
+      // Safety polling every 5 minutes (rare fallback only)
       const pollInterval = setInterval(() => {
-        if (isMounted) debouncedRefresh();
-      }, 45000);
+        if (isMounted) refreshData();
+      }, 300000);
 
       return () => {
         isMounted = false;
-        clearTimeout(debounceTimer);
         clearInterval(pollInterval);
         supabase.removeChannel(channel);
       };
@@ -678,7 +802,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       };
       try {
         await api.addCandidate(mapped);
-        await refreshData();
       } catch (error) {
         console.error('Add candidate failed:', error);
         await refreshData();
@@ -701,7 +824,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       if (updates.section !== undefined) mapped.section = updates.section;
       try {
         await api.updateCandidate(mapped);
-        await refreshData();
       } catch (error) {
         console.error('Update candidate failed:', error);
         await refreshData();
@@ -716,7 +838,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       setCandidates(prev => prev.filter(c => c.id !== id));
       try {
         await api.deleteCandidate(id);
-        await refreshData();
       } catch (error) {
         console.error('Delete candidate failed:', error);
         await refreshData();
@@ -741,7 +862,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       };
       try {
         await api.addPosition(mapped);
-        await refreshData();
       } catch (error) {
         console.error('Add position failed:', error);
         await refreshData();
@@ -756,7 +876,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       setPositions(prev => prev.filter(p => p.id !== id));
       api
         .deletePosition(id)
-        .then(() => refreshData())
         .catch((error) => {
           console.error('Delete position failed:', error);
           refreshData();
@@ -788,7 +907,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       };
       api
         .addSection(mapped)
-        .then(() => refreshData())
         .catch((error) => {
           console.error('Add section failed:', error);
           refreshData();
@@ -802,7 +920,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       setSections(prev => prev.filter(s => s.id !== id));
       api
         .deleteSection(id)
-        .then(() => refreshData())
         .catch((error) => {
           console.error('Delete section failed:', error);
           refreshData();
@@ -817,7 +934,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       setVoters(prev => prev.map(v => v.id === id ? { ...v, status: 'approved' } : v));
       try {
         await api.approveVoter(id);
-        refreshData();
         return true;
       } catch (error) {
         console.error('Approve voter failed:', error);
@@ -833,7 +949,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       setVoters(prev => prev.map(v => v.status === 'pending' ? { ...v, status: 'approved' } : v));
       try {
         await api.approveAllPendingVoters();
-        await refreshData();
         return true;
       } catch (error) {
         console.error('Approve all voters failed:', error);
@@ -866,7 +981,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       setVoters(prev => prev.map(v => v.id === id ? { ...v, status: 'rejected' } : v));
       try {
         await api.rejectVoter(id);
-        refreshData();
         return true;
       } catch (error) {
         console.error('Reject voter failed:', error);
@@ -882,7 +996,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       setVoters(prev => prev.filter(v => v.id !== id));
       try {
         await api.deleteVoter(id);
-        await refreshData();
         return true;
       } catch (error) {
         console.error('Delete voter failed:', error);

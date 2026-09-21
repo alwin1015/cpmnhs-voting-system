@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 const SALT_ROUNDS = 10;
 
 export const api = {
-  // ==================== Auth ====================
+  // ======= Auth =======
   login: async (lrn: string, password: string) => {
     const { data: voter, error } = await supabase.from('voters').select('*').eq('lrn', lrn).single();
     if (error || !voter) throw new Error('You input a wrong password or LRN');
