@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,26 +7,24 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useVoting } from '@/contexts/VotingContext';
 import { useToast } from '@/hooks/use-toast';
-import schoolLogo from '@/assets/school-logo.png';
-import { Eye, EyeOff, Shield, User, Lock, Mail, UserPlus } from 'lucide-react';
+import { Eye, EyeOff, Shield, User, Lock } from 'lucide-react';
 
 export default function AdminLoginPage() {
-  const [isRegisterMode, setIsRegisterMode] = useState(false);
-
   // Login state
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Register state
-  const [regUsername, setRegUsername] = useState('');
-  const [regEmail, setRegEmail] = useState('');
-  const [regPassword, setRegPassword] = useState('');
-  const [regConfirmPassword, setRegConfirmPassword] = useState('');
-  const [showRegPassword, setShowRegPassword] = useState(false);
+  // Force password change state
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
-  const { adminLogin, adminRegister } = useVoting();
+  const { adminLogin, adminChangePassword } = useVoting();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -46,14 +43,24 @@ export default function AdminLoginPage() {
     setIsLoading(true);
     
     try {
-      const success = await adminLogin(username, password);
+      const result = await adminLogin(username, password);
       
-      if (success) {
-        toast({
-          title: 'Admin Login Successful',
-          description: 'Welcome to the Admin Panel!',
-        });
-        navigate('/admin');
+      if (result.success) {
+        if (result.mustChangePassword) {
+          // Store the current password for the change flow
+          setCurrentPassword(password);
+          setShowChangePassword(true);
+          toast({
+            title: 'Password Change Required',
+            description: 'You must change your password before continuing.',
+          });
+        } else {
+          toast({
+            title: 'Admin Login Successful',
+            description: 'Welcome to the Admin Panel!',
+          });
+          navigate('/admin');
+        }
       } else {
         toast({
           title: 'Login Failed',
@@ -61,10 +68,10 @@ export default function AdminLoginPage() {
           variant: 'destructive',
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       toast({
-        title: 'Error',
-        description: 'An error occurred. Please try again.',
+        title: 'Login Failed',
+        description: error.message || 'Invalid admin credentials.',
         variant: 'destructive',
       });
     } finally {
@@ -72,29 +79,28 @@ export default function AdminLoginPage() {
     }
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!regUsername.trim() || !regEmail.trim() || !regPassword.trim()) {
+    if (!newPassword.trim() || !confirmNewPassword.trim()) {
       toast({
         title: 'Error',
-        description: 'Please fill in all fields.',
+        description: 'Please fill in all password fields.',
         variant: 'destructive',
       });
       return;
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(regEmail)) {
+    if (newPassword.length < 6) {
       toast({
         title: 'Error',
-        description: 'Please enter a valid email address.',
+        description: 'New password must be at least 6 characters.',
         variant: 'destructive',
       });
       return;
     }
 
-    if (regPassword !== regConfirmPassword) {
+    if (newPassword !== confirmNewPassword) {
       toast({
         title: 'Error',
         description: 'Passwords do not match.',
@@ -103,46 +109,41 @@ export default function AdminLoginPage() {
       return;
     }
 
-    if (regPassword.length < 6) {
+    if (newPassword === currentPassword) {
       toast({
         title: 'Error',
-        description: 'Password must be at least 6 characters.',
+        description: 'New password must be different from the current password.',
         variant: 'destructive',
       });
       return;
     }
 
-    setIsLoading(true);
+    setIsChangingPassword(true);
 
     try {
-      const result = await adminRegister(regUsername, regEmail, regPassword);
+      const result = await adminChangePassword(currentPassword, newPassword);
 
       if (result.success) {
         toast({
-          title: 'Registration Successful',
-          description: result.message,
+          title: 'Password Changed',
+          description: 'Your password has been updated successfully!',
         });
-        // Reset form and switch to login
-        setRegUsername('');
-        setRegEmail('');
-        setRegPassword('');
-        setRegConfirmPassword('');
-        setIsRegisterMode(false);
+        navigate('/admin');
       } else {
         toast({
-          title: 'Registration Failed',
+          title: 'Error',
           description: result.message,
           variant: 'destructive',
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Error',
-        description: 'An error occurred. Please try again.',
+        description: error.message || 'Failed to change password.',
         variant: 'destructive',
       });
     } finally {
-      setIsLoading(false);
+      setIsChangingPassword(false);
     }
   };
 
@@ -165,17 +166,17 @@ export default function AdminLoginPage() {
                 </div>
               </div>
               <CardTitle className="font-display text-2xl text-gray-900">
-                {isRegisterMode ? 'Admin Registration' : 'Admin Login'}
+                {showChangePassword ? 'Change Password' : 'Admin Login'}
               </CardTitle>
               <CardDescription className="text-gray-600">
-                {isRegisterMode
-                  ? 'Create an admin account to manage the election'
+                {showChangePassword
+                  ? 'You must set a new password before continuing'
                   : 'Enter your admin credentials to access the control panel'}
               </CardDescription>
             </CardHeader>
             
             <CardContent className="pt-6">
-              {!isRegisterMode ? (
+              {!showChangePassword ? (
                 /* ====== LOGIN FORM ====== */
                 <form onSubmit={handleLogin} className="space-y-5">
                   <div className="space-y-2">
@@ -238,74 +239,43 @@ export default function AdminLoginPage() {
                   </Button>
                 </form>
               ) : (
-                /* ====== REGISTER FORM ====== */
-                <form onSubmit={handleRegister} className="space-y-4">
+                /* ====== CHANGE PASSWORD FORM ====== */
+                <form onSubmit={handleChangePassword} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="regUsername" className="text-sm font-medium text-gray-800">
-                      Username
-                    </Label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
-                      <Input
-                        id="regUsername"
-                        type="text"
-                        value={regUsername}
-                        onChange={(e) => setRegUsername(e.target.value)}
-                        className="pl-10 h-12 bg-white/70 border-white/50 focus:bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="regEmail" className="text-sm font-medium text-gray-800">
-                      Email Address
-                    </Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
-                      <Input
-                        id="regEmail"
-                        type="email"
-                        value={regEmail}
-                        onChange={(e) => setRegEmail(e.target.value)}
-                        className="pl-10 h-12 bg-white/70 border-white/50 focus:bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="regAdminPassword" className="text-sm font-medium text-gray-800">
-                      Password
+                    <Label htmlFor="newPassword" className="text-sm font-medium text-gray-800">
+                      New Password
                     </Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
                       <Input
-                        id="regAdminPassword"
-                        type={showRegPassword ? 'text' : 'password'}
-                        value={regPassword}
-                        onChange={(e) => setRegPassword(e.target.value)}
+                        id="newPassword"
+                        type={showNewPassword ? 'text' : 'password'}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="At least 6 characters"
                         className="pl-10 pr-10 h-12 bg-white/70 border-white/50 focus:bg-white"
                       />
                       <button
                         type="button"
-                        onClick={() => setShowRegPassword(!showRegPassword)}
+                        onClick={() => setShowNewPassword(!showNewPassword)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-900 transition-colors"
                       >
-                        {showRegPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                        {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                       </button>
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="regAdminConfirmPassword" className="text-sm font-medium text-gray-800">
-                      Confirm Password
+                    <Label htmlFor="confirmNewPassword" className="text-sm font-medium text-gray-800">
+                      Confirm New Password
                     </Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-500" />
                       <Input
-                        id="regAdminConfirmPassword"
-                        type={showRegPassword ? 'text' : 'password'}
-                        value={regConfirmPassword}
-                        onChange={(e) => setRegConfirmPassword(e.target.value)}
+                        id="confirmNewPassword"
+                        type={showNewPassword ? 'text' : 'password'}
+                        value={confirmNewPassword}
+                        onChange={(e) => setConfirmNewPassword(e.target.value)}
                         className="pl-10 h-12 bg-white/70 border-white/50 focus:bg-white"
                       />
                     </div>
@@ -316,49 +286,22 @@ export default function AdminLoginPage() {
                     size="lg" 
                     className="w-full text-white shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50"
                     style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)' }}
-                    disabled={isLoading}
+                    disabled={isChangingPassword}
                   >
-                    {isLoading ? (
+                    {isChangingPassword ? (
                       <span className="flex items-center gap-2">
                         <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Registering...
+                        Updating Password...
                       </span>
                     ) : (
                       <>
-                        <UserPlus className="h-5 w-5 mr-2" />
-                        Create Admin Account
+                        <Lock className="h-5 w-5 mr-2" />
+                        Set New Password
                       </>
                     )}
                   </Button>
                 </form>
               )}
-
-              {/* Toggle Login / Register */}
-              <div className="mt-6 pt-6 border-t border-border text-center">
-                <p className="text-sm text-muted-foreground">
-                  {isRegisterMode ? (
-                    <>
-                      Already have an admin account?{' '}
-                      <button
-                        onClick={() => setIsRegisterMode(false)}
-                        className="text-primary hover:underline font-medium"
-                      >
-                        Login here
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      Need an admin account?{' '}
-                      <button
-                        onClick={() => setIsRegisterMode(true)}
-                        className="text-primary hover:underline font-medium"
-                      >
-                        Register here
-                      </button>
-                    </>
-                  )}
-                </p>
-              </div>
             </CardContent>
           </Card>
         </div>
@@ -368,4 +311,3 @@ export default function AdminLoginPage() {
     </div>
   );
 }
-

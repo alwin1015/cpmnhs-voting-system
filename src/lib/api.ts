@@ -41,20 +41,59 @@ export const api = {
   adminLogin: async (username: string, password: string) => {
     const { data: admin, error } = await supabase.from('admins').select('*').eq('username', username).single();
     if (error || !admin) throw new Error('Invalid username or password');
-    
+
+    // Check if the stored hash is a bcrypt hash (starts with $2)
+    const isBcryptHash = typeof admin.password_hash === 'string' && admin.password_hash.startsWith('$2');
+
     let isValid = false;
-    if (password === admin.password_hash) {
-        isValid = true;
+    if (isBcryptHash) {
+      // Normal bcrypt comparison
+      isValid = await bcrypt.compare(password, admin.password_hash).catch(() => false);
     } else {
-        isValid = await bcrypt.compare(password, admin.password_hash).catch(() => false);
+      // Plaintext migration: compare directly, then hash and save
+      isValid = password === admin.password_hash;
+      if (isValid) {
+        const hash = await bcrypt.hash(password, SALT_ROUNDS);
+        await supabase.from('admins').update({
+          password_hash: hash,
+          must_change_password: true,
+        }).eq('id', admin.id);
+        // Update admin object so must_change_password is reflected
+        admin.must_change_password = true;
+      }
     }
-    
+
     if (!isValid) throw new Error('Invalid username or password');
-    
+
     const user = { id: admin.id, role: 'admin', name: admin.username, email: admin.email };
     localStorage.setItem('voting_session', JSON.stringify({ user, has_voted: false }));
-    
-    return { success: true, user };
+
+    return { success: true, user, mustChangePassword: Boolean(admin.must_change_password) };
+  },
+
+  adminChangePassword: async (adminId: string, currentPassword: string, newPassword: string) => {
+    const { data: admin, error } = await supabase.from('admins').select('*').eq('id', adminId).single();
+    if (error || !admin) throw new Error('Admin account not found');
+
+    // Verify current password
+    const isBcryptHash = typeof admin.password_hash === 'string' && admin.password_hash.startsWith('$2');
+    let isValid = false;
+    if (isBcryptHash) {
+      isValid = await bcrypt.compare(currentPassword, admin.password_hash).catch(() => false);
+    } else {
+      isValid = currentPassword === admin.password_hash;
+    }
+    if (!isValid) throw new Error('Current password is incorrect');
+
+    // Hash and save new password
+    const hash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    const { error: updateError } = await supabase.from('admins').update({
+      password_hash: hash,
+      must_change_password: false,
+    }).eq('id', adminId);
+    if (updateError) throw new Error(updateError.message);
+
+    return { success: true };
   },
 
   register: async (data: any) => {
@@ -96,17 +135,6 @@ export const api = {
     return { success: true, message: 'Bulk registration processed.' };
   },
 
-  adminRegister: async (data: { username: string; email: string; password: string }) => {
-    const hash = await bcrypt.hash(data.password, SALT_ROUNDS);
-    const { error } = await supabase.from('admins').insert({
-      username: data.username,
-      email: data.email,
-      password_hash: hash
-    });
-
-    if (error) throw new Error(error.message);
-    return { success: true, message: 'Admin registration successful! You can now login.' };
-  },
 
   logout: async () => {
     localStorage.removeItem('voting_session');

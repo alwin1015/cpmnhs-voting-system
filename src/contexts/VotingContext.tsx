@@ -27,10 +27,10 @@ interface VotingContextType {
   processRollover: (newSchoolYear: string, voterUpdates: any[]) => Promise<void>;
   // Auth
   login: (lrn: string, password: string) => Promise<boolean>;
-  adminLogin: (username: string, password: string) => Promise<boolean>;
+  adminLogin: (username: string, password: string) => Promise<{ success: boolean; mustChangePassword: boolean }>;
+  adminChangePassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
   register: (lrn: string, firstName: string, middleInitial: string, lastName: string, gradeLevel: string, section: string, password: string) => Promise<{ success: boolean; message: string }>;
   bulkRegister: (students: any[]) => Promise<{ success: boolean; message: string; errors?: string[] }>;
-  adminRegister: (username: string, email: string, password: string) => Promise<{ success: boolean; message: string }>;
   logout: () => void;
   // Voting
   setVote: (positionId: string, candidateId: string) => void;
@@ -568,7 +568,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   );
 
   const adminLogin = useCallback(
-    async (username: string, password: string): Promise<boolean> => {
+    async (username: string, password: string): Promise<{ success: boolean; mustChangePassword: boolean }> => {
       try {
         const data = await api.adminLogin(username, password);
         if (data && data.success && data.user) {
@@ -579,12 +579,12 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             email: data.user.email,
           });
           refreshData();
-          return true;
+          return { success: true, mustChangePassword: Boolean(data.mustChangePassword) };
         }
-        return false;
+        return { success: false, mustChangePassword: false };
       } catch (error) {
         console.error('Admin login failed:', error);
-        return false;
+        throw error;
       }
     },
     [refreshData]
@@ -625,19 +625,22 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     [refreshData]
   );
 
-  const adminRegister = useCallback(
-    async (username: string, email: string, password: string): Promise<{ success: boolean; message: string }> => {
+  const adminChangePassword = useCallback(
+    async (currentPassword: string, newPassword: string): Promise<{ success: boolean; message: string }> => {
       try {
-        const data = await api.adminRegister({ username, email, password });
+        if (!user || user.role !== 'admin') {
+          return { success: false, message: 'Not authenticated as admin.' };
+        }
+        const data = await api.adminChangePassword(String(user.id), currentPassword, newPassword);
         return {
           success: data.success ?? true,
-          message: data.message ?? 'Admin registration successful! You can now login.',
+          message: 'Password changed successfully!',
         };
       } catch (error: any) {
-        return { success: false, message: error.message || 'Admin registration failed.' };
+        return { success: false, message: error.message || 'Password change failed.' };
       }
     },
-    []
+    [user]
   );
 
   const logout = useCallback(() => {
@@ -1004,9 +1007,9 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         processRollover,
         login,
         adminLogin,
+        adminChangePassword,
         register,
         bulkRegister,
-        adminRegister,
         logout,
         setVote,
         submitVotes,
