@@ -115,6 +115,136 @@ function parseSession(eData: any, voters?: Voter[]): VotingSession {
   };
 }
 
+// Stable deep-equality helpers to prevent repeated rendering, context churn, and screen flickering
+function areSessionsEqual(a: VotingSession[], b: VotingSession[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const s1 = a[i];
+    const s2 = b[i];
+    if (
+      s1.id !== s2.id ||
+      s1.name !== s2.name ||
+      s1.schoolYear !== s2.schoolYear ||
+      s1.isActive !== s2.isActive ||
+      s1.status !== s2.status ||
+      s1.scheduleStatus !== s2.scheduleStatus ||
+      s1.resultsFinalized !== s2.resultsFinalized ||
+      s1.startDate?.getTime() !== s2.startDate?.getTime() ||
+      s1.endDate?.getTime() !== s2.endDate?.getTime() ||
+      JSON.stringify(s1.gradeMappings || {}) !== JSON.stringify(s2.gradeMappings || {}) ||
+      JSON.stringify(s1.eligibleGradeLevels || []) !== JSON.stringify(s2.eligibleGradeLevels || []) ||
+      JSON.stringify(s1.eligibleSections || []) !== JSON.stringify(s2.eligibleSections || [])
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function areCandidatesEqual(a: Candidate[], b: Candidate[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const c1 = a[i];
+    const c2 = b[i];
+    if (
+      c1.id !== c2.id ||
+      c1.name !== c2.name ||
+      c1.position !== c2.position ||
+      c1.party !== c2.party ||
+      c1.photo !== c2.photo ||
+      c1.motto !== c2.motto ||
+      c1.gradeLevel !== c2.gradeLevel ||
+      c1.section !== c2.section ||
+      c1.votes !== c2.votes ||
+      c1.sessionId !== c2.sessionId
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function arePositionsEqual(a: Position[], b: Position[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const p1 = a[i];
+    const p2 = b[i];
+    if (
+      p1.id !== p2.id ||
+      p1.name !== p2.name ||
+      p1.order !== p2.order ||
+      p1.maxVotes !== p2.maxVotes ||
+      p1.strictGradeMapping !== p2.strictGradeMapping ||
+      p1.sessionId !== p2.sessionId
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function areSectionsEqual(a: Section[], b: Section[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const s1 = a[i];
+    const s2 = b[i];
+    if (
+      s1.id !== s2.id ||
+      s1.name !== s2.name ||
+      s1.gradeLevel !== s2.gradeLevel
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function areVotersEqual(a: Voter[], b: Voter[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const v1 = a[i];
+    const v2 = b[i];
+    if (
+      v1.id !== v2.id ||
+      v1.lrn !== v2.lrn ||
+      v1.name !== v2.name ||
+      v1.gradeLevel !== v2.gradeLevel ||
+      v1.section !== v2.section ||
+      v1.status !== v2.status ||
+      v1.hasVoted !== v2.hasVoted
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function areElectionsEqual(a: Election | null, b: Election | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id &&
+    a.name === b.name &&
+    a.schoolYear === b.schoolYear &&
+    a.isActive === b.isActive &&
+    a.status === b.status &&
+    a.scheduleStatus === b.scheduleStatus &&
+    a.totalVoters === b.totalVoters &&
+    a.totalVoted === b.totalVoted &&
+    a.resultsFinalized === b.resultsFinalized &&
+    a.startDate?.getTime() === b.startDate?.getTime() &&
+    a.endDate?.getTime() === b.endDate?.getTime() &&
+    JSON.stringify(a.gradeMappings || {}) === JSON.stringify(b.gradeMappings || {}) &&
+    JSON.stringify(a.eligibleGradeLevels || []) === JSON.stringify(b.eligibleGradeLevels || []) &&
+    JSON.stringify(a.eligibleSections || []) === JSON.stringify(b.eligibleSections || [])
+  );
+}
+
 export function VotingProvider({ children }: { children: ReactNode }) {
   // Helper mappers for real-time payloads
   const mapVoterRow = (v: any): Voter => {
@@ -163,6 +293,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     name: s.name,
     gradeLevel: s.grade_level ?? s.gradeLevel ?? '',
   });
+
   const [user, setUser] = useState<User | null>(null);
   const [hasVoted, setHasVoted] = useState(false);
   const [votes, setVotes] = useState<Record<string, string>>({});
@@ -182,6 +313,44 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   const userRef = React.useRef<User | null>(null);
   userRef.current = user;
 
+  // Deletion tombstones to prevent deleted items from temporarily reappearing due to race conditions
+  const deletedIdsRef = React.useRef<Map<string, number>>(new Map());
+
+  const markDeleted = useCallback((id: string | number) => {
+    deletedIdsRef.current.set(String(id), Date.now() + 20000);
+  }, []);
+
+  const isRecentlyDeleted = useCallback((id: string | number): boolean => {
+    const expiry = deletedIdsRef.current.get(String(id));
+    if (!expiry) return false;
+    if (Date.now() > expiry) {
+      deletedIdsRef.current.delete(String(id));
+      return false;
+    }
+    return true;
+  }, []);
+
+  // Voter status overrides (e.g. pending -> approved or pending -> rejected)
+  const voterStatusOverridesRef = React.useRef<Map<string, { status: Voter['status']; expiresAt: number }>>(new Map());
+
+  const setVoterStatusOverride = useCallback((id: string | number, status: Voter['status']) => {
+    voterStatusOverridesRef.current.set(String(id), { status, expiresAt: Date.now() + 25000 });
+  }, []);
+
+  const getVoterStatusOverride = useCallback((id: string | number, fetchedStatus: any): Voter['status'] => {
+    const override = voterStatusOverridesRef.current.get(String(id));
+    if (!override) return (fetchedStatus as Voter['status']) || 'pending';
+    if (Date.now() > override.expiresAt) {
+      voterStatusOverridesRef.current.delete(String(id));
+      return (fetchedStatus as Voter['status']) || 'pending';
+    }
+    if (fetchedStatus === override.status) {
+      voterStatusOverridesRef.current.delete(String(id));
+      return (fetchedStatus as Voter['status']) || 'pending';
+    }
+    return override.status;
+  }, []);
+
   // Computed active session
   const activeSession = sessions.find(s => s.id === activeSessionId) || null;
 
@@ -190,14 +359,16 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     try {
       const sessionsData = await api.getSessions().catch(() => []);
       const rawSessions = Array.isArray(sessionsData) ? sessionsData : (sessionsData as any)?.data || [];
-      const parsed = rawSessions.map((s: any) => parseSession(s));
-      setSessions(parsed);
+      const parsed = rawSessions
+        .filter((s: any) => !isRecentlyDeleted(String(s.id)))
+        .map((s: any) => parseSession(s));
+      setSessions(prev => areSessionsEqual(prev, parsed) ? prev : parsed);
       return parsed;
     } catch (e) {
       console.error('Failed to refresh sessions:', e);
       return [];
     }
-  }, []);
+  }, [isRecentlyDeleted]);
 
   const refreshRequestRef = React.useRef(0);
   const realtimeChannelRef = React.useRef<any>(null);
@@ -237,19 +408,22 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
       if (sessionsData !== null) {
         const rawSessions = Array.isArray(sessionsData) ? sessionsData : (sessionsData as any)?.data || [];
-        const parsedSessions = rawSessions.map((s: any) => parseSession(s));
-        setSessions(parsedSessions);
+        const parsedSessions = rawSessions
+          .filter((s: any) => !isRecentlyDeleted(String(s.id)))
+          .map((s: any) => parseSession(s));
+        setSessions(prev => areSessionsEqual(prev, parsedSessions) ? prev : parsedSessions);
       }
 
       if (settingsRes?.currentSchoolYear) {
-        setCurrentSchoolYear(settingsRes.currentSchoolYear);
+        setCurrentSchoolYear(prev => prev === settingsRes.currentSchoolYear ? prev : settingsRes.currentSchoolYear);
       }
 
-      // Map candidates only if successfully fetched
+      // Map candidates with optimistic preservation & tombstone filtering
       if (candidatesRes !== null) {
         const candidatesData = (candidatesRes as any)?.data ?? candidatesRes ?? [];
-        setCandidates(
-          (Array.isArray(candidatesData) ? candidatesData : []).map((c: any) => ({
+        const fetchedCandidates: Candidate[] = (Array.isArray(candidatesData) ? candidatesData : [])
+          .filter((c: any) => !isRecentlyDeleted(String(c.id)))
+          .map((c: any) => ({
             id: String(c.id),
             name: c.name,
             position: String(c.position_id ?? c.position),
@@ -260,71 +434,105 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             section: c.section ?? '',
             votes: Number(c.votes ?? 0),
             sessionId: String(c.session_id ?? sessionId ?? '1'),
-          }))
-        );
+          }));
+
+        setCandidates(prev => {
+          const pendingOptimistic = prev.filter(p =>
+            p.id.startsWith('temp-') &&
+            !fetchedCandidates.some(f => f.name.trim().toLowerCase() === p.name.trim().toLowerCase() && f.position === p.position)
+          );
+          const reconciled = [...fetchedCandidates, ...pendingOptimistic];
+          return areCandidatesEqual(prev, reconciled) ? prev : reconciled;
+        });
       }
 
-      // Map positions with deduplication only if successfully fetched
+      // Map positions with deduplication, optimistic preservation & tombstone filtering
       if (positionsRes !== null) {
         const positionsData = (positionsRes as any)?.data ?? positionsRes ?? [];
         const seenPositionNames = new Set<string>();
         const uniquePositions: Position[] = [];
-        (Array.isArray(positionsData) ? positionsData : []).forEach((p: any) => {
-          const normalized = (p.name || '').trim().toLowerCase();
-          if (!seenPositionNames.has(normalized)) {
-            seenPositionNames.add(normalized);
-            uniquePositions.push({
-              id: String(p.id),
-              name: p.name,
-              order: Number(p.display_order ?? p.order ?? 0),
-              maxVotes: Number(p.max_votes ?? p.maxVotes ?? 1),
-              strictGradeMapping: Boolean(p.strict_grade_mapping ?? p.strictGradeMapping ?? false),
-              sessionId: String(p.session_id ?? sessionId ?? '1'),
-            });
-          }
+        (Array.isArray(positionsData) ? positionsData : [])
+          .filter((p: any) => !isRecentlyDeleted(String(p.id)))
+          .forEach((p: any) => {
+            const normalized = (p.name || '').trim().toLowerCase();
+            if (!seenPositionNames.has(normalized)) {
+              seenPositionNames.add(normalized);
+              uniquePositions.push({
+                id: String(p.id),
+                name: p.name,
+                order: Number(p.display_order ?? p.order ?? 0),
+                maxVotes: Number(p.max_votes ?? p.maxVotes ?? 1),
+                strictGradeMapping: Boolean(p.strict_grade_mapping ?? p.strictGradeMapping ?? false),
+                sessionId: String(p.session_id ?? sessionId ?? '1'),
+              });
+            }
+          });
+        const sorted = uniquePositions.sort((a, b) => a.order - b.order);
+
+        setPositions(prev => {
+          const pendingOptimistic = prev.filter(p =>
+            p.id.startsWith('temp-') &&
+            !sorted.some(s => s.name.trim().toLowerCase() === p.name.trim().toLowerCase())
+          );
+          const reconciled = [...sorted, ...pendingOptimistic].sort((a, b) => a.order - b.order);
+          return arePositionsEqual(prev, reconciled) ? prev : reconciled;
         });
-        setPositions(uniquePositions.sort((a, b) => a.order - b.order));
       }
 
-      // Map sections (global) only if successfully fetched
+      // Map sections with optimistic preservation & tombstone filtering
       if (sectionsRes !== null) {
         const sectionsData = (sectionsRes as any)?.data ?? sectionsRes ?? [];
-        setSections(
-          (Array.isArray(sectionsData) ? sectionsData : []).map((s: any) => ({
+        const fetchedSections: Section[] = (Array.isArray(sectionsData) ? sectionsData : [])
+          .filter((s: any) => !isRecentlyDeleted(String(s.id)))
+          .map((s: any) => ({
             id: String(s.id),
             name: s.name,
             gradeLevel: s.grade_level ?? s.gradeLevel ?? '',
-          }))
-        );
+          }));
+
+        setSections(prev => {
+          const pendingOptimistic = prev.filter(p =>
+            p.id.startsWith('temp-') &&
+            !fetchedSections.some(f => f.name.trim().toLowerCase() === p.name.trim().toLowerCase() && f.gradeLevel === p.gradeLevel)
+          );
+          const reconciled = [...fetchedSections, ...pendingOptimistic];
+          return areSectionsEqual(prev, reconciled) ? prev : reconciled;
+        });
       }
 
-      // Map voters (global) only if successfully fetched
+      // Map voters with status overrides & tombstone filtering
       if (votersRes !== null) {
         const votersData = (votersRes as any)?.data ?? votersRes ?? [];
         const voterSessions = Array.isArray(voterSessionsData) ? voterSessionsData : [];
         const voterSessionMap = new Map(voterSessions.map(vs => [String(vs.voter_id), vs]));
 
-        const mappedVoters: Voter[] = (Array.isArray(votersData) ? votersData : []).map((v: any) => {
-          const vs = voterSessionMap.get(String(v.id));
-          let academicHistory = [];
-          try {
-            academicHistory = v.academic_history ? (typeof v.academic_history === 'string' ? JSON.parse(v.academic_history) : v.academic_history) : [];
-          } catch (_) {}
+        const mappedVoters: Voter[] = (Array.isArray(votersData) ? votersData : [])
+          .filter((v: any) => !isRecentlyDeleted(String(v.id)))
+          .map((v: any) => {
+            const vs = voterSessionMap.get(String(v.id));
+            let academicHistory = [];
+            try {
+              academicHistory = v.academic_history ? (typeof v.academic_history === 'string' ? JSON.parse(v.academic_history) : v.academic_history) : [];
+            } catch (_) {}
 
-          return {
-            id: String(v.id),
-            lrn: v.lrn,
-            name: v.name,
-            gradeLevel: v.grade_level ?? v.gradeLevel ?? '',
-            section: v.section ?? '',
-            hasVoted: vs ? Boolean(vs.has_voted) : false,
-            votedAt: vs && vs.voted_at ? new Date(vs.voted_at) : undefined,
-            status: v.status ?? 'pending',
-            createdAt: v.created_at ? new Date(v.created_at) : v.createdAt ? new Date(v.createdAt) : undefined,
-            academicHistory
-          };
-        });
-        setVoters(mappedVoters);
+            const rawStatus = v.status ?? 'pending';
+            const effectiveStatus = getVoterStatusOverride(String(v.id), rawStatus);
+
+            return {
+              id: String(v.id),
+              lrn: v.lrn,
+              name: v.name,
+              gradeLevel: v.grade_level ?? v.gradeLevel ?? '',
+              section: v.section ?? '',
+              hasVoted: vs ? Boolean(vs.has_voted) : false,
+              votedAt: vs && vs.voted_at ? new Date(vs.voted_at) : undefined,
+              status: effectiveStatus,
+              createdAt: v.created_at ? new Date(v.created_at) : v.createdAt ? new Date(v.createdAt) : undefined,
+              academicHistory,
+            };
+          });
+
+        setVoters(prev => areVotersEqual(prev, mappedVoters) ? prev : mappedVoters);
         const currentUser = userRef.current;
         if (currentUser?.role === 'voter') {
           setHasVoted(Boolean(voterSessionMap.get(currentUser.id)?.has_voted));
@@ -337,7 +545,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       console.error('Failed to refresh data:', error);
       setDataError(error instanceof Error ? error.message : 'Unable to load election data. Please retry.');
     }
-  }, []);
+  }, [isRecentlyDeleted, getVoterStatusOverride]);
 
   // Coalescing single-flight refresh to prevent network saturation and hard freezes
   const refreshData = useCallback(async (overrideSessionId?: string | null): Promise<void> => {
@@ -372,16 +580,17 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     if (activeSessionId) {
       const s = sessions.find(s => s.id === activeSessionId);
       if (s) {
-        setElection({
+        const nextElection: Election = {
           ...s,
           totalVoters: voters.filter(v => v.status === 'approved' && isEligibleForSession(s, v)).length,
           totalVoted: voters.filter(v => v.status === 'approved' && v.hasVoted).length,
-        });
+        };
+        setElection(prev => areElectionsEqual(prev, nextElection) ? prev : nextElection);
       } else {
-        setElection(null);
+        setElection(prev => prev === null ? prev : null);
       }
     } else {
-      setElection(null);
+      setElection(prev => prev === null ? prev : null);
     }
   }, [activeSessionId, sessions, voters]);
 
@@ -482,20 +691,34 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     };
     init();
 
-    // --- Targeted real-time handlers (no full refresh) ---
+    // --- Targeted real-time handlers (no full refresh, zero flicker) ---
     const handlePositions = (payload: any) => {
       if (!isMounted) return;
       const { eventType, new: newRow, old: oldRow } = payload;
       if (eventType !== 'DELETE' && String(newRow?.session_id) !== activeSessionIdRef.current) return;
       if (eventType === 'INSERT' && newRow) {
+        if (isRecentlyDeleted(newRow.id)) return;
         setPositions(prev => {
           if (prev.some(p => p.id === String(newRow.id))) return prev;
-          return [...prev, mapPositionRow(newRow)].sort((a, b) => a.order - b.order);
+          const mapped = mapPositionRow(newRow);
+          const tempIdx = prev.findIndex(p => p.id.startsWith('temp-') && p.name.trim().toLowerCase() === mapped.name.trim().toLowerCase());
+          if (tempIdx !== -1) {
+            const next = [...prev];
+            next[tempIdx] = mapped;
+            return next.sort((a, b) => a.order - b.order);
+          }
+          return [...prev, mapped].sort((a, b) => a.order - b.order);
         });
       } else if (eventType === 'UPDATE' && newRow) {
+        if (isRecentlyDeleted(newRow.id)) return;
         const id = String(newRow.id);
-        setPositions(prev => prev.map(p => p.id === id ? mapPositionRow(newRow) : p).sort((a, b) => a.order - b.order));
+        const mapped = mapPositionRow(newRow);
+        setPositions(prev => {
+          const next = prev.map(p => p.id === id ? mapped : p).sort((a, b) => a.order - b.order);
+          return arePositionsEqual(prev, next) ? prev : next;
+        });
       } else if (eventType === 'DELETE' && oldRow) {
+        markDeleted(oldRow.id);
         setPositions(prev => prev.filter(p => p.id !== String(oldRow.id)));
       }
     };
@@ -504,14 +727,21 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       if (!isMounted) return;
       const { eventType, new: newRow, old: oldRow } = payload;
       if (eventType === 'INSERT' && newRow) {
+        if (isRecentlyDeleted(newRow.id)) return;
         setSessions(prev => {
           if (prev.some(s => s.id === String(newRow.id))) return prev;
           return [parseSession(newRow), ...prev];
         });
       } else if (eventType === 'UPDATE' && newRow) {
+        if (isRecentlyDeleted(newRow.id)) return;
         const id = String(newRow.id);
-        setSessions(prev => prev.map(s => s.id === id ? parseSession(newRow) : s));
+        const updated = parseSession(newRow);
+        setSessions(prev => {
+          const next = prev.map(s => s.id === id ? updated : s);
+          return areSessionsEqual(prev, next) ? prev : next;
+        });
       } else if (eventType === 'DELETE' && oldRow) {
+        markDeleted(oldRow.id);
         setSessions(prev => prev.filter(s => s.id !== String(oldRow.id)));
       }
     };
@@ -520,6 +750,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       if (!isMounted) return;
       const { eventType, new: newRow, old: oldRow } = payload;
       if (eventType === 'INSERT' && newRow) {
+        if (isRecentlyDeleted(newRow.id)) return;
         setSections(prev => {
           const id = String(newRow.id);
           if (prev.some(s => s.id === id)) return prev;
@@ -532,9 +763,14 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           return [...prev, { id, name: String(newRow.name), gradeLevel: String(newRow.grade_level || '') }];
         });
       } else if (eventType === 'UPDATE' && newRow) {
+        if (isRecentlyDeleted(newRow.id)) return;
         const id = String(newRow.id);
-        setSections(prev => prev.map(s => s.id === id ? { id, name: String(newRow.name), gradeLevel: String(newRow.grade_level || '') } : s));
+        setSections(prev => {
+          const next = prev.map(s => s.id === id ? { id, name: String(newRow.name), gradeLevel: String(newRow.grade_level || '') } : s);
+          return areSectionsEqual(prev, next) ? prev : next;
+        });
       } else if (eventType === 'DELETE' && oldRow) {
+        markDeleted(oldRow.id);
         setSections(prev => prev.filter(s => s.id !== String(oldRow.id)));
       }
     };
@@ -544,6 +780,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       const { eventType, new: newRow, old: oldRow } = payload;
       if (eventType !== 'DELETE' && activeSessionIdRef.current && String(newRow?.session_id) !== activeSessionIdRef.current) return;
       if (eventType === 'INSERT' && newRow) {
+        if (isRecentlyDeleted(newRow.id)) return;
         setCandidates(prev => {
           const id = String(newRow.id);
           if (prev.some(c => c.id === id)) return prev;
@@ -568,19 +805,24 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           return [...prev, mapped];
         });
       } else if (eventType === 'UPDATE' && newRow) {
+        if (isRecentlyDeleted(newRow.id)) return;
         const id = String(newRow.id);
-        setCandidates(prev => prev.map(c => c.id === id ? {
-          ...c,
-          name: newRow.name ?? c.name,
-          position: String(newRow.position_id ?? c.position),
-          party: newRow.party ?? c.party,
-          photo: newRow.photo_url ?? c.photo,
-          motto: newRow.motto ?? c.motto,
-          gradeLevel: newRow.grade_level ?? c.gradeLevel,
-          section: newRow.section ?? c.section,
-          votes: newRow.votes !== undefined ? Number(newRow.votes) : c.votes,
-        } : c));
+        setCandidates(prev => {
+          const next = prev.map(c => c.id === id ? {
+            ...c,
+            name: newRow.name ?? c.name,
+            position: String(newRow.position_id ?? c.position),
+            party: newRow.party ?? c.party,
+            photo: newRow.photo_url ?? c.photo,
+            motto: newRow.motto ?? c.motto,
+            gradeLevel: newRow.grade_level ?? c.gradeLevel,
+            section: newRow.section ?? c.section,
+            votes: newRow.votes !== undefined ? Number(newRow.votes) : c.votes,
+          } : c);
+          return areCandidatesEqual(prev, next) ? prev : next;
+        });
       } else if (eventType === 'DELETE' && oldRow) {
+        markDeleted(oldRow.id);
         setCandidates(prev => prev.filter(c => c.id !== String(oldRow.id)));
       }
     };
@@ -589,8 +831,10 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       if (!isMounted) return;
       const { eventType, new: newRow, old: oldRow } = payload;
       if (eventType === 'INSERT' && newRow) {
+        if (isRecentlyDeleted(newRow.id)) return;
+        const id = String(newRow.id);
+        const status = getVoterStatusOverride(id, newRow.status || 'pending');
         setVoters(prev => {
-          const id = String(newRow.id);
           if (prev.some(v => v.id === id || v.lrn === newRow.lrn)) {
             return prev.map(v => (v.id === id || v.lrn === newRow.lrn) ? {
               ...v,
@@ -599,7 +843,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
               lrn: newRow.lrn,
               gradeLevel: newRow.grade_level || '',
               section: newRow.section || '',
-              status: newRow.status || 'pending',
+              status,
             } : v);
           }
           return [{
@@ -608,22 +852,28 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             name: newRow.name,
             gradeLevel: newRow.grade_level || '',
             section: newRow.section || '',
-            status: newRow.status || 'pending',
+            status,
             hasVoted: false,
             createdAt: newRow.created_at ? new Date(newRow.created_at) : new Date(),
           }, ...prev];
         });
       } else if (eventType === 'UPDATE' && newRow) {
+        if (isRecentlyDeleted(newRow.id)) return;
         const id = String(newRow.id);
-        setVoters(prev => prev.map(v => v.id === id ? {
-          ...v,
-          name: newRow.name ?? v.name,
-          gradeLevel: newRow.grade_level ?? v.gradeLevel,
-          section: newRow.section ?? v.section,
-          status: newRow.status ?? v.status,
-          hasVoted: newRow.has_voted !== undefined ? Boolean(newRow.has_voted) : v.hasVoted,
-        } : v));
+        const status = getVoterStatusOverride(id, newRow.status);
+        setVoters(prev => {
+          const next = prev.map(v => v.id === id ? {
+            ...v,
+            name: newRow.name ?? v.name,
+            gradeLevel: newRow.grade_level ?? v.gradeLevel,
+            section: newRow.section ?? v.section,
+            status: status ?? v.status,
+            hasVoted: newRow.has_voted !== undefined ? Boolean(newRow.has_voted) : v.hasVoted,
+          } : v);
+          return areVotersEqual(prev, next) ? prev : next;
+        });
       } else if (eventType === 'DELETE' && oldRow) {
+        markDeleted(oldRow.id);
         setVoters(prev => prev.filter(v => v.id !== String(oldRow.id)));
       }
     };
@@ -644,50 +894,116 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       .on('broadcast', { event: 'app_change' }, (msg: any) => {
         if (!isMounted) return;
         const p = msg?.payload;
-        if (p) {
-          if (p.event === 'voter_approved' && (p.id || p.lrn)) {
-            setVoters(prev => {
-              if (p.lrn && !prev.some(v => v.lrn === p.lrn || v.id === p.id)) {
-                return [{ id: p.id || 'approved-' + p.lrn, lrn: p.lrn, name: p.name || 'Student', status: 'approved' } as Voter, ...prev];
-              }
-              return prev.map(v => (v.id === p.id || v.lrn === p.lrn) ? { ...v, status: 'approved' } : v);
+        if (!p) return;
+
+        if (p.event === 'voter_approved' && (p.id || p.lrn)) {
+          if (p.id) setVoterStatusOverride(p.id, 'approved');
+          setVoters(prev => {
+            if (p.lrn && !prev.some(v => v.lrn === p.lrn || v.id === p.id)) {
+              return [{ id: p.id || 'approved-' + p.lrn, lrn: p.lrn, name: p.name || 'Student', status: 'approved' as const, hasVoted: false, gradeLevel: '', section: '' } as Voter, ...prev];
+            }
+            const next: Voter[] = prev.map(v => (v.id === p.id || v.lrn === p.lrn) ? { ...v, status: 'approved' as const } : v);
+            return areVotersEqual(prev, next) ? prev : next;
+          });
+        } else if (p.event === 'voters_approved_all') {
+          setVoters(prev => {
+            prev.forEach(v => {
+              if (v.status === 'pending') setVoterStatusOverride(v.id, 'approved');
             });
-          } else if (p.event === 'voters_approved_all') {
-            setVoters(prev => prev.map(v => v.status === 'pending' ? { ...v, status: 'approved' } : v));
-          } else if (p.event === 'voter_rejected' && (p.id || p.lrn)) {
-            setVoters(prev => prev.map(v => (v.id === p.id || v.lrn === p.lrn) ? { ...v, status: 'rejected' } : v));
-          } else if (p.event === 'voter_deleted' && p.id) {
-            setVoters(prev => prev.filter(v => v.id !== p.id));
-          } else if (p.event === 'candidate_deleted' && p.id) {
-            setCandidates(prev => prev.filter(c => c.id !== p.id));
-          } else if (p.event === 'position_deleted' && p.id) {
-            setPositions(prev => prev.filter(pos => pos.id !== p.id));
-          } else if (p.event === 'section_deleted' && p.id) {
-            setSections(prev => prev.filter(s => s.id !== p.id));
-          } else if (p.event === 'session_deleted' && p.id) {
-            setSessions(prev => prev.filter(s => s.id !== p.id));
-          } else if (p.event === 'session_reset') {
-            if (p.sessionId === activeSessionIdRef.current) {
-              setCandidates(prev => prev.map(c => ({ ...c, votes: 0 })));
-              setVoters(prev => prev.map(v => ({ ...v, hasVoted: false, votedAt: undefined })));
-            }
-          } else if (p.event === 'election_updated' && p.updates && p.sessionId) {
-            setSessions(prev => prev.map(s => s.id === p.sessionId ? { ...s, ...p.updates } : s));
-            if (p.sessionId === activeSessionIdRef.current) {
-              setElection(prev => prev ? { ...prev, ...p.updates } : null);
-            }
+            const next: Voter[] = prev.map(v => v.status === 'pending' ? { ...v, status: 'approved' as const } : v);
+            return areVotersEqual(prev, next) ? prev : next;
+          });
+        } else if (p.event === 'voter_rejected' && (p.id || p.lrn)) {
+          if (p.id) setVoterStatusOverride(p.id, 'rejected');
+          setVoters(prev => {
+            const next: Voter[] = prev.map(v => (v.id === p.id || v.lrn === p.lrn) ? { ...v, status: 'rejected' as const } : v);
+            return areVotersEqual(prev, next) ? prev : next;
+          });
+        } else if (p.event === 'voter_deleted' && p.id) {
+          markDeleted(p.id);
+          setVoters(prev => prev.filter(v => v.id !== p.id));
+        } else if (p.event === 'candidate_added' && p.candidate) {
+          if (p.sessionId && activeSessionIdRef.current && p.sessionId !== activeSessionIdRef.current) return;
+          setCandidates(prev => {
+            if (prev.some(c => c.id === p.candidate.id)) return prev;
+            return [...prev, p.candidate];
+          });
+        } else if (p.event === 'candidate_updated' && p.id && p.updates) {
+          setCandidates(prev => prev.map(c => c.id === p.id ? { ...c, ...p.updates } : c));
+        } else if (p.event === 'candidate_deleted' && p.id) {
+          markDeleted(p.id);
+          setCandidates(prev => prev.filter(c => c.id !== p.id));
+        } else if (p.event === 'position_added' && p.position) {
+          if (p.sessionId && activeSessionIdRef.current && p.sessionId !== activeSessionIdRef.current) return;
+          setPositions(prev => {
+            if (prev.some(pos => pos.id === p.position.id)) return prev;
+            return [...prev, p.position].sort((a, b) => a.order - b.order);
+          });
+        } else if (p.event === 'position_deleted' && p.id) {
+          markDeleted(p.id);
+          setPositions(prev => prev.filter(pos => pos.id !== p.id));
+        } else if (p.event === 'section_added' && p.section) {
+          setSections(prev => {
+            if (prev.some(s => s.id === p.section.id)) return prev;
+            return [...prev, p.section];
+          });
+        } else if (p.event === 'section_deleted' && p.id) {
+          markDeleted(p.id);
+          setSections(prev => prev.filter(s => s.id !== p.id));
+        } else if (p.event === 'session_created' && p.session) {
+          setSessions(prev => {
+            if (prev.some(s => s.id === p.session.id)) return prev;
+            return [p.session, ...prev];
+          });
+        } else if (p.event === 'session_duplicated' && p.session) {
+          setSessions(prev => {
+            if (prev.some(s => s.id === p.session.id)) return prev;
+            return [p.session, ...prev];
+          });
+        } else if (p.event === 'session_deleted' && p.id) {
+          markDeleted(p.id);
+          setSessions(prev => prev.filter(s => s.id !== p.id));
+        } else if (p.event === 'session_reset') {
+          if (p.sessionId === activeSessionIdRef.current) {
+            setCandidates(prev => prev.map(c => ({ ...c, votes: 0 })));
+            setVoters(prev => prev.map(v => ({ ...v, hasVoted: false, votedAt: undefined })));
           }
+        } else if (p.event === 'election_updated' && p.updates && p.sessionId) {
+          setSessions(prev => {
+            const next = prev.map(s => s.id === p.sessionId ? { ...s, ...p.updates } : s);
+            return areSessionsEqual(prev, next) ? prev : next;
+          });
+          if (p.sessionId === activeSessionIdRef.current) {
+            setElection(prev => {
+              const next = prev ? { ...prev, ...p.updates } : null;
+              return areElectionsEqual(prev, next) ? prev : next;
+            });
+          }
+        } else if (p.event === 'results_finalized' && p.sessionId) {
+          const updates = { resultsFinalized: true, finalizedAt: new Date() };
+          setSessions(prev => prev.map(s => s.id === p.sessionId ? { ...s, ...updates } : s));
+          if (p.sessionId === activeSessionIdRef.current) {
+            setElection(prev => prev ? { ...prev, ...updates } : null);
+          }
+        } else if (p.event === 'results_unfinalized' && p.sessionId) {
+          const updates = { resultsFinalized: false, finalizedAt: undefined, finalizedBy: null };
+          setSessions(prev => prev.map(s => s.id === p.sessionId ? { ...s, ...updates } : s));
+          if (p.sessionId === activeSessionIdRef.current) {
+            setElection(prev => prev ? { ...prev, ...updates } : null);
+          }
+        } else {
+          // Only perform single-flight refresh for unhandled / global actions
+          refreshData().catch(console.error);
         }
-        refreshData();
       })
       .subscribe();
 
     realtimeChannelRef.current = channel;
 
-    // Fast polling fallback: 4 seconds for immediate live data synchronization
+    // Relaxed background polling fallback (15 seconds) to avoid network flooding and unnecessary CPU usage
     const pollInterval = setInterval(() => {
       if (isMounted) refreshData();
-    }, 4000);
+    }, 15000);
 
     // Refresh immediately when window/tab is focused or becomes visible
     const handleVisibility = () => {
@@ -707,7 +1023,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       supabase.removeChannel(channel);
       realtimeChannelRef.current = null;
     };
-  }, [refreshData]);
+  }, [refreshData, isRecentlyDeleted, getVoterStatusOverride, setVoterStatusOverride, markDeleted]);
 
   // Persist activeSessionId to localStorage
   useEffect(() => {
@@ -720,31 +1036,31 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   // Session management
   const switchSession = useCallback((id: string) => {
+    if (!id) return;
+    if (activeSessionIdRef.current === id && isDataLoaded) return;
+
     try {
       localStorage.setItem('activeSessionId', id);
       localStorage.setItem('session_user_selected', 'true');
     } catch (_) {}
+
     activeSessionIdRef.current = id;
     setActiveSessionId(id);
     setVotes({});
     setHasVoted(false);
-    setCandidates([]);
-    setPositions([]);
-    setElection(null);
-    setIsDataLoaded(false);
     refreshData(id);
-  }, [refreshData]);
+  }, [refreshData, isDataLoaded]);
 
   const createSessionFn = useCallback(async (data: any): Promise<VotingSession> => {
     const created = await api.createSession(data);
     const parsed = parseSession(created);
     setSessions(prev => [parsed, ...prev.filter(s => s.id !== parsed.id)]);
-    broadcastChange('session_created');
-    refreshData().catch(console.error);
+    broadcastChange('session_created', { session: parsed });
     return parsed;
-  }, [refreshData, broadcastChange]);
+  }, [broadcastChange]);
 
   const deleteSessionFn = useCallback(async (id: string) => {
+    markDeleted(id);
     setSessions(prev => prev.filter(s => s.id !== id));
     if (activeSessionId === id) {
       const remaining = sessions.filter(s => s.id !== id);
@@ -755,18 +1071,16 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       setHasVoted(false);
     }
     await api.deleteSession(id);
-    broadcastChange('session_deleted');
-    refreshData().catch(console.error);
-  }, [activeSessionId, sessions, refreshData, broadcastChange]);
+    broadcastChange('session_deleted', { id });
+  }, [activeSessionId, sessions, broadcastChange, markDeleted]);
 
   const duplicateSessionFn = useCallback(async (id: string): Promise<VotingSession> => {
     const created = await api.duplicateSession(id);
     const parsed = parseSession(created);
     setSessions(prev => [parsed, ...prev.filter(s => s.id !== parsed.id)]);
-    broadcastChange('session_duplicated');
-    refreshData().catch(console.error);
+    broadcastChange('session_duplicated', { session: parsed });
     return parsed;
-  }, [refreshData, broadcastChange]);
+  }, [broadcastChange]);
 
   // Auth
   const login = useCallback(
@@ -914,22 +1228,28 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   const finalizeResults = useCallback(async () => {
     try {
+      const updates = { resultsFinalized: true, finalizedAt: new Date() };
+      setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, ...updates } : s));
+      setElection(prev => prev ? { ...prev, ...updates } : null);
       await api.finalizeResults(activeSessionId || undefined);
       broadcastChange('results_finalized', { sessionId: activeSessionId });
-      refreshData().catch(console.error);
     } catch (error) {
       console.error('Finalize results failed:', error);
+      refreshData().catch(console.error);
       throw error;
     }
   }, [activeSessionId, refreshData, broadcastChange]);
 
   const unfinalizeResults = useCallback(async () => {
     try {
+      const updates = { resultsFinalized: false, finalizedAt: undefined, finalizedBy: null };
+      setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, ...updates } : s));
+      setElection(prev => prev ? { ...prev, ...updates } : null);
       await api.unfinalizeResults(activeSessionId || undefined);
       broadcastChange('results_unfinalized', { sessionId: activeSessionId });
-      refreshData().catch(console.error);
     } catch (error) {
       console.error('Unfinalize results failed:', error);
+      refreshData().catch(console.error);
       throw error;
     }
   }, [activeSessionId, refreshData, broadcastChange]);
@@ -975,8 +1295,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         setElection(prev => (prev ? { ...prev, ...updates } : null));
 
         await api.updateSession(activeSessionId || '1', mapped);
-        broadcastChange('election_updated', { sessionId: activeSessionId });
-        refreshData().catch(console.error);
+        broadcastChange('election_updated', { sessionId: activeSessionId, updates });
       } catch (error) {
         console.error('Update election failed:', error);
         refreshData().catch(console.error);
@@ -1035,16 +1354,16 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       try {
         const res = await api.addCandidate(mapped);
         const realId = res?.id ? String(res.id) : tempId;
-        setCandidates(prev => prev.map(c => c.id === tempId ? { ...c, id: realId } : c));
-        broadcastChange('candidate_added', { id: realId, sessionId: activeSessionId });
-        refreshData().catch(console.error);
+        const finalized: Candidate = { ...newCandidate, id: realId };
+        setCandidates(prev => prev.map(c => (c.id === tempId || (c.id.startsWith('temp-') && c.name.trim().toLowerCase() === newCandidate.name.trim().toLowerCase())) ? finalized : c));
+        broadcastChange('candidate_added', { candidate: finalized, sessionId: activeSessionId });
       } catch (error) {
         setCandidates(prev => prev.filter(c => c.id !== tempId));
         console.error('Add candidate failed:', error);
         throw error;
       }
     },
-    [activeSessionId, refreshData, broadcastChange]
+    [activeSessionId, broadcastChange]
   );
 
   const updateCandidate = useCallback(
@@ -1064,8 +1383,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       if (updates.section !== undefined) mapped.section = updates.section;
       try {
         await api.updateCandidate(mapped);
-        broadcastChange('candidate_updated', { id, sessionId: activeSessionId });
-        refreshData().catch(console.error);
+        broadcastChange('candidate_updated', { id, updates, sessionId: activeSessionId });
       } catch (error) {
         if (original) {
           setCandidates(prev => prev.map(c => c.id === id ? original! : c));
@@ -1074,11 +1392,12 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         throw error;
       }
     },
-    [activeSessionId, refreshData, broadcastChange]
+    [activeSessionId, broadcastChange]
   );
 
   const deleteCandidate = useCallback(
     async (id: string) => {
+      markDeleted(id);
       let removed: Candidate | undefined;
       setCandidates(prev => {
         removed = prev.find(c => c.id === id);
@@ -1087,16 +1406,16 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       try {
         await api.deleteCandidate(id);
         broadcastChange('candidate_deleted', { id, sessionId: activeSessionId });
-        refreshData().catch(console.error);
       } catch (error) {
         if (removed) {
+          deletedIdsRef.current.delete(id);
           setCandidates(prev => [...prev, removed!]);
         }
         console.error('Delete candidate failed:', error);
         throw error;
       }
     },
-    [activeSessionId, refreshData, broadcastChange]
+    [activeSessionId, broadcastChange, markDeleted]
   );
 
   // Position CRUD
@@ -1125,20 +1444,21 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       try {
         const res = await api.addPosition(mapped);
         const realId = res?.id ? String(res.id) : tempId;
-        setPositions(prev => prev.map(p => p.id === tempId ? { ...p, id: realId } : p).sort((a, b) => a.order - b.order));
-        broadcastChange('position_added', { id: realId, sessionId: activeSessionId });
-        refreshData().catch(console.error);
+        const finalized: Position = { ...newPos, id: realId };
+        setPositions(prev => prev.map(p => (p.id === tempId || (p.id.startsWith('temp-') && p.name.trim().toLowerCase() === newPos.name.trim().toLowerCase())) ? finalized : p).sort((a, b) => a.order - b.order));
+        broadcastChange('position_added', { position: finalized, sessionId: activeSessionId });
       } catch (error) {
         setPositions(prev => prev.filter(p => p.id !== tempId));
         console.error('Add position failed:', error);
         throw error;
       }
     },
-    [activeSessionId, refreshData, broadcastChange]
+    [activeSessionId, broadcastChange]
   );
 
   const deletePosition = useCallback(
     async (id: string) => {
+      markDeleted(id);
       let removed: Position | undefined;
       setPositions(prev => {
         removed = prev.find(p => p.id === id);
@@ -1148,23 +1468,23 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       try {
         await api.deletePosition(id);
         broadcastChange('position_deleted', { id, sessionId: activeSessionId });
-        refreshData().catch(console.error);
       } catch (error) {
         if (removed) {
+          deletedIdsRef.current.delete(id);
           setPositions(prev => [...prev, removed!].sort((a, b) => a.order - b.order));
         }
         console.error('Delete position failed:', error);
         throw error;
       }
     },
-    [activeSessionId, refreshData, broadcastChange]
+    [activeSessionId, broadcastChange, markDeleted]
   );
 
   const cleanupDuplicatePositions = useCallback(async () => {
     try {
       const result = await api.cleanupDuplicatePositions(activeSessionId || undefined);
       broadcastChange('positions_cleaned');
-      refreshData().catch(console.error);
+      await refreshData();
       return result;
     } catch (error) {
       console.error('Cleanup duplicate positions failed:', error);
@@ -1195,20 +1515,21 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         };
         const res = await api.addSection(mapped);
         const realId = res?.id ? String(res.id) : tempId;
-        setSections(prev => prev.map(s => s.id === tempId ? { ...s, id: realId } : s));
-        broadcastChange('section_added', { id: realId, name: sectionData.name, gradeLevel: sectionData.gradeLevel });
-        refreshData().catch(console.error);
+        const finalized: Section = { ...optimisticSec, id: realId };
+        setSections(prev => prev.map(s => (s.id === tempId || (s.id.startsWith('temp-') && s.name.trim().toLowerCase() === optimisticSec.name.toLowerCase() && s.gradeLevel === optimisticSec.gradeLevel)) ? finalized : s));
+        broadcastChange('section_added', { section: finalized });
       } catch (err) {
         setSections(prev => prev.filter(s => s.id !== tempId));
         console.error('Add section error:', err);
         throw err;
       }
     },
-    [refreshData, broadcastChange]
+    [broadcastChange]
   );
 
   const deleteSection = useCallback(
     async (id: string) => {
+      markDeleted(id);
       let removed: Section | undefined;
       setSections(prev => {
         removed = prev.find(s => s.id === id);
@@ -1218,52 +1539,58 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       try {
         await api.deleteSection(id);
         broadcastChange('section_deleted', { id });
-        refreshData().catch(console.error);
       } catch (err) {
         if (removed) {
+          deletedIdsRef.current.delete(id);
           setSections(prev => [...prev, removed!]);
         }
         console.error('Delete section error:', err);
         throw err;
       }
     },
-    [refreshData, broadcastChange]
+    [broadcastChange, markDeleted]
   );
 
   // Voter management
   const approveVoter = useCallback(
     async (id: string) => {
       const voter = voters.find(v => v.id === id);
+      setVoterStatusOverride(id, 'approved');
       setVoters(prev => prev.map(v => v.id === id ? { ...v, status: 'approved' } : v));
       try {
         await api.approveVoter(id);
-        broadcastChange('voter_approved', { id, lrn: voter?.lrn });
-        refreshData().catch(console.error);
+        broadcastChange('voter_approved', { id, lrn: voter?.lrn, name: voter?.name });
         return true;
       } catch (error) {
         console.error('Approve voter failed:', error);
-        refreshData().catch(console.error);
+        voterStatusOverridesRef.current.delete(id);
+        setVoters(prev => prev.map(v => v.id === id ? { ...v, status: voter?.status || 'pending' } : v));
         return false;
       }
     },
-    [voters, refreshData, broadcastChange]
+    [voters, broadcastChange, setVoterStatusOverride]
   );
 
   const approveAllVoters = useCallback(
     async () => {
+      const prevVoters = [...voters];
+      voters.forEach(v => {
+        if (v.status === 'pending') {
+          setVoterStatusOverride(v.id, 'approved');
+        }
+      });
       setVoters(prev => prev.map(v => v.status === 'pending' ? { ...v, status: 'approved' } : v));
       try {
         await api.approveAllPendingVoters();
         broadcastChange('voters_approved_all');
-        refreshData().catch(console.error);
         return true;
       } catch (error) {
         console.error('Approve all voters failed:', error);
-        refreshData().catch(console.error);
+        setVoters(prevVoters);
         return false;
       }
     },
-    [refreshData, broadcastChange]
+    [voters, broadcastChange, setVoterStatusOverride]
   );
 
   const updateMySection = useCallback(
@@ -1275,7 +1602,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       try {
         await api.updateMySection(voterId, newSection);
         broadcastChange('section_updated', { voterId, newSection });
-        refreshData().catch(console.error);
       } catch (error) {
         console.error('Update section failed:', error);
         refreshData().catch(console.error);
@@ -1288,36 +1614,44 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   const rejectVoter = useCallback(
     async (id: string) => {
       const voter = voters.find(v => v.id === id);
+      setVoterStatusOverride(id, 'rejected');
       setVoters(prev => prev.map(v => v.id === id ? { ...v, status: 'rejected' } : v));
       try {
         await api.rejectVoter(id);
         broadcastChange('voter_rejected', { id, lrn: voter?.lrn });
-        refreshData().catch(console.error);
         return true;
       } catch (error) {
         console.error('Reject voter failed:', error);
-        refreshData().catch(console.error);
+        voterStatusOverridesRef.current.delete(id);
+        setVoters(prev => prev.map(v => v.id === id ? { ...v, status: voter?.status || 'pending' } : v));
         return false;
       }
     },
-    [voters, refreshData, broadcastChange]
+    [voters, broadcastChange, setVoterStatusOverride]
   );
 
   const deleteVoter = useCallback(
     async (id: string) => {
-      setVoters(prev => prev.filter(v => v.id !== id));
+      markDeleted(id);
+      let removed: Voter | undefined;
+      setVoters(prev => {
+        removed = prev.find(v => v.id === id);
+        return prev.filter(v => v.id !== id);
+      });
       try {
         await api.deleteVoter(id);
         broadcastChange('voter_deleted', { id });
-        refreshData().catch(console.error);
         return true;
       } catch (error) {
+        if (removed) {
+          deletedIdsRef.current.delete(id);
+          setVoters(prev => [...prev, removed!]);
+        }
         console.error('Delete voter failed:', error);
-        refreshData().catch(console.error);
         return false;
       }
     },
-    [refreshData, broadcastChange]
+    [broadcastChange, markDeleted]
   );
 
   return (

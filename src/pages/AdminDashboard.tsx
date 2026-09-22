@@ -57,7 +57,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }
 };
 
 export default function AdminDashboard() {
-  const { user, isLoggedIn, election, candidates, positions, getResults, voters, sections, updateElection, resetSystem, sessions, activeSessionId, switchSession, currentSchoolYear, processRollover } = useVoting();
+  const { user, isLoggedIn, election, candidates, positions, getResults, voters, sections, updateElection, resetSystem, sessions, activeSessionId, switchSession, currentSchoolYear, processRollover, isDataLoaded } = useVoting();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -525,7 +525,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Advisory banner if current session is empty but another session (like Session 1) exists */}
-          {positions.length === 0 && candidates.length === 0 && sessions.length > 1 && (() => {
+          {isDataLoaded && positions.length === 0 && candidates.length === 0 && sessions.length > 1 && (() => {
             const candidateSession = sessions.find(s => s.id !== activeSessionId);
             if (!candidateSession) return null;
             return (
