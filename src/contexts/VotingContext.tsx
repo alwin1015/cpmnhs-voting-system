@@ -996,7 +996,13 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           refreshData().catch(console.error);
         }
       })
-      .subscribe();
+      .subscribe((status: string) => {
+        if (!isMounted) return;
+        if (status === 'SUBSCRIBED') {
+          // Channel connected or reconnected after a network blip; immediately sync latest data
+          refreshData().catch(console.error);
+        }
+      });
 
     realtimeChannelRef.current = channel;
 
@@ -1014,12 +1020,58 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     window.addEventListener('focus', handleVisibility);
     document.addEventListener('visibilitychange', handleVisibility);
 
+    // Synchronize authentication and session state across multiple browser tabs
+    const handleStorage = (e: StorageEvent) => {
+      if (!isMounted) return;
+      if (e.key === 'voting_session') {
+        if (!e.newValue) {
+          setUser(null);
+          setHasVoted(false);
+        } else {
+          try {
+            const parsed = JSON.parse(e.newValue);
+            if (parsed?.user) {
+              setUser({
+                id: String(parsed.user.id),
+                role: parsed.user.role,
+                name: parsed.user.name,
+                lrn: parsed.user.lrn,
+                email: parsed.user.email,
+                gradeLevel: parsed.user.gradeLevel || parsed.user.grade_level,
+                section: parsed.user.section,
+              });
+              setHasVoted(Boolean(parsed.has_voted ?? parsed.hasVoted ?? false));
+            }
+          } catch (_) {}
+        }
+      } else if (e.key === 'activeSessionId') {
+        if (e.newValue && e.newValue !== activeSessionIdRef.current) {
+          activeSessionIdRef.current = e.newValue;
+          setActiveSessionId(e.newValue);
+          refreshData(e.newValue);
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    // Listen for session expiry notification dispatched by API client
+    const handleSessionExpired = (e: Event) => {
+      if (!isMounted) return;
+      const customEvent = e as CustomEvent;
+      setUser(null);
+      setHasVoted(false);
+      setDataError(customEvent.detail?.message || 'Your session has expired. Please sign in again.');
+    };
+    window.addEventListener('auth:session_expired', handleSessionExpired);
+
     return () => {
       isMounted = false;
       ++requestRef.current;
       clearInterval(pollInterval);
       window.removeEventListener('focus', handleVisibility);
       document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('auth:session_expired', handleSessionExpired);
       supabase.removeChannel(channel);
       realtimeChannelRef.current = null;
     };

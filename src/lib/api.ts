@@ -1,10 +1,15 @@
 import { supabase } from './supabase';
-type StoredSession = {
+
+export type StoredSession = {
   token?: string;
   user?: { id: string; role: 'admin' | 'voter'; name: string; lrn?: string; email?: string; gradeLevel?: string; section?: string };
   has_voted?: boolean;
   activeSessionId?: string;
 };
+
+// ============================================================================
+// SESSION INTEGRITY & ERROR HANDLING
+// ============================================================================
 
 const readSession = (): StoredSession | null => {
   const value = localStorage.getItem('voting_session');
@@ -12,28 +17,136 @@ const readSession = (): StoredSession | null => {
   try { return JSON.parse(value) as StoredSession; } catch { return null; }
 };
 
+export const handleSessionError = (error: unknown) => {
+  if (!error) return;
+  const msg = error instanceof Error ? error.message : String(error);
+  if (
+    msg.toLowerCase().includes('invalid or expired session') ||
+    msg.toLowerCase().includes('session has expired') ||
+    msg.toLowerCase().includes('expired session')
+  ) {
+    try {
+      localStorage.removeItem('voting_session');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:session_expired', { detail: { message: msg } }));
+      }
+    } catch (_) {}
+  }
+};
+
 const requireSessionToken = (role?: 'admin' | 'voter') => {
   const session = readSession();
   if (!session?.token || !session.user || (role && session.user.role !== role)) {
+    handleSessionError(new Error('Your session has expired. Please sign in again.'));
     throw new Error('Your session has expired. Please sign in again.');
   }
   return session.token;
 };
+
+// ============================================================================
+// NETWORK RESILIENCE & REQUEST DEDUPLICATION
+// ============================================================================
+
+const isTransientNetworkError = (error: unknown): boolean => {
+  if (!error) return false;
+  const msg = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    msg.includes('failed to fetch') ||
+    msg.includes('network error') ||
+    msg.includes('networkrequestfailed') ||
+    msg.includes('timeout') ||
+    msg.includes('timed out') ||
+    msg.includes('aborted') ||
+    msg.includes('502') ||
+    msg.includes('503') ||
+    msg.includes('504') ||
+    msg.includes('connection refused')
+  );
+};
+
+interface RetryOptions {
+  maxRetries?: number;
+  initialDelayMs?: number;
+  factor?: number;
+}
+
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: RetryOptions = {}
+): Promise<T> {
+  const maxRetries = options.maxRetries ?? 3;
+  const initialDelayMs = options.initialDelayMs ?? 300;
+  const factor = options.factor ?? 2;
+
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fn();
+    } catch (err) {
+      attempt++;
+      if (attempt >= maxRetries || !isTransientNetworkError(err)) {
+        throw err;
+      }
+      const delay = initialDelayMs * Math.pow(factor, attempt - 1);
+      await new Promise(res => setTimeout(res, delay));
+    }
+  }
+}
+
+const inFlightRequests = new Map<string, Promise<any>>();
+
+function dedupeInFlight<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const existing = inFlightRequests.get(key);
+  if (existing) {
+    return existing as Promise<T>;
+  }
+
+  const promise = fn().finally(() => {
+    inFlightRequests.delete(key);
+  });
+
+  inFlightRequests.set(key, promise);
+  return promise;
+}
+
+// ============================================================================
+// UNIFIED ADMIN DISPATCHER
+// ============================================================================
 
 const adminManage = async (
   action: string,
   id: string | number | null = null,
   payload: Record<string, unknown> = {},
 ) => {
-  const { data, error } = await supabase.rpc('secure_admin_manage', {
-    p_token: requireSessionToken('admin'),
-    p_action: action,
-    p_id: id === null ? null : Number(id),
-    p_payload: payload,
-  });
-  if (error) throw new Error(error.message);
-  return data;
+  let sanitizedId: number | null = null;
+  if (id !== null && id !== undefined && id !== '') {
+    const num = Number(id);
+    sanitizedId = isNaN(num) ? null : num;
+  }
+
+  try {
+    const { data, error } = await supabase.rpc('secure_admin_manage', {
+      p_token: requireSessionToken('admin'),
+      p_action: action,
+      p_id: sanitizedId,
+      p_payload: payload,
+    });
+    if (error) {
+      handleSessionError(error);
+      throw new Error(error.message);
+    }
+    return data;
+  } catch (err) {
+    handleSessionError(err);
+    throw err;
+  }
 };
+
+let isSubmittingBallotLock = false;
+
+// ============================================================================
+// EXPORTED API CLIENT
+// ============================================================================
 
 export const api = {
   // ======= Auth =======
@@ -61,7 +174,10 @@ export const api = {
     const { error } = await supabase.rpc('secure_change_admin_password', {
       p_token: requireSessionToken('admin'), p_current_password: currentPassword, p_new_password: newPassword,
     });
-    if (error) throw new Error(error.message);
+    if (error) {
+      handleSessionError(error);
+      throw new Error(error.message);
+    }
     return { success: true };
   },
 
@@ -84,10 +200,12 @@ export const api = {
     const { data: count, error } = await supabase.rpc('secure_bulk_register_voters', {
       p_token: requireSessionToken('admin'), p_students: students,
     });
-    if (error) throw new Error(error.message);
+    if (error) {
+      handleSessionError(error);
+      throw new Error(error.message);
+    }
     return { success: true, message: `${count || 0} students registered.` };
   },
-
 
   logout: async () => {
     const token = readSession()?.token;
@@ -95,29 +213,47 @@ export const api = {
       try { await supabase.rpc('secure_logout', { p_token: token }); } catch { /* local logout still proceeds */ }
     }
     localStorage.removeItem('voting_session');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('auth:session_expired', { detail: { message: 'Logged out' } }));
+    }
     return { success: true };
   },
 
   getMe: async () => {
     const session = localStorage.getItem('voting_session');
     if (!session) return { user: null };
-    return JSON.parse(session);
+    try {
+      return JSON.parse(session);
+    } catch {
+      localStorage.removeItem('voting_session');
+      return { user: null };
+    }
   },
 
   // ==================== Voters (Global Registry) ====================
   getVoters: async () => {
     const token = readSession()?.token;
     if (!token) return [];
-    const { data, error } = await supabase.rpc('secure_get_voters', { p_token: token });
-    if (error) throw new Error(error.message);
-    return (data as any[]) || [];
+    return dedupeInFlight(`getVoters:${token}`, () =>
+      withRetry(async () => {
+        const { data, error } = await supabase.rpc('secure_get_voters', { p_token: token });
+        if (error) {
+          handleSessionError(error);
+          throw new Error(error.message);
+        }
+        return (data as any[]) || [];
+      })
+    );
   },
   
   approveVoter: async (id: string) => {
     const { error } = await supabase.rpc('secure_admin_voter_action', {
       p_token: requireSessionToken('admin'), p_action: 'approve', p_voter_id: String(id),
     });
-    if (error) throw new Error(error.message);
+    if (error) {
+      handleSessionError(error);
+      throw new Error(error.message);
+    }
     return { success: true };
   },
 
@@ -125,23 +261,31 @@ export const api = {
     const { error } = await supabase.rpc('secure_admin_voter_action', {
       p_token: requireSessionToken('admin'), p_action: 'approve_all', p_voter_id: null,
     });
-    if (error) throw new Error(error.message);
+    if (error) {
+      handleSessionError(error);
+      throw new Error(error.message);
+    }
     return { success: true };
   },
 
   updateMySection: async (voterId: string, newSection: string) => {
     void voterId;
     const { error } = await supabase.rpc('secure_update_my_section', { p_token: requireSessionToken('voter'), p_section: newSection });
-    if (error) throw new Error(error.message);
+    if (error) {
+      handleSessionError(error);
+      throw new Error(error.message);
+    }
     
     // Update local storage session
     const sessionStr = localStorage.getItem('voting_session');
     if (sessionStr) {
-      const session = JSON.parse(sessionStr);
-      if (session.user && session.user.id === voterId) {
-        session.user.section = newSection;
-        localStorage.setItem('voting_session', JSON.stringify(session));
-      }
+      try {
+        const session = JSON.parse(sessionStr);
+        if (session.user && session.user.id === voterId) {
+          session.user.section = newSection;
+          localStorage.setItem('voting_session', JSON.stringify(session));
+        }
+      } catch (_) {}
     }
     return { success: true };
   },
@@ -150,7 +294,10 @@ export const api = {
     const { error } = await supabase.rpc('secure_admin_voter_action', {
       p_token: requireSessionToken('admin'), p_action: 'reject', p_voter_id: String(id),
     });
-    if (error) throw new Error(error.message);
+    if (error) {
+      handleSessionError(error);
+      throw new Error(error.message);
+    }
     return { success: true };
   },
 
@@ -162,7 +309,10 @@ export const api = {
     const { error } = await supabase.rpc('secure_admin_voter_action', {
       p_token: requireSessionToken('admin'), p_action: 'delete', p_voter_id: String(id),
     });
-    if (error) throw new Error(error.message);
+    if (error) {
+      handleSessionError(error);
+      throw new Error(error.message);
+    }
     return { success: true };
   },
 
@@ -170,36 +320,59 @@ export const api = {
   getVoterSessions: async (sessionId: string) => {
     const token = readSession()?.token;
     if (!token) return [];
-    const { data, error } = await supabase.rpc('secure_get_voter_sessions', {
-      p_token: token, p_session_id: Number(sessionId),
-    });
-    if (error) throw new Error(error.message);
-    return (data as Array<{ voter_id: string | number; has_voted: boolean; voted_at: string | null }>) || [];
+    return dedupeInFlight(`getVoterSessions:${sessionId}:${token}`, () =>
+      withRetry(async () => {
+        const { data, error } = await supabase.rpc('secure_get_voter_sessions', {
+          p_token: token, p_session_id: Number(sessionId),
+        });
+        if (error) {
+          handleSessionError(error);
+          throw new Error(error.message);
+        }
+        return (data as Array<{ voter_id: string | number; has_voted: boolean; voted_at: string | null }>) || [];
+      })
+    );
   },
 
   getVoterSessionStatus: async (voterId: string, sessionId: string) => {
     void voterId;
-    const { data, error } = await supabase.rpc('secure_voter_session_status', {
-      p_token: requireSessionToken('voter'), p_session_id: Number(sessionId),
-    });
-    if (error) throw new Error(error.message);
-    return (data as { hasVoted: boolean; votedAt: string | null } | null) || { hasVoted: false, votedAt: null };
+    const token = requireSessionToken('voter');
+    return dedupeInFlight(`getVoterSessionStatus:${sessionId}:${token}`, () =>
+      withRetry(async () => {
+        const { data, error } = await supabase.rpc('secure_voter_session_status', {
+          p_token: token, p_session_id: Number(sessionId),
+        });
+        if (error) {
+          handleSessionError(error);
+          throw new Error(error.message);
+        }
+        return (data as { hasVoted: boolean; votedAt: string | null } | null) || { hasVoted: false, votedAt: null };
+      })
+    );
   },
 
   // ==================== Sessions ====================
   getSessions: async () => {
-    const { data, error } = await supabase
-      .from('voting_sessions')
-      .select('*')
-      .order('id', { ascending: true });
-    if (error) throw new Error(error.message);
-    return data || [];
+    return dedupeInFlight('getSessions', () =>
+      withRetry(async () => {
+        const { data, error } = await supabase
+          .from('voting_sessions')
+          .select('*')
+          .order('id', { ascending: true });
+        if (error) throw new Error(error.message);
+        return data || [];
+      })
+    );
   },
 
   getSession: async (id: string) => {
-    const { data, error } = await supabase.from('voting_sessions').select('*').eq('id', id).single();
-    if (error) throw new Error(error.message);
-    return data;
+    return dedupeInFlight(`getSession:${id}`, () =>
+      withRetry(async () => {
+        const { data, error } = await supabase.from('voting_sessions').select('*').eq('id', id).single();
+        if (error) throw new Error(error.message);
+        return data;
+      })
+    );
   },
 
   createSession: async (data: any) => {
@@ -234,19 +407,23 @@ export const api = {
 
   // Legacy compat: getElection returns first session
   getElection: async () => {
-    const { data, error } = await supabase
-      .from('voting_sessions')
-      .select('*')
-      .order('id', { ascending: true })
-      .limit(1)
-      .single();
-    if (error) {
-      // Fallback to old election_settings table
-      const { data: legacy, error: legacyErr } = await supabase.from('election_settings').select('*').eq('id', 1).single();
-      if (legacyErr) throw new Error(legacyErr.message);
-      return legacy;
-    }
-    return data;
+    return dedupeInFlight('getElection', () =>
+      withRetry(async () => {
+        const { data, error } = await supabase
+          .from('voting_sessions')
+          .select('*')
+          .order('id', { ascending: true })
+          .limit(1)
+          .single();
+        if (error) {
+          // Fallback to old election_settings table
+          const { data: legacy, error: legacyErr } = await supabase.from('election_settings').select('*').eq('id', 1).single();
+          if (legacyErr) throw new Error(legacyErr.message);
+          return legacy;
+        }
+        return data;
+      })
+    );
   },
 
   // Legacy compat: updateElection updates the active session or session 1
@@ -264,12 +441,21 @@ export const api = {
 
   // ==================== Candidates (Session-Scoped) ====================
   getCandidates: async (sessionId?: string) => {
-    const { data, error } = await supabase.rpc('secure_get_candidates', {
-      p_token: readSession()?.token || null,
-      p_session_id: sessionId ? Number(sessionId) : null,
-    });
-    if (error) throw new Error(error.message);
-    return (data as any[]) || [];
+    const token = readSession()?.token || null;
+    const key = `getCandidates:${sessionId || 'all'}:${token || 'anon'}`;
+    return dedupeInFlight(key, () =>
+      withRetry(async () => {
+        const { data, error } = await supabase.rpc('secure_get_candidates', {
+          p_token: token,
+          p_session_id: sessionId ? Number(sessionId) : null,
+        });
+        if (error) {
+          handleSessionError(error);
+          throw new Error(error.message);
+        }
+        return (data as any[]) || [];
+      })
+    );
   },
   
   addCandidate: async (data: any) => {
@@ -311,11 +497,16 @@ export const api = {
 
   // ==================== Positions (Session-Scoped) ====================
   getPositions: async (sessionId?: string) => {
-    let query = supabase.from('positions').select('*').order('display_order', { ascending: true });
-    if (sessionId) query = query.eq('session_id', sessionId);
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-    return data;
+    const key = `getPositions:${sessionId || 'all'}`;
+    return dedupeInFlight(key, () =>
+      withRetry(async () => {
+        let query = supabase.from('positions').select('*').order('display_order', { ascending: true });
+        if (sessionId) query = query.eq('session_id', sessionId);
+        const { data, error } = await query;
+        if (error) throw new Error(error.message);
+        return data || [];
+      })
+    );
   },
   
   addPosition: async (data: any) => {
@@ -336,9 +527,13 @@ export const api = {
 
   // ==================== Sections (Global) ====================
   getSections: async () => {
-    const { data, error } = await supabase.from('sections').select('*');
-    if (error) throw new Error(error.message);
-    return data;
+    return dedupeInFlight('getSections', () =>
+      withRetry(async () => {
+        const { data, error } = await supabase.from('sections').select('*');
+        if (error) throw new Error(error.message);
+        return data || [];
+      })
+    );
   },
   
   addSection: async (data: any) => {
@@ -353,18 +548,36 @@ export const api = {
 
   // ==================== Votes (Session-Scoped) ====================
   submitVotes: async (votes: { candidate_id: string; position_id: string }[], sessionId?: string) => {
-    const session = readSession();
-    if (!session?.user) throw new Error('Not authenticated');
-    const activeSessionId = sessionId || session.activeSessionId;
-    if (!activeSessionId) throw new Error('No election selected');
-    const { error } = await supabase.rpc('secure_submit_ballot', {
-      p_token: requireSessionToken('voter'), p_session_id: Number(activeSessionId), p_votes: votes,
-    });
-    if (error) throw new Error(error.message);
-    session.has_voted = true;
-    session.activeSessionId = activeSessionId;
-    localStorage.setItem('voting_session', JSON.stringify(session));
-    return { success: true };
+    if (isSubmittingBallotLock) {
+      throw new Error('Ballot submission is already processing. Please do not submit multiple times.');
+    }
+
+    isSubmittingBallotLock = true;
+    try {
+      const session = readSession();
+      if (!session?.user) throw new Error('Not authenticated');
+      const activeSessionId = sessionId || session.activeSessionId;
+      if (!activeSessionId) throw new Error('No election selected');
+
+      const { error } = await supabase.rpc('secure_submit_ballot', {
+        p_token: requireSessionToken('voter'), p_session_id: Number(activeSessionId), p_votes: votes,
+      });
+
+      if (error) {
+        handleSessionError(error);
+        throw new Error(error.message);
+      }
+
+      session.has_voted = true;
+      session.activeSessionId = activeSessionId;
+      localStorage.setItem('voting_session', JSON.stringify(session));
+      return { success: true };
+    } catch (err) {
+      handleSessionError(err);
+      throw err;
+    } finally {
+      isSubmittingBallotLock = false;
+    }
   },
   
   getResults: async (sessionId?: string) => {
@@ -373,11 +586,19 @@ export const api = {
 
   // ==================== Session Reset ====================
   resetSession: async (sessionId: string) => {
-    const { error } = await supabase.rpc('secure_reset_session', {
-      p_token: requireSessionToken('admin'), p_session_id: Number(sessionId),
-    });
-    if (error) throw new Error(error.message);
-    return { success: true };
+    try {
+      const { error } = await supabase.rpc('secure_reset_session', {
+        p_token: requireSessionToken('admin'), p_session_id: Number(sessionId),
+      });
+      if (error) {
+        handleSessionError(error);
+        throw new Error(error.message);
+      }
+      return { success: true };
+    } catch (err) {
+      handleSessionError(err);
+      throw err;
+    }
   },
 
   // Legacy compat
@@ -387,58 +608,106 @@ export const api = {
 
   // ==================== Election Report API ====================
   getVerifications: async (sessionId?: string) => {
-    const { data, error } = await supabase.rpc('secure_get_audit_data', {
-      p_token: requireSessionToken('admin'), p_session_id: sessionId ? Number(sessionId) : null,
-    });
-    if (error) throw new Error(error.message);
-    return (data as { verifications?: any[] } | null)?.verifications || [];
+    const token = requireSessionToken('admin');
+    return dedupeInFlight(`getVerifications:${sessionId || 'all'}`, () =>
+      withRetry(async () => {
+        const { data, error } = await supabase.rpc('secure_get_audit_data', {
+          p_token: token, p_session_id: sessionId ? Number(sessionId) : null,
+        });
+        if (error) {
+          handleSessionError(error);
+          throw new Error(error.message);
+        }
+        return (data as { verifications?: any[] } | null)?.verifications || [];
+      })
+    );
   },
 
   initiateVerification: async (positionId: string, tiedCandidateIds: string[], originalVoteCounts: Record<string, number>, sessionId?: string) => {
-    const { data, error } = await supabase.rpc('secure_initiate_verification', {
-      p_token: requireSessionToken('admin'),
-      p_position_id: Number(positionId),
-      p_tied_candidate_ids: tiedCandidateIds,
-      p_original_vote_counts: originalVoteCounts,
-      p_session_id: sessionId ? Number(sessionId) : null,
-    });
-    if (error) throw new Error(error.message);
-    return data;
+    try {
+      const { data, error } = await supabase.rpc('secure_initiate_verification', {
+        p_token: requireSessionToken('admin'),
+        p_position_id: Number(positionId),
+        p_tied_candidate_ids: tiedCandidateIds,
+        p_original_vote_counts: originalVoteCounts,
+        p_session_id: sessionId ? Number(sessionId) : null,
+      });
+      if (error) {
+        handleSessionError(error);
+        throw new Error(error.message);
+      }
+      return data;
+    } catch (err) {
+      handleSessionError(err);
+      throw err;
+    }
   },
 
   getVerificationVotes: async (selectedVoterIds: string[], positionId: string) => {
-    const { data, error } = await supabase.rpc('secure_get_verification_votes', {
-      p_token: requireSessionToken('admin'),
-      p_voter_ids: selectedVoterIds.map(String), p_position_id: Number(positionId),
-    });
-    if (error) throw new Error(error.message);
-    return (data as any[]) || [];
+    const token = requireSessionToken('admin');
+    return dedupeInFlight(`getVerificationVotes:${positionId}:${selectedVoterIds.join(',')}`, () =>
+      withRetry(async () => {
+        const { data, error } = await supabase.rpc('secure_get_verification_votes', {
+          p_token: token,
+          p_voter_ids: selectedVoterIds.map(String), p_position_id: Number(positionId),
+        });
+        if (error) {
+          handleSessionError(error);
+          throw new Error(error.message);
+        }
+        return (data as any[]) || [];
+      })
+    );
   },
 
   completeVerification: async (verificationId: string, notes: string, tieRemains: boolean) => {
-    const { error } = await supabase.rpc('secure_complete_verification', {
-      p_token: requireSessionToken('admin'), p_verification_id: Number(verificationId),
-      p_notes: notes, p_tie_remains: tieRemains,
-    });
-    if (error) throw new Error(error.message);
-    return { success: true };
+    try {
+      const { error } = await supabase.rpc('secure_complete_verification', {
+        p_token: requireSessionToken('admin'), p_verification_id: Number(verificationId),
+        p_notes: notes, p_tie_remains: tieRemains,
+      });
+      if (error) {
+        handleSessionError(error);
+        throw new Error(error.message);
+      }
+      return { success: true };
+    } catch (err) {
+      handleSessionError(err);
+      throw err;
+    }
   },
 
   getTieResolutions: async () => {
-    const { data, error } = await supabase.rpc('secure_get_audit_data', {
-      p_token: requireSessionToken('admin'), p_session_id: null,
-    });
-    if (error) throw new Error(error.message);
-    return (data as { tieResolutions?: any[] } | null)?.tieResolutions || [];
+    const token = requireSessionToken('admin');
+    return dedupeInFlight('getTieResolutions', () =>
+      withRetry(async () => {
+        const { data, error } = await supabase.rpc('secure_get_audit_data', {
+          p_token: token, p_session_id: null,
+        });
+        if (error) {
+          handleSessionError(error);
+          throw new Error(error.message);
+        }
+        return (data as { tieResolutions?: any[] } | null)?.tieResolutions || [];
+      })
+    );
   },
 
   resolveTie: async (verificationId: string, positionId: string, winnerId: string, reason: string) => {
-    const { error } = await supabase.rpc('secure_resolve_tie', {
-      p_token: requireSessionToken('admin'), p_verification_id: Number(verificationId),
-      p_position_id: Number(positionId), p_winner_id: Number(winnerId), p_reason: reason,
-    });
-    if (error) throw new Error(error.message);
-    return { success: true };
+    try {
+      const { error } = await supabase.rpc('secure_resolve_tie', {
+        p_token: requireSessionToken('admin'), p_verification_id: Number(verificationId),
+        p_position_id: Number(positionId), p_winner_id: Number(winnerId), p_reason: reason,
+      });
+      if (error) {
+        handleSessionError(error);
+        throw new Error(error.message);
+      }
+      return { success: true };
+    } catch (err) {
+      handleSessionError(err);
+      throw err;
+    }
   },
 
   finalizeResults: async (sessionId?: string) => {
@@ -473,103 +742,124 @@ export const api = {
 
   // ==================== Eligible Sessions for a Voter ====================
   getEligibleSessions: async (voterGradeLevel: string, voterSection: string) => {
-    const { data: sessions, error } = await supabase
-      .from('voting_sessions')
-      .select('*')
-      .eq('is_active', true)
-      .eq('status', 'active');
-    
-    if (error) throw new Error(error.message);
-    if (!sessions || sessions.length === 0) return [];
+    const key = `getEligibleSessions:${voterGradeLevel}:${voterSection}`;
+    return dedupeInFlight(key, () =>
+      withRetry(async () => {
+        const { data: sessions, error } = await supabase
+          .from('voting_sessions')
+          .select('*')
+          .eq('is_active', true)
+          .eq('status', 'active');
+        
+        if (error) throw new Error(error.message);
+        if (!sessions || sessions.length === 0) return [];
 
-    // Filter sessions by voter eligibility
-    return sessions.filter((s: any) => {
-      const eligibleGrades: string[] = s.eligible_grade_levels || [];
-      const eligibleSections: string[] = s.eligible_sections || [];
-      
-      // If no grade filter set, all grades eligible
-      const gradeOk = eligibleGrades.length === 0 || eligibleGrades.includes(voterGradeLevel);
-      // If no section filter set, all sections eligible
-      const sectionOk = eligibleSections.length === 0 || eligibleSections.includes(voterSection);
-      
-      return gradeOk && sectionOk;
-    });
+        // Filter sessions by voter eligibility
+        return sessions.filter((s: any) => {
+          const eligibleGrades: string[] = s.eligible_grade_levels || [];
+          const eligibleSections: string[] = s.eligible_sections || [];
+          
+          const gradeOk = eligibleGrades.length === 0 || eligibleGrades.includes(voterGradeLevel);
+          const sectionOk = eligibleSections.length === 0 || eligibleSections.includes(voterSection);
+          
+          return gradeOk && sectionOk;
+        });
+      })
+    );
   },
 
   // ==================== School Year Rollover ====================
   getSystemSettings: async () => {
-    try {
-      const { data, error } = await supabase.from('system_settings').select('*').eq('id', 1).single();
-      if (error) return { currentSchoolYear: '2026-2027' };
-      return { currentSchoolYear: data.current_school_year || '2026-2027' };
-    } catch {
-      return { currentSchoolYear: '2026-2027' };
-    }
+    return dedupeInFlight('getSystemSettings', () =>
+      withRetry(async () => {
+        const { data, error } = await supabase.from('system_settings').select('*').eq('id', 1).single();
+        if (error) return { currentSchoolYear: '2026-2027' };
+        return { currentSchoolYear: data.current_school_year || '2026-2027' };
+      }).catch(() => ({ currentSchoolYear: '2026-2027' }))
+    );
   },
 
   processYearRollover: async (newSchoolYear: string, voterUpdates: { id: string; grade_level: string; section: string; status: string; academic_history: any[] }[]) => {
-    const { error } = await supabase.rpc('secure_process_rollover', {
-      p_token: requireSessionToken('admin'), p_school_year: newSchoolYear, p_updates: voterUpdates,
-    });
-    if (error) throw new Error(error.message);
-    return { success: true };
+    try {
+      const { error } = await supabase.rpc('secure_process_rollover', {
+        p_token: requireSessionToken('admin'), p_school_year: newSchoolYear, p_updates: voterUpdates,
+      });
+      if (error) {
+        handleSessionError(error);
+        throw new Error(error.message);
+      }
+      return { success: true };
+    } catch (err) {
+      handleSessionError(err);
+      throw err;
+    }
   },
 
   // ==================== Election History ====================
   getElectionHistory: async () => {
-    const { data, error } = await supabase
-      .from('voting_sessions')
-      .select('*')
-      .in('status', ['completed', 'finalized'])
-      .order('created_at', { ascending: false });
-    if (error) throw new Error(error.message);
-    return data || [];
+    return dedupeInFlight('getElectionHistory', () =>
+      withRetry(async () => {
+        const { data, error } = await supabase
+          .from('voting_sessions')
+          .select('*')
+          .in('status', ['completed', 'finalized'])
+          .order('created_at', { ascending: false });
+        if (error) throw new Error(error.message);
+        return data || [];
+      })
+    );
   },
 
   getElectionHistoryDetail: async (sessionId: string) => {
-    try {
-      const [sessionRes, candidatesRes, positionsRes, voterSessions, auditRes, voters] = await Promise.all([
-        supabase.from('voting_sessions').select('*').eq('id', sessionId).maybeSingle(),
-        api.getCandidates(sessionId).then(data => ({ data, error: null })),
-        supabase.from('positions').select('*').eq('session_id', sessionId).order('display_order', { ascending: true }),
-        api.getVoterSessions(sessionId),
-        supabase.rpc('secure_get_audit_data', {
-          p_token: requireSessionToken('admin'), p_session_id: Number(sessionId),
-        }),
-        api.getVoters(),
-      ]);
+    return dedupeInFlight(`getElectionHistoryDetail:${sessionId}`, async () => {
+      try {
+        const [sessionRes, candidatesRes, positionsRes, voterSessions, auditRes, voters] = await Promise.all([
+          supabase.from('voting_sessions').select('*').eq('id', sessionId).maybeSingle(),
+          api.getCandidates(sessionId).then(data => ({ data, error: null })),
+          supabase.from('positions').select('*').eq('session_id', sessionId).order('display_order', { ascending: true }),
+          api.getVoterSessions(sessionId),
+          supabase.rpc('secure_get_audit_data', {
+            p_token: requireSessionToken('admin'), p_session_id: Number(sessionId),
+          }),
+          api.getVoters(),
+        ]);
 
-      if (sessionRes.error) {
-        console.error('Session fetch error:', sessionRes.error);
-        throw new Error(sessionRes.error.message);
+        if (sessionRes.error) {
+          console.error('Session fetch error:', sessionRes.error);
+          throw new Error(sessionRes.error.message);
+        }
+
+        if (!sessionRes.data) {
+          throw new Error(`Election session #${sessionId} not found.`);
+        }
+
+        if (auditRes.error) {
+          handleSessionError(auditRes.error);
+          throw new Error(auditRes.error.message);
+        }
+        const auditData = auditRes.data as { verifications?: any[]; tieResolutions?: any[] } | null;
+        const verifications = auditData?.verifications || [];
+        const tieResolutions = auditData?.tieResolutions || [];
+
+        // Count total approved voters and those who voted in this session
+        const totalVoted = voterSessions.filter((vs: any) => vs.has_voted).length;
+        const totalVoters = voters.filter((v: any) => v.status === 'approved').length || voterSessions.length;
+
+        return {
+          session: sessionRes.data,
+          candidates: candidatesRes.data || [],
+          positions: positionsRes.data || [],
+          voterSessions,
+          tieResolutions,
+          verifications,
+          totalVoters: totalVoters || 0,
+          totalVoted,
+        };
+      } catch (error) {
+        handleSessionError(error);
+        console.error('getElectionHistoryDetail failed:', error);
+        throw error;
       }
-
-      if (!sessionRes.data) {
-        throw new Error(`Election session #${sessionId} not found.`);
-      }
-
-      if (auditRes.error) throw new Error(auditRes.error.message);
-      const auditData = auditRes.data as { verifications?: any[]; tieResolutions?: any[] } | null;
-      const verifications = auditData?.verifications || [];
-      const tieResolutions = auditData?.tieResolutions || [];
-
-      // Count total approved voters and those who voted in this session
-      const totalVoted = voterSessions.filter((vs: any) => vs.has_voted).length;
-      const totalVoters = voters.filter((v: any) => v.status === 'approved').length || voterSessions.length;
-
-      return {
-        session: sessionRes.data,
-        candidates: candidatesRes.data || [],
-        positions: positionsRes.data || [],
-        voterSessions,
-        tieResolutions,
-        verifications,
-        totalVoters: totalVoters || 0,
-        totalVoted,
-      };
-    } catch (error) {
-      console.error('getElectionHistoryDetail failed:', error);
-      throw error;
-    }
+    });
   },
 };
