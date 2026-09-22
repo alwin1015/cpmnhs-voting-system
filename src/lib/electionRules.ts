@@ -66,19 +66,3 @@ export function formatSessionEligibility(session: Pick<VotingSession, 'eligibleG
 
   return `${gradeStr} (${sectionStr})`;
 }
-
-export function getEligibleSessions<T extends Pick<VotingSession, 'eligibleGradeLevels' | 'eligibleSections'>>(
-  sessions: T[],
-  voter: { gradeLevel?: string; section?: string } | null | undefined,
-): T[] {
-  if (!Array.isArray(sessions)) return [];
-  return sessions.filter((s) => isEligibleForSession(s, voter));
-}
-
-export function getEligibleActiveSessions(
-  sessions: VotingSession[],
-  voter: { gradeLevel?: string; section?: string } | null | undefined,
-): VotingSession[] {
-  if (!Array.isArray(sessions)) return [];
-  return sessions.filter((s) => s.isActive && s.status === 'active' && isEligibleForSession(s, voter));
-}

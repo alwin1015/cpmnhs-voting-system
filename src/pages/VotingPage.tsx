@@ -17,33 +17,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Vote, CheckCircle, CheckCircle2, ArrowRight, ArrowLeft, Send, Clock, User, Check, Sparkles } from 'lucide-react';
+import { Vote, CheckCircle, ArrowRight, ArrowLeft, Send, Clock, User, Check } from 'lucide-react';
 import { isEligibleForSession, formatSessionEligibility } from '@/lib/electionRules';
-import type { VotingSession } from '@/types/voting';
 
 export default function VotingPage() {
-  const {
-    candidates,
-    positions,
-    votes,
-    setVote,
-    submitVotes,
-    hasVoted,
-    isLoggedIn,
-    user,
-    election,
-    logout,
-    sessions,
-    activeSessionId,
-    switchSession,
-    voters,
-    isInitializing,
-    isDataLoaded,
-    dataError,
-    refreshData,
-    votedSessionIds,
-    checkVoterSessionStatuses,
-  } = useVoting();
+  const { candidates, positions, votes, setVote, submitVotes, hasVoted, isLoggedIn, user, election, logout, sessions, activeSessionId, switchSession, voters, isInitializing, isDataLoaded, dataError, refreshData } = useVoting();
   const [currentPositionIndex, setCurrentPositionIndex] = useState(0);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -51,25 +29,19 @@ export default function VotingPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Auto-select an active session the voter is eligible for, prioritizing sessions they haven't voted in yet
+  // Auto-select an active session the voter is eligible for
   useEffect(() => {
     if (user?.role === 'voter' && sessions.length > 0) {
-      const eligibleActives = sessions.filter(
-        (s) => s.isActive && s.status === 'active' && isEligibleForSession(s, user)
-      );
-
-      if (eligibleActives.length > 0) {
-        // Prioritize unvoted session
-        const unvoted = eligibleActives.find((s) => !votedSessionIds.includes(s.id));
-        if (unvoted && unvoted.id !== activeSessionId) {
-          switchSession(unvoted.id);
-        } else if (!unvoted && !eligibleActives.some((s) => s.id === activeSessionId)) {
-          // If all completed, select the first eligible session so they view the completion summary
-          switchSession(eligibleActives[0].id);
+      const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
+      if (activeSessions.length > 0) {
+        const eligible = activeSessions.find(s => isEligibleForSession(s, user));
+        const target = eligible || activeSessions[0];
+        if (target && target.id !== activeSessionId) {
+          switchSession(target.id);
         }
       }
     }
-  }, [user, sessions, votedSessionIds, activeSessionId, switchSession]);
+  }, [user, sessions, activeSessionId, switchSession]);
 
   // Redirect if not logged in or not a voter
   if (!isLoggedIn || user?.role !== 'voter') {
@@ -155,177 +127,29 @@ export default function VotingPage() {
     );
   }
 
-  // Check multi-session status for the voter
-  const eligibleActiveSessions = sessions.filter(
-    (s) => s.isActive && s.status === 'active' && isEligibleForSession(s, user)
-  );
-
-  const remainingSessions = eligibleActiveSessions.filter(
-    (s) => s.id !== activeSessionId && !votedSessionIds.includes(s.id)
-  );
-
-  const nextAvailableSession = remainingSessions[0] || null;
-
-  const handleProceedToNextSession = (sessionToOpen: VotingSession) => {
-    setJustVoted(false);
-    setCurrentPositionIndex(0);
-    switchSession(sessionToOpen.id);
-  };
-
-  // Show thank you / confirmation page if voted in this session
+  // Show thank you page if already voted
   if (hasVoted) {
-    // If there is another active session assigned to this student that they haven't voted in yet
-    if (nextAvailableSession) {
-      return (
-        <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/20 to-indigo-50/30">
-          <Header />
-          <main className="flex-1 flex items-center justify-center p-4">
-            <Card className="max-w-lg w-full text-center p-6 sm:p-8 bg-white border border-slate-200/80 shadow-2xl rounded-3xl animate-scale-in">
-              <CardContent className="pt-2 sm:pt-4">
-                <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto mb-4 shadow-xs">
-                  <CheckCircle className="h-8 w-8 stroke-[2.5]" />
-                </div>
-
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold uppercase tracking-wider mb-2">
-                  <Check className="h-3 w-3 stroke-[3]" />
-                  {justVoted ? 'Vote Submitted Successfully' : 'Session Already Voted'}
-                </div>
-
-                <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-1">
-                  {election?.name || 'Election Session Completed'}
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-500 mb-6 leading-relaxed">
-                  Thank you, <strong>{user?.name}</strong>! Your official ballot has been securely counted and recorded.
-                </p>
-
-                {/* Next Available Session Card Prompt */}
-                <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-blue-50 via-indigo-50/50 to-blue-50 border border-blue-200/80 text-left mb-6 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-600 text-white text-[11px] font-bold uppercase tracking-wider shadow-2xs">
-                      <Vote className="h-3 w-3" />
-                      Next Election Available
-                    </span>
-                    <span className="text-[11px] font-semibold text-blue-900/60">
-                      S.Y. {nextAvailableSession.schoolYear || '2026-2027'}
-                    </span>
-                  </div>
-
-                  <div>
-                    <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
-                      {nextAvailableSession.name}
-                    </h3>
-                    <p className="text-xs text-slate-600 mt-1">
-                      Assigned to: <span className="font-semibold text-blue-800">{formatSessionEligibility(nextAvailableSession)}</span>
-                    </p>
-                  </div>
-
-                  <p className="text-xs text-slate-500 leading-relaxed pt-1 border-t border-blue-200/60">
-                    You are also authorized to vote in this session. Proceed now to cast your ballot.
-                  </p>
-                </div>
-
-                {/* Actions */}
-                <div className="space-y-2.5">
-                  <Button
-                    onClick={() => handleProceedToNextSession(nextAvailableSession)}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-12 text-sm font-bold shadow-md shadow-blue-600/20 gap-2 transition-all hover:scale-[1.01] active:scale-[0.99]"
-                  >
-                    <span>Proceed to {nextAvailableSession.name}</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    <Button
-                      variant="outline"
-                      onClick={() => navigate('/')}
-                      className="rounded-xl border-slate-200 text-slate-700 h-10 text-xs font-semibold"
-                    >
-                      Return Home
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => {
-                        logout();
-                        navigate('/login');
-                      }}
-                      className="rounded-xl text-slate-500 hover:text-slate-800 h-10 text-xs font-semibold"
-                    >
-                      Log Out
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </main>
-          <Footer />
-        </div>
-      );
-    }
-
-    // Otherwise, all assigned sessions have been completed!
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-emerald-50/20 to-teal-50/20">
+      <div className="min-h-screen flex flex-col bg-slate-50">
         <Header />
         <main className="flex-1 flex items-center justify-center p-4">
-          <Card className="max-w-md w-full text-center p-6 sm:p-8 bg-white border border-slate-200/80 shadow-2xl rounded-3xl animate-scale-in">
-            <CardContent className="pt-2 sm:pt-4">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto mb-4 shadow-xs">
+          <Card className="max-w-md w-full text-center p-6 sm:p-8 bg-white border border-slate-200/80 shadow-xl rounded-2xl animate-scale-in">
+            <CardContent className="pt-4 sm:pt-6">
+              <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4 shadow-xs">
                 <CheckCircle className="h-8 w-8 stroke-[2.5]" />
               </div>
-
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold uppercase tracking-wider mb-2">
-                <Check className="h-3 w-3 stroke-[3]" />
-                All Sessions Completed
-              </div>
-
               <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-1">
-                Thank You for Voting!
+                {justVoted ? "Vote Submitted Successfully!" : "YOU HAVE ALREADY VOTED."}
               </h2>
-              <p className="text-xs sm:text-sm text-slate-500 mb-5 leading-relaxed">
-                Great job, <strong>{user?.name}</strong>! You have completed all voting sessions assigned to your grade level and section.
+              <p className="text-xs sm:text-sm text-slate-500 mb-6 leading-relaxed">
+                Thank you, <strong>{user?.name}</strong>! Your official ballot has been securely counted and recorded for this election.
               </p>
-
-              {/* Completed Sessions Checklist */}
-              {eligibleActiveSessions.length > 0 && (
-                <div className="space-y-2 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-left mb-6">
-                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    Completed Ballots ({eligibleActiveSessions.length})
-                  </p>
-                  <div className="space-y-1.5 pt-1">
-                    {eligibleActiveSessions.map((s) => (
-                      <div
-                        key={s.id}
-                        className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-xl bg-white border border-slate-100 shadow-2xs"
-                      >
-                        <span className="font-semibold text-slate-800 truncate mr-2">{s.name}</span>
-                        <span className="inline-flex items-center gap-1 text-emerald-700 font-bold text-[11px] bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded-md flex-shrink-0">
-                          <Check className="h-3 w-3 stroke-[3]" />
-                          Voted
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Button
-                  className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-xl h-11 text-sm font-semibold shadow-xs"
-                  onClick={() => {
-                    logout();
-                    navigate('/login');
-                  }}
-                >
-                  Log Out
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full border-slate-200 text-slate-700 rounded-xl h-10 text-xs font-medium"
-                  onClick={() => navigate('/')}
-                >
-                  Return to Home
-                </Button>
-              </div>
+              <Button 
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-11 text-sm font-semibold shadow-xs"
+                onClick={() => navigate('/')}
+              >
+                Return to Home
+              </Button>
             </CardContent>
           </Card>
         </main>
@@ -558,23 +382,6 @@ export default function VotingPage() {
       <main className="flex-1 py-4 sm:py-8">
         <div className="container mx-auto px-3 sm:px-4 max-w-3xl">
           
-          {/* Multi-Session Indicator */}
-          {eligibleActiveSessions.length > 1 && (
-            <div className="flex items-center justify-between gap-2 p-3 rounded-2xl bg-blue-50/70 border border-blue-200/80 mb-4 text-xs animate-fade-in">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="p-1 rounded-md bg-blue-600 text-white font-bold text-[10px] px-2 uppercase">
-                  Session {eligibleActiveSessions.findIndex((s) => s.id === activeSessionId) + 1} of {eligibleActiveSessions.length}
-                </span>
-                <span className="font-bold text-slate-800 truncate">{election?.name}</span>
-              </div>
-              {remainingSessions.length > 0 && (
-                <span className="text-[11px] font-semibold text-blue-700 whitespace-nowrap bg-blue-100/70 px-2.5 py-0.5 rounded-full">
-                  +{remainingSessions.length} more session(s)
-                </span>
-              )}
-            </div>
-          )}
-
           {/* Progress Tracker Card */}
           <div className="bg-white border border-slate-200/80 shadow-xs rounded-xl p-3 sm:p-4 mb-5 sm:mb-6">
             <div className="flex items-center justify-between gap-2 mb-2">
