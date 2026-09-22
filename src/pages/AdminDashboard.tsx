@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useVoting } from '@/contexts/VotingContext';
+import type { Voter } from '@/types/voting';
 import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog,
@@ -120,7 +121,7 @@ export default function AdminDashboard() {
         const updates = voters.map(v => {
           if (v.status === 'graduated' || v.status === 'inactive' || !v.gradeLevel) return null;
           let nextGrade = v.gradeLevel;
-          let nextStatus = v.status;
+          let nextStatus: Voter['status'] = v.status;
           const numGrade = parseInt(v.gradeLevel, 10);
           if (!isNaN(numGrade)) {
             if (numGrade < 12) {
@@ -146,18 +147,22 @@ export default function AdminDashboard() {
       } catch (err) {
         console.error("Rollover failed", err);
         toast({ title: 'Rollover Error', description: 'Failed to automatically promote students.', variant: 'destructive' });
+        return;
       }
     }
-
-    toast({ title: 'Schedule Saved', description: 'Election schedule details updated successfully.' });
-
-    await updateElection({
-      name: editName,
-      schoolYear: editSchoolYear,
-      startDate: parseDateTime(editStartDate, editStartTime) || undefined,
-      endDate: parseDateTime(editEndDate, editEndTime) || undefined,
-      scheduleStatus: 'scheduled',
-    }).catch(err => console.error('Schedule update error:', err));
+    try {
+      await updateElection({
+        name: editName,
+        schoolYear: editSchoolYear,
+        startDate: parseDateTime(editStartDate, editStartTime) || undefined,
+        endDate: parseDateTime(editEndDate, editEndTime) || undefined,
+        scheduleStatus: 'scheduled',
+      });
+      toast({ title: 'Schedule Saved', description: 'Election schedule details updated successfully.' });
+    } catch (err) {
+      console.error('Schedule update error:', err);
+      toast({ title: 'Save Failed', description: 'The election schedule was not updated.', variant: 'destructive' });
+    }
   };
 
   const handleOpenMappings = () => {
@@ -166,9 +171,14 @@ export default function AdminDashboard() {
   };
 
   const handleSaveMappings = async () => {
-    setIsMappingsOpen(false);
-    toast({ title: 'Mappings Saved', description: 'Representative grade mappings have been updated.' });
-    updateElection({ gradeMappings: editMappings }).catch(err => console.error('Save mappings error:', err));
+    try {
+      await updateElection({ gradeMappings: editMappings });
+      setIsMappingsOpen(false);
+      toast({ title: 'Mappings Saved', description: 'Representative grade mappings have been updated.' });
+    } catch (err) {
+      console.error('Save mappings error:', err);
+      toast({ title: 'Save Failed', description: 'Representative mappings were not updated.', variant: 'destructive' });
+    }
   };
 
   const handleToggleElection = async () => {

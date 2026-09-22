@@ -8,10 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LayoutGrid, Plus, Trash2, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '@/hooks/use-toast';
 
 export default function SectionsPage() {
   const { sections, addSection, deleteSection, user, isLoggedIn } = useVoting();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [newSectionName, setNewSectionName] = useState('');
   const [newSectionGrade, setNewSectionGrade] = useState('');
@@ -31,23 +33,30 @@ export default function SectionsPage() {
     );
   }
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!newSectionName.trim() || !newSectionGrade) {
       alert('Please fill in both Section Name and Grade Level');
       return;
     }
-    addSection({
-      name: newSectionName.trim(),
-      gradeLevel: newSectionGrade,
-    });
-    setNewSectionName('');
-    setNewSectionGrade('');
-    setShowForm(false);
+    try {
+      await addSection({ name: newSectionName.trim(), gradeLevel: newSectionGrade });
+      setNewSectionName('');
+      setNewSectionGrade('');
+      setShowForm(false);
+      toast({ title: 'Section Added', description: 'The section was saved.' });
+    } catch (error) {
+      toast({ title: 'Save Failed', description: error instanceof Error ? error.message : 'Could not save the section.', variant: 'destructive' });
+    }
   };
 
-  const handleDelete = (id: string) => {
-    deleteSection(id);
-    setDeleteConfirm(null);
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteSection(id);
+      setDeleteConfirm(null);
+      toast({ title: 'Section Removed', description: 'The section was deleted.' });
+    } catch (error) {
+      toast({ title: 'Delete Failed', description: error instanceof Error ? error.message : 'Could not delete the section.', variant: 'destructive' });
+    }
   };
 
   const grades = ['7', '8', '9', '10', '11', '12'];

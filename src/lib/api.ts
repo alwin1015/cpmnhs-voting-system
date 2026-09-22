@@ -1,141 +1,79 @@
 import { supabase } from './supabase';
-import bcrypt from 'bcryptjs';
+type StoredSession = {
+  token?: string;
+  user?: { id: string; role: 'admin' | 'voter'; name: string; lrn?: string; email?: string; gradeLevel?: string; section?: string };
+  has_voted?: boolean;
+  activeSessionId?: string;
+};
 
-const SALT_ROUNDS = 10;
+const readSession = (): StoredSession | null => {
+  const value = localStorage.getItem('voting_session');
+  if (!value) return null;
+  try { return JSON.parse(value) as StoredSession; } catch { return null; }
+};
+
+const requireSessionToken = (role?: 'admin' | 'voter') => {
+  const session = readSession();
+  if (!session?.token || !session.user || (role && session.user.role !== role)) {
+    throw new Error('Your session has expired. Please sign in again.');
+  }
+  return session.token;
+};
+
+const adminManage = async (
+  action: string,
+  id: string | number | null = null,
+  payload: Record<string, unknown> = {},
+) => {
+  const { data, error } = await supabase.rpc('secure_admin_manage', {
+    p_token: requireSessionToken('admin'),
+    p_action: action,
+    p_id: id === null ? null : Number(id),
+    p_payload: payload,
+  });
+  if (error) throw new Error(error.message);
+  return data;
+};
 
 export const api = {
   // ======= Auth =======
   login: async (lrn: string, password: string) => {
-    const { data: voter, error } = await supabase.from('voters').select('*').eq('lrn', lrn).single();
-    if (error || !voter) throw new Error('You input a wrong password or LRN');
-    
-    const isValid = await bcrypt.compare(password, voter.password_hash);
-    if (!isValid) throw new Error('You input a wrong password or LRN');
-    
-    if (voter.status !== 'approved') throw new Error('Your account is still pending for approval');
-    
-    const user = {
-      id: voter.id,
-      role: 'voter',
-      name: voter.name,
-      lrn: voter.lrn,
-      gradeLevel: voter.grade_level,
-      section: voter.section
-    };
-    
-    const actuallyVoted = Boolean(voter.has_voted);
-    localStorage.setItem('voting_session', JSON.stringify({ user, has_voted: actuallyVoted }));
-    
-    return { success: true, user, hasVoted: actuallyVoted };
+    const { data, error } = await supabase.rpc('secure_login_voter', { p_lrn: lrn, p_password: password });
+    if (error || !data?.user || !data?.token) throw new Error(error?.message || 'Invalid LRN or password');
+    localStorage.setItem('voting_session', JSON.stringify({ token: data.token, user: data.user, has_voted: false }));
+    return { success: true, user: data.user, hasVoted: false };
   },
 
   requestPasswordReset: async (lrn: string) => {
-    const { data: voter, error: searchError } = await supabase.from('voters').select('id').eq('lrn', lrn).single();
-    if (searchError || !voter) throw new Error('LRN not found in our records.');
-    
-    const { error } = await supabase.from('voters').update({ status: 'pending' }).eq('lrn', lrn);
+    if (!/^\d{12}$/.test(lrn)) throw new Error('Enter a valid 12-digit LRN.');
+    throw new Error('Password recovery requires assistance from the election administrator.');
+  },
+
+  adminLogin: async (username: string, password: string) => {
+    const { data, error } = await supabase.rpc('secure_login_admin', { p_username: username, p_password: password });
+    if (error || !data?.user || !data?.token) throw new Error(error?.message || 'Invalid username or password');
+    localStorage.setItem('voting_session', JSON.stringify({ token: data.token, user: data.user, has_voted: false }));
+    return { success: true, user: data.user, mustChangePassword: Boolean(data.mustChangePassword) };
+  },
+
+  adminChangePassword: async (adminId: string, currentPassword: string, newPassword: string) => {
+    void adminId;
+    const { error } = await supabase.rpc('secure_change_admin_password', {
+      p_token: requireSessionToken('admin'), p_current_password: currentPassword, p_new_password: newPassword,
+    });
     if (error) throw new Error(error.message);
     return { success: true };
   },
 
-  adminLogin: async (username: string, password: string) => {
-    const { data: admin, error } = await supabase.from('admins').select('*').eq('username', username).single();
-    if (error || !admin) throw new Error('Invalid username or password');
-
-    // Check if the stored hash is a bcrypt hash (starts with $2)
-    const isBcryptHash = typeof admin.password_hash === 'string' && admin.password_hash.startsWith('$2');
-
-    let isValid = false;
-    if (isBcryptHash) {
-      // Normal bcrypt comparison
-      isValid = await bcrypt.compare(password, admin.password_hash).catch(() => false);
-    } else {
-      // Plaintext migration: compare directly, then hash and save
-      isValid = password === admin.password_hash;
-      if (isValid) {
-        const hash = await bcrypt.hash(password, SALT_ROUNDS);
-        try {
-          const { error: updErr } = await supabase.from('admins').update({
-            password_hash: hash,
-            must_change_password: true,
-          }).eq('id', admin.id);
-          if (updErr) {
-            await supabase.from('admins').update({ password_hash: hash }).eq('id', admin.id);
-          }
-        } catch (_) {
-          await supabase.from('admins').update({ password_hash: hash }).eq('id', admin.id);
-        }
-        admin.password_hash = hash;
-      }
-    }
-
-    if (!isValid) throw new Error('Invalid username or password');
-
-    const user = { id: admin.id, role: 'admin', name: admin.username, email: admin.email };
-    localStorage.setItem('voting_session', JSON.stringify({ user, has_voted: false }));
-
-    // Detect if admin is still using temporary default password 'admin123'
-    // or if must_change_password flag is explicitly set in database
-    const isDefaultPassword = password === 'admin123' || Boolean(admin.must_change_password);
-
-    return { success: true, user, mustChangePassword: isDefaultPassword };
-  },
-
-  adminChangePassword: async (adminId: string, currentPassword: string, newPassword: string) => {
-    const { data: admin, error } = await supabase.from('admins').select('*').eq('id', adminId).single();
-    if (error || !admin) throw new Error('Admin account not found');
-
-    // Verify current password
-    const isBcryptHash = typeof admin.password_hash === 'string' && admin.password_hash.startsWith('$2');
-    let isValid = false;
-    if (isBcryptHash) {
-      isValid = await bcrypt.compare(currentPassword, admin.password_hash).catch(() => false);
-    } else {
-      isValid = currentPassword === admin.password_hash;
-    }
-    if (!isValid) throw new Error('Current password is incorrect');
-
-    // Hash and save new password
-    const hash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-    
-    // Try updating with must_change_password, fallback to password_hash only if column doesn't exist
-    try {
-      const { error: updateError } = await supabase.from('admins').update({
-        password_hash: hash,
-        must_change_password: false,
-      }).eq('id', adminId);
-
-      if (updateError) {
-        const { error: fallbackError } = await supabase.from('admins').update({
-          password_hash: hash,
-        }).eq('id', adminId);
-        if (fallbackError) throw new Error(fallbackError.message);
-      }
-    } catch {
-      const { error: fallbackError } = await supabase.from('admins').update({
-        password_hash: hash,
-      }).eq('id', adminId);
-      if (fallbackError) throw new Error(fallbackError.message);
-    }
-
-    return { success: true };
-  },
-
   register: async (data: any) => {
-    const hash = await bcrypt.hash(data.password, SALT_ROUNDS);
-    
     let fullName = data.name;
     if (!fullName && data.firstName && data.lastName) {
       fullName = `${data.firstName} ${data.middleInitial ? data.middleInitial + '. ' : ''}${data.lastName}`.trim();
     }
 
-    const { error } = await supabase.from('voters').insert({
-      lrn: data.lrn,
-      name: fullName,
-      grade_level: data.gradeLevel,
-      section: data.section,
-      password_hash: hash,
-      status: 'pending'
+    const { error } = await supabase.rpc('secure_register_voter', {
+      p_lrn: data.lrn, p_name: fullName, p_grade_level: data.gradeLevel,
+      p_section: data.section, p_password: data.password,
     });
 
     if (error) throw new Error(error.message);
@@ -143,25 +81,19 @@ export const api = {
   },
 
   bulkRegister: async (students: any[]) => {
-    const records = await Promise.all(students.map(async (s) => {
-      const hash = await bcrypt.hash(s.password, SALT_ROUNDS);
-      return {
-        lrn: s.lrn,
-        name: s.name,
-        grade_level: s.gradeLevel,
-        section: s.section,
-        password_hash: hash,
-        status: 'approved'
-      };
-    }));
-    
-    const { error } = await supabase.from('voters').insert(records);
+    const { data: count, error } = await supabase.rpc('secure_bulk_register_voters', {
+      p_token: requireSessionToken('admin'), p_students: students,
+    });
     if (error) throw new Error(error.message);
-    return { success: true, message: 'Bulk registration processed.' };
+    return { success: true, message: `${count || 0} students registered.` };
   },
 
 
   logout: async () => {
+    const token = readSession()?.token;
+    if (token) {
+      try { await supabase.rpc('secure_logout', { p_token: token }); } catch { /* local logout still proceeds */ }
+    }
     localStorage.removeItem('voting_session');
     return { success: true };
   },
@@ -174,25 +106,32 @@ export const api = {
 
   // ==================== Voters (Global Registry) ====================
   getVoters: async () => {
-    const { data, error } = await supabase.from('voters').select('*').order('created_at', { ascending: false });
+    const token = readSession()?.token;
+    if (!token) return [];
+    const { data, error } = await supabase.rpc('secure_get_voters', { p_token: token });
     if (error) throw new Error(error.message);
-    return data;
+    return (data as any[]) || [];
   },
   
   approveVoter: async (id: string) => {
-    const { error } = await supabase.from('voters').update({ status: 'approved' }).eq('id', id);
+    const { error } = await supabase.rpc('secure_admin_voter_action', {
+      p_token: requireSessionToken('admin'), p_action: 'approve', p_voter_id: Number(id),
+    });
     if (error) throw new Error(error.message);
     return { success: true };
   },
 
   approveAllPendingVoters: async () => {
-    const { error } = await supabase.from('voters').update({ status: 'approved' }).eq('status', 'pending');
+    const { error } = await supabase.rpc('secure_admin_voter_action', {
+      p_token: requireSessionToken('admin'), p_action: 'approve_all', p_voter_id: null,
+    });
     if (error) throw new Error(error.message);
     return { success: true };
   },
 
   updateMySection: async (voterId: string, newSection: string) => {
-    const { error } = await supabase.from('voters').update({ section: newSection }).eq('id', voterId);
+    void voterId;
+    const { error } = await supabase.rpc('secure_update_my_section', { p_token: requireSessionToken('voter'), p_section: newSection });
     if (error) throw new Error(error.message);
     
     // Update local storage session
@@ -208,41 +147,43 @@ export const api = {
   },
   
   rejectVoter: async (id: string) => {
-    const { error } = await supabase.from('voters').update({ status: 'rejected' }).eq('id', id);
+    const { error } = await supabase.rpc('secure_admin_voter_action', {
+      p_token: requireSessionToken('admin'), p_action: 'reject', p_voter_id: Number(id),
+    });
     if (error) throw new Error(error.message);
     return { success: true };
   },
 
   resetVoter: async (id: string) => {
-    const { error } = await supabase.from('voters').delete().eq('id', id);
-    if (error) throw new Error(error.message);
-    return { success: true };
+    return api.deleteVoter(id);
   },
 
   deleteVoter: async (id: string) => {
-    // Delete dependent voter_sessions first
-    await supabase.from('voter_sessions').delete().eq('voter_id', id);
-    const { error } = await supabase.from('voters').delete().eq('id', id);
+    const { error } = await supabase.rpc('secure_admin_voter_action', {
+      p_token: requireSessionToken('admin'), p_action: 'delete', p_voter_id: Number(id),
+    });
     if (error) throw new Error(error.message);
     return { success: true };
   },
 
   // ==================== Voter Sessions (Per-Session Voting Status) ====================
   getVoterSessions: async (sessionId: string) => {
-    const { data, error } = await supabase.from('voter_sessions').select('*').eq('session_id', sessionId);
+    const token = readSession()?.token;
+    if (!token) return [];
+    const { data, error } = await supabase.rpc('secure_get_voter_sessions', {
+      p_token: token, p_session_id: Number(sessionId),
+    });
     if (error) throw new Error(error.message);
-    return data || [];
+    return (data as Array<{ voter_id: string | number; has_voted: boolean; voted_at: string | null }>) || [];
   },
 
   getVoterSessionStatus: async (voterId: string, sessionId: string) => {
-    const { data, error } = await supabase
-      .from('voter_sessions')
-      .select('*')
-      .eq('voter_id', voterId)
-      .eq('session_id', sessionId)
-      .maybeSingle();
+    void voterId;
+    const { data, error } = await supabase.rpc('secure_voter_session_status', {
+      p_token: requireSessionToken('voter'), p_session_id: Number(sessionId),
+    });
     if (error) throw new Error(error.message);
-    return data ? { hasVoted: data.has_voted, votedAt: data.voted_at } : { hasVoted: false, votedAt: null };
+    return (data as { hasVoted: boolean; votedAt: string | null } | null) || { hasVoted: false, votedAt: null };
   },
 
   // ==================== Sessions ====================
@@ -274,75 +215,21 @@ export const api = {
     if (data.eligible_sections) payload.eligible_sections = data.eligible_sections;
     if (data.grade_mappings) payload.grade_mappings = data.grade_mappings;
 
-    const { data: created, error } = await supabase.from('voting_sessions').insert(payload).select().single();
-    if (error) throw new Error(error.message);
-    return created;
+    return adminManage('create_session', null, payload);
   },
 
   updateSession: async (sessionId: string, data: any) => {
-    const { error } = await supabase.from('voting_sessions').update(data).eq('id', sessionId);
-    if (error) throw new Error(error.message);
+    await adminManage('update_session', sessionId, data);
     return { success: true };
   },
 
   deleteSession: async (sessionId: string) => {
-    // CASCADE will delete positions, candidates, votes, voter_sessions, vote_verifications
-    const { error } = await supabase.from('voting_sessions').delete().eq('id', sessionId);
-    if (error) throw new Error(error.message);
+    await adminManage('delete_session', sessionId);
     return { success: true };
   },
 
   duplicateSession: async (sessionId: string) => {
-    // 1. Get original session
-    const { data: original, error: getErr } = await supabase.from('voting_sessions').select('*').eq('id', sessionId).single();
-    if (getErr || !original) throw new Error('Session not found');
-
-    // 2. Create new session
-    const { data: newSession, error: createErr } = await supabase.from('voting_sessions').insert({
-      name: `${original.name} (Copy)`,
-      school_year: original.school_year,
-      grade_mappings: original.grade_mappings,
-      eligible_grade_levels: original.eligible_grade_levels,
-      eligible_sections: original.eligible_sections,
-      status: 'upcoming',
-      schedule_status: 'draft',
-    }).select().single();
-    if (createErr || !newSession) throw new Error(createErr?.message || 'Failed to create session copy');
-
-    // 3. Copy positions
-    const { data: positions } = await supabase.from('positions').select('*').eq('session_id', sessionId);
-    if (positions && positions.length > 0) {
-      const positionMapping: Record<string, number> = {};
-      for (const pos of positions) {
-        const { data: newPos } = await supabase.from('positions').insert({
-          name: pos.name,
-          display_order: pos.display_order,
-          max_votes: pos.max_votes,
-          strict_grade_mapping: pos.strict_grade_mapping,
-          session_id: newSession.id,
-        }).select().single();
-        if (newPos) positionMapping[String(pos.id)] = newPos.id;
-      }
-
-      // 4. Copy candidates (without votes)
-      const { data: candidates } = await supabase.from('candidates').select('*').eq('session_id', sessionId);
-      if (candidates && candidates.length > 0) {
-        const candidateInserts = candidates.map(c => ({
-          name: c.name,
-          party: c.party,
-          motto: c.motto,
-          photo_url: c.photo_url,
-          grade_level: c.grade_level,
-          section: c.section,
-          position_id: positionMapping[String(c.position_id)] || c.position_id,
-          session_id: newSession.id,
-          votes: 0,
-        }));
-        await supabase.from('candidates').insert(candidateInserts);
-      }
-    }
-
-    return newSession;
+    return adminManage('duplicate_session', sessionId);
   },
 
   // Legacy compat: getElection returns first session
@@ -364,16 +251,10 @@ export const api = {
 
   // Legacy compat: updateElection updates the active session or session 1
   updateElection: async (data: any) => {
-    try {
-      const { error } = await supabase.from('voting_sessions').update(data).eq('id', data.id || 1);
-      if (error) {
-        // Fallback to old election_settings table
-        const { error: legacyErr } = await supabase.from('election_settings').update(data).eq('id', 1);
-        if (legacyErr) console.warn('Election update fallback error:', legacyErr);
-      }
-    } catch (e) {
-      console.warn('Election update fallback:', e);
-    }
+    const targetId = data.id || 1;
+    const { id: _id, ...updates } = data;
+    void _id;
+    await adminManage('update_session', targetId, updates);
     try {
       const prev = JSON.parse(localStorage.getItem('election_schedule_backup') || '{}');
       localStorage.setItem('election_schedule_backup', JSON.stringify({ ...prev, ...data }));
@@ -383,11 +264,12 @@ export const api = {
 
   // ==================== Candidates (Session-Scoped) ====================
   getCandidates: async (sessionId?: string) => {
-    let query = supabase.from('candidates').select('*');
-    if (sessionId) query = query.eq('session_id', sessionId);
-    const { data, error } = await query;
+    const { data, error } = await supabase.rpc('secure_get_candidates', {
+      p_token: readSession()?.token || null,
+      p_session_id: sessionId ? Number(sessionId) : null,
+    });
     if (error) throw new Error(error.message);
-    return data;
+    return (data as any[]) || [];
   },
   
   addCandidate: async (data: any) => {
@@ -403,8 +285,7 @@ export const api = {
     if (data.position_id !== undefined && data.position_id !== '') {
       payload.position_id = isNaN(Number(data.position_id)) ? data.position_id : Number(data.position_id);
     }
-    const { error } = await supabase.from('candidates').insert(payload);
-    if (error) throw new Error(error.message);
+    await adminManage('add_candidate', null, payload);
     return { success: true };
   },
   
@@ -419,14 +300,12 @@ export const api = {
     if (data.position_id !== undefined && data.position_id !== '') {
       payload.position_id = isNaN(Number(data.position_id)) ? data.position_id : Number(data.position_id);
     }
-    const { error } = await supabase.from('candidates').update(payload).eq('id', data.id);
-    if (error) throw new Error(error.message);
+    await adminManage('update_candidate', data.id, payload);
     return { success: true };
   },
   
   deleteCandidate: async (id: string) => {
-    const { error } = await supabase.from('candidates').delete().eq('id', id);
-    if (error) throw new Error(error.message);
+    await adminManage('delete_candidate', id);
     return { success: true };
   },
 
@@ -440,67 +319,19 @@ export const api = {
   },
   
   addPosition: async (data: any) => {
-    const sessionId = data.session_id || 1;
-    // Check if position with same name already exists IN THIS SESSION
-    const { data: existing } = await supabase
-      .from('positions')
-      .select('id, name')
-      .ilike('name', data.name.trim())
-      .eq('session_id', sessionId);
-    
-    if (existing && existing.length > 0) {
-      throw new Error(`A position named "${data.name}" already exists in this session.`);
-    }
-
-    const payload = { ...data, session_id: sessionId };
-    const { error } = await supabase.from('positions').insert(payload);
-    if (error) throw new Error(error.message);
+    const payload = { ...data, session_id: data.session_id || 1 };
+    await adminManage('add_position', null, payload);
     return { success: true };
   },
   
   deletePosition: async (id: string) => {
-    const { error } = await supabase.from('positions').delete().eq('id', id);
-    if (error) throw new Error(error.message);
+    await adminManage('delete_position', id);
     return { success: true };
   },
 
   cleanupDuplicatePositions: async (sessionId?: string) => {
-    let query = supabase.from('positions').select('*').order('id', { ascending: true });
-    if (sessionId) query = query.eq('session_id', sessionId);
-    const { data: allPositions, error: posErr } = await query;
-    if (posErr) throw new Error(posErr.message);
-
-    const seenNames = new Map<string, any>();
-    const toDeleteIds: number[] = [];
-    const remapping: Record<string, string> = {};
-
-    for (const pos of allPositions || []) {
-      const normalizedName = (pos.name || '').trim().toLowerCase();
-      if (seenNames.has(normalizedName)) {
-        const primaryPos = seenNames.get(normalizedName);
-        toDeleteIds.push(pos.id);
-        remapping[String(pos.id)] = String(primaryPos.id);
-      } else {
-        seenNames.set(normalizedName, pos);
-      }
-    }
-
-    if (toDeleteIds.length === 0) return { success: true, count: 0 };
-
-    for (const [dupId, keepId] of Object.entries(remapping)) {
-      try {
-        await supabase.from('candidates').update({ position_id: keepId }).eq('position_id', dupId);
-      } catch (_) {}
-      try {
-        await supabase.from('votes').update({ position_id: keepId }).eq('position_id', dupId);
-      } catch (_) {}
-    }
-
-    for (const id of toDeleteIds) {
-      await supabase.from('positions').delete().eq('id', id);
-    }
-
-    return { success: true, count: toDeleteIds.length };
+    const result = await adminManage('cleanup_positions', sessionId || null);
+    return (result as { success: true; count: number }) || { success: true, count: 0 };
   },
 
   // ==================== Sections (Global) ====================
@@ -511,128 +342,41 @@ export const api = {
   },
   
   addSection: async (data: any) => {
-    const { error } = await supabase.from('sections').insert(data);
-    if (error) throw new Error(error.message);
+    await adminManage('add_section', null, data);
     return { success: true };
   },
   
   deleteSection: async (id: string) => {
-    const { error } = await supabase.from('sections').delete().eq('id', id);
-    if (error) throw new Error(error.message);
+    await adminManage('delete_section', id);
     return { success: true };
   },
 
   // ==================== Votes (Session-Scoped) ====================
   submitVotes: async (votes: { candidate_id: string; position_id: string }[], sessionId?: string) => {
-    const sessionStr = localStorage.getItem('voting_session');
-    if (!sessionStr) throw new Error('Not authenticated');
-    const session = JSON.parse(sessionStr);
-    const activeSessionId = sessionId || session.activeSessionId || '1';
-
-    // 0. Verify they haven't voted yet
-    const { data: existingSession } = await supabase
-      .from('voter_sessions')
-      .select('has_voted')
-      .eq('voter_id', session.user.id)
-      .eq('session_id', activeSessionId)
-      .maybeSingle();
-
-    if (existingSession?.has_voted) {
-      throw new Error('You have already voted in this election.');
-    }
-
-    // 1. Insert votes with session_id
-    const votesData = votes.map(v => ({
-      voter_id: session.user.id,
-      candidate_id: v.candidate_id,
-      position_id: v.position_id,
-      session_id: activeSessionId,
-    }));
-    
-    const { error: voteError } = await supabase.from('votes').insert(votesData);
-    if (voteError) throw new Error(voteError.message);
-
-    // 2. Mark voter as voted in voter_sessions
-    const { error: vsError } = await supabase
-      .from('voter_sessions')
-      .upsert({
-        voter_id: session.user.id,
-        session_id: activeSessionId,
-        has_voted: true,
-        voted_at: new Date().toISOString(),
-      }, { onConflict: 'voter_id,session_id' });
-    
-    if (vsError) {
-      // Fallback: update global voters table
-      await supabase
-        .from('voters')
-        .update({ has_voted: true, voted_at: new Date().toISOString() })
-        .eq('id', session.user.id);
-    }
-    
-    // Update local storage session
+    const session = readSession();
+    if (!session?.user) throw new Error('Not authenticated');
+    const activeSessionId = sessionId || session.activeSessionId;
+    if (!activeSessionId) throw new Error('No election selected');
+    const { error } = await supabase.rpc('secure_submit_ballot', {
+      p_token: requireSessionToken('voter'), p_session_id: Number(activeSessionId), p_votes: votes,
+    });
+    if (error) throw new Error(error.message);
     session.has_voted = true;
     session.activeSessionId = activeSessionId;
     localStorage.setItem('voting_session', JSON.stringify(session));
-
-    // 3. Increment candidate vote counts concurrently to prevent timeouts or dropped votes
-    await Promise.all(votes.map(async (v) => {
-      const { data: cand } = await supabase.from('candidates').select('votes').eq('id', v.candidate_id).single();
-      if (cand) {
-        await supabase.from('candidates').update({ votes: (cand.votes || 0) + 1 }).eq('id', v.candidate_id);
-      }
-    }));
-
     return { success: true };
   },
   
   getResults: async (sessionId?: string) => {
-    let query = supabase.from('candidates').select('*');
-    if (sessionId) query = query.eq('session_id', sessionId);
-    const { data, error } = await query;
-    if (error) throw new Error(error.message);
-    return data;
+    return api.getCandidates(sessionId);
   },
 
   // ==================== Session Reset ====================
   resetSession: async (sessionId: string) => {
-    // 1. Delete tie resolutions for this session's verifications
-    try {
-      const { data: verifications } = await supabase.from('vote_verifications').select('id').eq('session_id', sessionId);
-      if (verifications && verifications.length > 0) {
-        const vIds = verifications.map((v: any) => v.id);
-        await supabase.from('tie_resolutions').delete().in('verification_id', vIds);
-        await supabase.from('vote_verifications').delete().eq('session_id', sessionId);
-      }
-    } catch (_) {}
-
-    // 2. Delete votes for this session
-    try {
-      await supabase.from('votes').delete().eq('session_id', sessionId);
-    } catch (_) {}
-
-    // 3. Reset candidate tallies for this session
-    try {
-      const { data: candidates } = await supabase.from('candidates').select('id').eq('session_id', sessionId);
-      if (candidates && candidates.length > 0) {
-        await supabase.from('candidates').update({ votes: 0 }).eq('session_id', sessionId);
-      }
-    } catch (_) {}
-
-    // 4. Delete voter_sessions for this session
-    try {
-      await supabase.from('voter_sessions').delete().eq('session_id', sessionId);
-    } catch (_) {}
-
-    // 5. Reset session status
-    await supabase.from('voting_sessions').update({
-      is_active: false,
-      status: 'upcoming',
-      results_finalized: false,
-      finalized_by: null,
-      finalized_at: null,
-    }).eq('id', sessionId);
-
+    const { error } = await supabase.rpc('secure_reset_session', {
+      p_token: requireSessionToken('admin'), p_session_id: Number(sessionId),
+    });
+    if (error) throw new Error(error.message);
     return { success: true };
   },
 
@@ -643,149 +387,57 @@ export const api = {
 
   // ==================== Election Report API ====================
   getVerifications: async (sessionId?: string) => {
-    try {
-      let query = supabase.from('vote_verifications').select('*').order('created_at', { ascending: false });
-      if (sessionId) query = query.eq('session_id', sessionId);
-      const { data, error } = await query;
-      if (error) {
-        console.warn('Verifications table notice:', error.message);
-        return [];
-      }
-      return data || [];
-    } catch (e) {
-      return [];
-    }
+    const { data, error } = await supabase.rpc('secure_get_audit_data', {
+      p_token: requireSessionToken('admin'), p_session_id: sessionId ? Number(sessionId) : null,
+    });
+    if (error) throw new Error(error.message);
+    return (data as { verifications?: any[] } | null)?.verifications || [];
   },
 
   initiateVerification: async (positionId: string, tiedCandidateIds: string[], originalVoteCounts: Record<string, number>, sessionId?: string) => {
-    let query = supabase.from('votes').select('voter_id').eq('position_id', positionId);
-    if (sessionId) query = query.eq('session_id', sessionId);
-    const { data: votesForPosition, error: votesError } = await query;
-    
-    if (votesError) throw new Error(votesError.message);
-
-    const uniqueVoterIds = [...new Set((votesForPosition || []).map((v: any) => String(v.voter_id)))];
-    const shuffled = uniqueVoterIds.sort(() => Math.random() - 0.5);
-    const selectedVoterIds = shuffled.slice(0, Math.min(10, shuffled.length));
-
-    const sessionStr = localStorage.getItem('voting_session');
-    const session = sessionStr ? JSON.parse(sessionStr) : null;
-
-    const insertPayload: any = {
-      position_id: positionId,
-      tied_candidate_ids: JSON.stringify(tiedCandidateIds),
-      selected_voter_ids: JSON.stringify(selectedVoterIds),
-      verification_status: 'in_progress',
-      verified_by: session?.user?.name || 'Admin',
-      original_vote_counts: JSON.stringify(originalVoteCounts),
-    };
-    if (sessionId) insertPayload.session_id = sessionId;
-
-    const { data, error } = await supabase
-      .from('vote_verifications')
-      .insert(insertPayload)
-      .select()
-      .single();
-
-    if (error) {
-      if (error.message.includes('relation "vote_verifications" does not exist') || error.message.includes('schema cache')) {
-        throw new Error('Please run the database migration SQL script in your Supabase SQL Editor first.');
-      }
-      throw new Error(error.message);
-    }
+    const { data, error } = await supabase.rpc('secure_initiate_verification', {
+      p_token: requireSessionToken('admin'),
+      p_position_id: Number(positionId),
+      p_tied_candidate_ids: tiedCandidateIds,
+      p_original_vote_counts: originalVoteCounts,
+      p_session_id: sessionId ? Number(sessionId) : null,
+    });
+    if (error) throw new Error(error.message);
     return data;
   },
 
   getVerificationVotes: async (selectedVoterIds: string[], positionId: string) => {
-    const { data: votes, error: votesError } = await supabase
-      .from('votes')
-      .select('voter_id, candidate_id')
-      .eq('position_id', positionId)
-      .in('voter_id', selectedVoterIds);
-
-    if (votesError) throw new Error(votesError.message);
-
-    const { data: voters, error: votersError } = await supabase
-      .from('voters')
-      .select('id, name, lrn')
-      .in('id', selectedVoterIds);
-
-    if (votersError) throw new Error(votersError.message);
-
-    const candidateIds = [...new Set((votes || []).map((v: any) => v.candidate_id))];
-    const { data: candidates, error: candError } = await supabase
-      .from('candidates')
-      .select('id, name')
-      .in('id', candidateIds);
-
-    if (candError) throw new Error(candError.message);
-
-    const voterMap = Object.fromEntries((voters || []).map((v: any) => [String(v.id), v]));
-    const candMap = Object.fromEntries((candidates || []).map((c: any) => [String(c.id), c]));
-
-    return (votes || []).map((v: any) => ({
-      voterId: String(v.voter_id),
-      voterName: voterMap[String(v.voter_id)]?.name || 'Unknown',
-      voterLrn: voterMap[String(v.voter_id)]?.lrn || 'N/A',
-      candidateId: String(v.candidate_id),
-      candidateName: candMap[String(v.candidate_id)]?.name || 'Unknown',
-    }));
+    const { data, error } = await supabase.rpc('secure_get_verification_votes', {
+      p_token: requireSessionToken('admin'),
+      p_voter_ids: selectedVoterIds.map(Number), p_position_id: Number(positionId),
+    });
+    if (error) throw new Error(error.message);
+    return (data as any[]) || [];
   },
 
   completeVerification: async (verificationId: string, notes: string, tieRemains: boolean) => {
-    const { error } = await supabase
-      .from('vote_verifications')
-      .update({
-        verification_status: tieRemains ? 'tie_remains' : 'completed',
-        notes,
-        verified_at: new Date().toISOString(),
-      })
-      .eq('id', verificationId);
-
+    const { error } = await supabase.rpc('secure_complete_verification', {
+      p_token: requireSessionToken('admin'), p_verification_id: Number(verificationId),
+      p_notes: notes, p_tie_remains: tieRemains,
+    });
     if (error) throw new Error(error.message);
     return { success: true };
   },
 
   getTieResolutions: async () => {
-    try {
-      const { data, error } = await supabase
-        .from('tie_resolutions')
-        .select('*')
-        .order('resolved_at', { ascending: false });
-      if (error) {
-        console.warn('Tie resolutions table notice:', error.message);
-        return [];
-      }
-      return data || [];
-    } catch (e) {
-      return [];
-    }
+    const { data, error } = await supabase.rpc('secure_get_audit_data', {
+      p_token: requireSessionToken('admin'), p_session_id: null,
+    });
+    if (error) throw new Error(error.message);
+    return (data as { tieResolutions?: any[] } | null)?.tieResolutions || [];
   },
 
   resolveTie: async (verificationId: string, positionId: string, winnerId: string, reason: string) => {
-    const sessionStr = localStorage.getItem('voting_session');
-    const session = sessionStr ? JSON.parse(sessionStr) : null;
-
-    const { error: resError } = await supabase
-      .from('tie_resolutions')
-      .insert({
-        verification_id: verificationId,
-        position_id: positionId,
-        selected_winner_id: winnerId,
-        resolution_method: 'admin_selection',
-        resolved_by: session?.user?.name || 'Admin',
-        reason,
-      });
-
-    if (resError) throw new Error(resError.message);
-
-    const { error: verError } = await supabase
-      .from('vote_verifications')
-      .update({ verification_status: 'completed' })
-      .eq('id', verificationId);
-
-    if (verError) throw new Error(verError.message);
-
+    const { error } = await supabase.rpc('secure_resolve_tie', {
+      p_token: requireSessionToken('admin'), p_verification_id: Number(verificationId),
+      p_position_id: Number(positionId), p_winner_id: Number(winnerId), p_reason: reason,
+    });
+    if (error) throw new Error(error.message);
     return { success: true };
   },
 
@@ -802,24 +454,7 @@ export const api = {
     localStorage.setItem('election_finalization_backup', JSON.stringify(finalData));
 
     const targetId = sessionId || '1';
-    const { error } = await supabase
-      .from('voting_sessions')
-      .update(finalData)
-      .eq('id', targetId);
-
-    if (error) {
-      // Fallback to legacy table
-      try {
-        await supabase.from('election_settings').update({
-          results_finalized: true,
-          finalized_by: finalData.finalized_by,
-          finalized_at: finalData.finalized_at,
-        }).eq('id', 1);
-      } catch (_) {}
-      if (error.message.includes('schema cache') || error.message.includes('column')) {
-        throw new Error('Please run the database migration SQL script in your Supabase SQL Editor first.');
-      }
-    }
+    await adminManage('update_session', targetId, finalData);
     return { success: true };
   },
 
@@ -827,24 +462,12 @@ export const api = {
     localStorage.removeItem('election_finalization_backup');
 
     const targetId = sessionId || '1';
-    const { error } = await supabase
-      .from('voting_sessions')
-      .update({
-        results_finalized: false,
-        finalized_by: null,
-        finalized_at: null,
-        status: 'completed',
-      })
-      .eq('id', targetId);
-
-    if (error) {
-      // Fallback to legacy
-      await supabase.from('election_settings').update({
-        results_finalized: false,
-        finalized_by: null,
-        finalized_at: null,
-      }).eq('id', 1);
-    }
+    await adminManage('update_session', targetId, {
+      results_finalized: false,
+      finalized_by: null,
+      finalized_at: null,
+      status: 'completed',
+    });
     return { success: true };
   },
 
@@ -885,28 +508,10 @@ export const api = {
   },
 
   processYearRollover: async (newSchoolYear: string, voterUpdates: { id: string; grade_level: string; section: string; status: string; academic_history: any[] }[]) => {
-    // 1. Update system settings
-    const { error: sysError } = await supabase.from('system_settings').upsert({
-      id: 1,
-      current_school_year: newSchoolYear,
-      updated_at: new Date().toISOString()
+    const { error } = await supabase.rpc('secure_process_rollover', {
+      p_token: requireSessionToken('admin'), p_school_year: newSchoolYear, p_updates: voterUpdates,
     });
-    if (sysError) throw new Error(sysError.message);
-
-    // 2. Batch update voters (Supabase requires multiple updates or a custom RPC)
-    // For simplicity, we'll run them sequentially or in batches.
-    const batchSize = 50;
-    for (let i = 0; i < voterUpdates.length; i += batchSize) {
-      const batch = voterUpdates.slice(i, i + batchSize);
-      await Promise.all(batch.map(async (v) => {
-        await supabase.from('voters').update({
-          grade_level: v.grade_level,
-          section: v.section,
-          status: v.status,
-          academic_history: v.academic_history
-        }).eq('id', v.id);
-      }));
-    }
+    if (error) throw new Error(error.message);
     return { success: true };
   },
 
@@ -923,12 +528,15 @@ export const api = {
 
   getElectionHistoryDetail: async (sessionId: string) => {
     try {
-      const [sessionRes, candidatesRes, positionsRes, voterSessionsRes, verificationsRes] = await Promise.all([
+      const [sessionRes, candidatesRes, positionsRes, voterSessions, auditRes, voters] = await Promise.all([
         supabase.from('voting_sessions').select('*').eq('id', sessionId).maybeSingle(),
-        supabase.from('candidates').select('*').eq('session_id', sessionId),
+        api.getCandidates(sessionId).then(data => ({ data, error: null })),
         supabase.from('positions').select('*').eq('session_id', sessionId).order('display_order', { ascending: true }),
-        supabase.from('voter_sessions').select('*').eq('session_id', sessionId),
-        supabase.from('vote_verifications').select('*').eq('session_id', sessionId),
+        api.getVoterSessions(sessionId),
+        supabase.rpc('secure_get_audit_data', {
+          p_token: requireSessionToken('admin'), p_session_id: Number(sessionId),
+        }),
+        api.getVoters(),
       ]);
 
       if (sessionRes.error) {
@@ -940,35 +548,14 @@ export const api = {
         throw new Error(`Election session #${sessionId} not found.`);
       }
 
-      // Fetch tie resolutions safely if verifications exist
-      let tieResolutions: any[] = [];
-      const verifications = verificationsRes.data || [];
-      const vIds = verifications.map((v: any) => v.id).filter(Boolean);
-      if (vIds.length > 0) {
-        const { data: ties, error: tErr } = await supabase
-          .from('tie_resolutions')
-          .select('*')
-          .in('verification_id', vIds);
-        if (!tErr && ties) tieResolutions = ties;
-      }
+      if (auditRes.error) throw new Error(auditRes.error.message);
+      const auditData = auditRes.data as { verifications?: any[]; tieResolutions?: any[] } | null;
+      const verifications = auditData?.verifications || [];
+      const tieResolutions = auditData?.tieResolutions || [];
 
       // Count total approved voters and those who voted in this session
-      const voterSessions = voterSessionsRes.data || [];
       const totalVoted = voterSessions.filter((vs: any) => vs.has_voted).length;
-
-      // Get total approved voters count safely
-      let totalVoters = voterSessions.length;
-      try {
-        const { count, error: vErr } = await supabase
-          .from('voters')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'approved');
-        if (!vErr && typeof count === 'number' && count > 0) {
-          totalVoters = count;
-        }
-      } catch (err) {
-        console.warn('Could not fetch global voters count, using voterSessions count:', err);
-      }
+      const totalVoters = voters.filter((v: any) => v.status === 'approved').length || voterSessions.length;
 
       return {
         session: sessionRes.data,

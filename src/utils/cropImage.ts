@@ -20,11 +20,26 @@ export async function getCroppedImg(
     throw new Error('No 2d context');
   }
 
-  // Set canvas size to the crop size
-  canvas.width = pixelCrop.width;
-  canvas.height = pixelCrop.height;
+  // Constrain maximum dimensions to 256x256 for avatars to minimize Base64 egress
+  const MAX_DIM = 256;
+  let outWidth = pixelCrop.width;
+  let outHeight = pixelCrop.height;
 
-  // Draw the cropped image onto the canvas
+  if (outWidth > MAX_DIM || outHeight > MAX_DIM) {
+    const ratio = Math.min(MAX_DIM / outWidth, MAX_DIM / outHeight);
+    outWidth = Math.round(outWidth * ratio);
+    outHeight = Math.round(outHeight * ratio);
+  }
+
+  // Set canvas size to the constrained size
+  canvas.width = Math.max(outWidth, 1);
+  canvas.height = Math.max(outHeight, 1);
+
+  // Enable high-quality image smoothing
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  // Draw the cropped image onto the resized canvas
   ctx.drawImage(
     image,
     pixelCrop.x,
@@ -33,10 +48,10 @@ export async function getCroppedImg(
     pixelCrop.height,
     0,
     0,
-    pixelCrop.width,
-    pixelCrop.height
+    canvas.width,
+    canvas.height
   );
 
-  // Return base64 string
-  return canvas.toDataURL('image/jpeg');
+  // Return optimized base64 string at 0.75 quality (~15-25KB instead of 2MB)
+  return canvas.toDataURL('image/jpeg', 0.75);
 }

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, Rea
 import { Candidate, Position, Voter, Section, Election, VotingSession, User } from '@/types/voting';
 import { api } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
+import { isEligibleForSession, isSessionOpen, parseStoredJson } from '@/lib/electionRules';
 
 interface VotingContextType {
   user: User | null;
@@ -41,14 +42,14 @@ interface VotingContextType {
   updateElection: (updates: Partial<Election>) => Promise<void>;
   resetSystem: () => Promise<void>;
   // CRUD
-  addCandidate: (candidate: Omit<Candidate, 'id' | 'votes'>) => Promise<void>;
+  addCandidate: (candidate: Omit<Candidate, 'id' | 'votes' | 'sessionId'>) => Promise<void>;
   updateCandidate: (id: string, candidate: Partial<Candidate>) => Promise<void>;
   deleteCandidate: (id: string) => Promise<void>;
-  addPosition: (position: Omit<Position, 'id'>) => Promise<void>;
-  deletePosition: (id: string) => void;
+  addPosition: (position: Omit<Position, 'id' | 'sessionId'>) => Promise<void>;
+  deletePosition: (id: string) => Promise<void>;
   cleanupDuplicatePositions: () => Promise<{ success: boolean; count: number }>;
-  addSection: (section: Omit<Section, 'id'>) => void;
-  deleteSection: (id: string) => void;
+  addSection: (section: Omit<Section, 'id'>) => Promise<void>;
+  deleteSection: (id: string) => Promise<void>;
   approveVoter: (id: string) => Promise<boolean>;
   approveAllVoters: () => Promise<boolean>;
   updateMySection: (voterId: string, newSection: string) => Promise<void>;
@@ -56,6 +57,8 @@ interface VotingContextType {
   deleteVoter: (id: string) => Promise<boolean>;
   isInitializing: boolean;
   isDataLoaded: boolean;
+  dataError: string | null;
+  refreshData: () => Promise<void>;
 }
 
 const VotingContext = createContext<VotingContextType | undefined>(undefined);
@@ -93,8 +96,8 @@ function parseSession(eData: any, voters?: Voter[]): VotingSession {
     id: String(eData.id),
     name: eData.name || 'Untitled Election',
     schoolYear: eData.school_year ?? eData.schoolYear ?? '',
-    startDate: new Date(eData.start_date ?? eData.startDate ?? Date.now()),
-    endDate: new Date(eData.end_date ?? eData.endDate ?? Date.now()),
+    startDate: new Date(eData.start_date ?? eData.startDate ?? NaN),
+    endDate: new Date(eData.end_date ?? eData.endDate ?? NaN),
     isActive: Boolean(eData.is_active ?? eData.isActive ?? false),
     status: eData.status || 'upcoming',
     gradeMappings: parsedMappings,
@@ -108,9 +111,7 @@ function parseSession(eData: any, voters?: Voter[]): VotingSession {
     scheduleStatus: eData.schedule_status ?? eData.scheduleStatus ?? 'draft',
     authorizationDocGenerated: Boolean(eData.authorization_doc_generated ?? eData.authorizationDocGenerated ?? false),
     authorizationConfirmedAt: eData.authorization_confirmed_at ?? eData.authorizationConfirmedAt ?? null,
-    signatories: eData.signatories
-      ? (typeof eData.signatories === 'string' ? JSON.parse(eData.signatories) : eData.signatories)
-      : null,
+    signatories: parseStoredJson(eData.signatories, null),
   };
 }
 
@@ -175,6 +176,11 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   const [currentSchoolYear, setCurrentSchoolYear] = useState<string>('2026-2027');
   const [isInitializing, setIsInitializing] = useState<boolean>(true);
   const [isDataLoaded, setIsDataLoaded] = useState<boolean>(false);
+  const [isCheckingVotingStatus, setIsCheckingVotingStatus] = useState(false);
+  const [dataError, setDataError] = useState<string | null>(null);
+  const activeSessionIdRef = React.useRef<string | null>(null);
+  const userRef = React.useRef<User | null>(null);
+  userRef.current = user;
 
   // Computed active session
   const activeSession = sessions.find(s => s.id === activeSessionId) || null;
@@ -193,24 +199,25 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const isRefreshingRef = React.useRef(false);
+  const refreshRequestRef = React.useRef(0);
 
   // Fetch scoped data for the active session
-  const refreshData = useCallback(async (overrideSessionId?: string) => {
-    if (isRefreshingRef.current) return;
-    isRefreshingRef.current = true;
+  const refreshData = useCallback(async (overrideSessionId?: string | null) => {
+    const requestId = ++refreshRequestRef.current;
 
     try {
-      const sessionId = overrideSessionId || activeSessionId || undefined;
+      const sessionId = (overrideSessionId === undefined ? activeSessionIdRef.current : overrideSessionId) || undefined;
 
-      const [candidatesRes, positionsRes, sectionsRes, votersRes, settingsRes, sessionsData] = await Promise.all([
-        api.getCandidates(sessionId).catch(() => []),
-        api.getPositions(sessionId).catch(() => []),
-        api.getSections().catch(() => []),
-        api.getVoters().catch(() => []),
+      const [candidatesRes, positionsRes, sectionsRes, votersRes, settingsRes, sessionsData, voterSessionsData] = await Promise.all([
+        sessionId ? api.getCandidates(sessionId) : Promise.resolve([]),
+        sessionId ? api.getPositions(sessionId) : Promise.resolve([]),
+        api.getSections(),
+        api.getVoters(),
         api.getSystemSettings().catch(() => ({ currentSchoolYear: '2026-2027' })),
-        api.getSessions().catch(() => []),
+        api.getSessions(),
+        sessionId ? api.getVoterSessions(sessionId) : Promise.resolve([]),
       ]);
+      if (requestId !== refreshRequestRef.current) return;
 
       const candidatesData = (candidatesRes as any)?.data ?? candidatesRes ?? [];
       const positionsData = (positionsRes as any)?.data ?? positionsRes ?? [];
@@ -266,11 +273,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         }))
       );
 
-      // Fetch voter sessions if a session is active
-      let voterSessionsData: any[] = [];
-      if (sessionId) {
-        voterSessionsData = await api.getVoterSessions(sessionId).catch(() => []);
-      }
       const voterSessionMap = new Map(voterSessionsData.map(vs => [String(vs.voter_id), vs]));
 
       // Map voters (global) + merge session-specific voting status
@@ -295,56 +297,61 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         };
       });
       setVoters(mappedVoters);
-    } catch (error) {
-      console.error('Failed to refresh data:', error);
-    } finally {
-      isRefreshingRef.current = false;
+      const currentUser = userRef.current;
+      if (currentUser?.role === 'voter') {
+        setHasVoted(Boolean(voterSessionMap.get(currentUser.id)?.has_voted));
+      }
+      setDataError(null);
       setIsDataLoaded(true);
+    } catch (error) {
+      if (requestId !== refreshRequestRef.current) return;
+      console.error('Failed to refresh data:', error);
+      setDataError(error instanceof Error ? error.message : 'Unable to load election data. Please retry.');
     }
-  }, [activeSessionId]);
+  }, []);
 
   // Keep election in sync with activeSession from sessions state
   useEffect(() => {
-    if (activeSessionId && sessions.length > 0) {
+    if (activeSessionId) {
       const s = sessions.find(s => s.id === activeSessionId);
       if (s) {
         setElection({
           ...s,
-          totalVoters: voters.filter(v => v.status === 'approved').length,
+          totalVoters: voters.filter(v => v.status === 'approved' && isEligibleForSession(s, v)).length,
           totalVoted: voters.filter(v => v.status === 'approved' && v.hasVoted).length,
         });
+      } else {
+        setElection(null);
       }
-    } else if (sessions.length > 0) {
-      // Prefer an active/launched session as the default
-      const activeDefault = sessions.find(s => s.isActive && s.status === 'active') || sessions[0];
-      setElection({
-        ...activeDefault,
-        totalVoters: voters.filter(v => v.status === 'approved').length,
-        totalVoted: voters.filter(v => v.status === 'approved' && v.hasVoted).length,
-      });
+    } else {
+      setElection(null);
     }
   }, [activeSessionId, sessions, voters]);
 
   // Securely fetch and sync hasVoted state directly from database for the active session
   useEffect(() => {
-    if (user && user.role === 'voter') {
-      if (activeSessionId) {
-        setIsInitializing(true);
+    let cancelled = false;
+    setHasVoted(false);
+    if (user?.role === 'voter' && activeSessionId) {
+        setIsCheckingVotingStatus(true);
         api.getVoterSessionStatus(user.id, activeSessionId)
           .then(status => {
-            setHasVoted(status.hasVoted);
+            if (!cancelled) setHasVoted(Boolean(status.hasVoted));
           })
-          .catch(console.error)
-          .finally(() => setIsInitializing(false));
-      }
+          .catch(error => {
+            if (!cancelled) setDataError(error instanceof Error ? error.message : 'Unable to check voting status.');
+          })
+          .finally(() => { if (!cancelled) setIsCheckingVotingStatus(false); });
     } else {
-      setIsInitializing(false);
+      setIsCheckingVotingStatus(false);
     }
+    return () => { cancelled = true; };
   }, [user, activeSessionId]);
 
   // On mount: check auth and load initial data
   useEffect(() => {
     let isMounted = true;
+    const requestRef = refreshRequestRef;
 
     const init = async () => {
       try {
@@ -383,6 +390,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             resolvedSessionId = activeSession ? activeSession.id : parsed[0].id;
           }
           if (resolvedSessionId) {
+            activeSessionIdRef.current = resolvedSessionId;
             setActiveSessionId(resolvedSessionId);
           }
           // Pass the resolved session ID directly to avoid the race condition
@@ -393,46 +401,17 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         if (isMounted) {
           await refreshData();
         }
+      } finally {
+        if (isMounted) setIsInitializing(false);
       }
     };
     init();
 
     // --- Targeted real-time handlers (no full refresh) ---
-    const handleVoters = (payload: any) => {
-      if (!isMounted) return;
-      const { eventType, new: newRow, old: oldRow } = payload;
-      if (eventType === 'INSERT' && newRow) {
-        setVoters(prev => {
-          if (prev.some(v => v.id === String(newRow.id))) return prev;
-          return [mapVoterRow(newRow), ...prev];
-        });
-      } else if (eventType === 'UPDATE' && newRow) {
-        const id = String(newRow.id);
-        setVoters(prev => prev.map(v => v.id === id ? { ...v, ...mapVoterRow(newRow), hasVoted: v.hasVoted, votedAt: v.votedAt } : v));
-      } else if (eventType === 'DELETE' && oldRow) {
-        setVoters(prev => prev.filter(v => v.id !== String(oldRow.id)));
-      }
-    };
-
-    const handleCandidates = (payload: any) => {
-      if (!isMounted) return;
-      const { eventType, new: newRow, old: oldRow } = payload;
-      if (eventType === 'INSERT' && newRow) {
-        setCandidates(prev => {
-          if (prev.some(c => c.id === String(newRow.id))) return prev;
-          return [...prev, mapCandidateRow(newRow)];
-        });
-      } else if (eventType === 'UPDATE' && newRow) {
-        const id = String(newRow.id);
-        setCandidates(prev => prev.map(c => c.id === id ? mapCandidateRow(newRow) : c));
-      } else if (eventType === 'DELETE' && oldRow) {
-        setCandidates(prev => prev.filter(c => c.id !== String(oldRow.id)));
-      }
-    };
-
     const handlePositions = (payload: any) => {
       if (!isMounted) return;
       const { eventType, new: newRow, old: oldRow } = payload;
+      if (eventType !== 'DELETE' && String(newRow?.session_id) !== activeSessionIdRef.current) return;
       if (eventType === 'INSERT' && newRow) {
         setPositions(prev => {
           if (prev.some(p => p.id === String(newRow.id))) return prev;
@@ -462,44 +441,20 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    const handleVoterSessions = (payload: any) => {
-      if (!isMounted) return;
-      const { eventType, new: newRow } = payload;
-      if ((eventType === 'INSERT' || eventType === 'UPDATE') && newRow) {
-        const voterId = String(newRow.voter_id);
-        const voted = Boolean(newRow.has_voted);
-        const votedAt = newRow.voted_at ? new Date(newRow.voted_at) : undefined;
-        setVoters(prev => prev.map(v => v.id === voterId ? { ...v, hasVoted: voted, votedAt } : v));
-      }
-    };
-
-    const handleVotes = (payload: any) => {
-      if (!isMounted) return;
-      const { eventType, new: newRow } = payload;
-      // When a vote is inserted, increment the candidate's vote count
-      if (eventType === 'INSERT' && newRow) {
-        const candidateId = String(newRow.candidate_id);
-        setCandidates(prev => prev.map(c => c.id === candidateId ? { ...c, votes: c.votes + 1 } : c));
-      }
-    };
-
     const channel = supabase
       .channel('db-realtime-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, handleCandidates)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, handleVotes)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, handleVoters)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'voter_sessions' }, handleVoterSessions)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'voting_sessions' }, handleSessions)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'positions' }, handlePositions)
       .subscribe();
 
-    // Safety polling every 5 minutes (rare fallback only)
+    // Sensitive voter tables are RPC-only, so refresh their status periodically.
     const pollInterval = setInterval(() => {
       if (isMounted) refreshData();
-    }, 300000);
+    }, 30000);
 
     return () => {
       isMounted = false;
+      ++requestRef.current;
       clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
@@ -509,13 +464,21 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (activeSessionId) {
       localStorage.setItem('activeSessionId', activeSessionId);
+    } else {
+      localStorage.removeItem('activeSessionId');
     }
   }, [activeSessionId]);
 
   // Session management
   const switchSession = useCallback((id: string) => {
+    activeSessionIdRef.current = id;
     setActiveSessionId(id);
     setVotes({});
+    setHasVoted(false);
+    setCandidates([]);
+    setPositions([]);
+    setElection(null);
+    setIsDataLoaded(false);
     refreshData(id);
   }, [refreshData]);
 
@@ -529,7 +492,11 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     await api.deleteSession(id);
     if (activeSessionId === id) {
       const remaining = sessions.filter(s => s.id !== id);
-      setActiveSessionId(remaining.length > 0 ? remaining[0].id : null);
+      const nextId = remaining[0]?.id ?? null;
+      activeSessionIdRef.current = nextId;
+      setActiveSessionId(nextId);
+      setVotes({});
+      setHasVoted(false);
     }
     await refreshData();
   }, [activeSessionId, sessions, refreshData]);
@@ -616,7 +583,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         return {
           success: data.success ?? true,
           message: data.message ?? 'Bulk registration processed.',
-          errors: data.errors,
         };
       } catch (error: any) {
         return { success: false, message: error.message || 'Bulk registration failed.' };
@@ -655,7 +621,8 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const submitVotes = useCallback(async (): Promise<boolean> => {
-    if (!user) return false;
+    if (!user || user.role !== 'voter' || hasVoted || !isDataLoaded || dataError
+      || !isSessionOpen(election) || !isEligibleForSession(election, user)) return false;
     try {
       const votesArray = Object.entries(votes).map(([positionId, candidateId]) => ({
         candidate_id: candidateId,
@@ -669,7 +636,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       console.error('Submit votes failed:', error);
       return false;
     }
-  }, [votes, user, activeSessionId, refreshData]);
+  }, [votes, user, hasVoted, isDataLoaded, dataError, election, activeSessionId, refreshData]);
 
   const getResults = useCallback(() => {
     return positions.map((position) => ({
@@ -703,7 +670,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   const updateElection = useCallback(
     async (updates: Partial<Election>) => {
       try {
-        setElection((prev) => (prev ? { ...prev, ...updates } : null));
+        if (!activeSessionId) throw new Error('Select an election first.');
 
         const mapped: any = { id: activeSessionId || '1' };
         if (updates.name !== undefined) mapped.name = updates.name;
@@ -711,7 +678,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
         const toMySQLDateTime = (d: Date) => {
           if (isNaN(d.getTime())) return null;
-          return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace('T', ' ');
+          return d.toISOString();
         };
 
         if (updates.startDate !== undefined) {
@@ -722,7 +689,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         }
         if (updates.isActive !== undefined) mapped.is_active = updates.isActive;
         if (updates.gradeMappings !== undefined) {
-          mapped.grade_mappings = JSON.stringify(updates.gradeMappings);
+          mapped.grade_mappings = updates.gradeMappings;
         }
         if (updates.scheduleStatus !== undefined) mapped.schedule_status = updates.scheduleStatus;
         if (updates.authorizationDocGenerated !== undefined) mapped.authorization_doc_generated = updates.authorizationDocGenerated;
@@ -736,6 +703,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         await refreshData();
       } catch (error) {
         console.error('Update election failed:', error);
+        throw error;
       }
     },
     [activeSessionId, refreshData]
@@ -763,9 +731,8 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   // Candidate CRUD
   const addCandidate = useCallback(
-    async (candidateData: Omit<Candidate, 'id' | 'votes'>) => {
-      const tempId = `temp-${Date.now()}`;
-      setCandidates((prev) => [...prev, { ...candidateData, id: tempId, votes: 0 }]);
+    async (candidateData: Omit<Candidate, 'id' | 'votes' | 'sessionId'>) => {
+      if (!activeSessionId) throw new Error('Select an election first.');
 
       const mapped: any = {
         name: candidateData.name,
@@ -779,6 +746,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       };
       try {
         await api.addCandidate(mapped);
+        await refreshData();
       } catch (error) {
         console.error('Add candidate failed:', error);
         await refreshData();
@@ -826,9 +794,8 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   // Position CRUD
   const addPosition = useCallback(
-    async (positionData: Omit<Position, 'id'>) => {
-      const tempId = `temp-${Date.now()}`;
-      setPositions((prev) => [...prev, { ...positionData, id: tempId }]);
+    async (positionData: Omit<Position, 'id' | 'sessionId'>) => {
+      if (!activeSessionId) throw new Error('Select an election first.');
 
       const mapped: any = {
         name: positionData.name,
@@ -839,6 +806,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       };
       try {
         await api.addPosition(mapped);
+        await refreshData();
       } catch (error) {
         console.error('Add position failed:', error);
         await refreshData();
@@ -849,14 +817,9 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   );
 
   const deletePosition = useCallback(
-    (id: string) => {
-      setPositions(prev => prev.filter(p => p.id !== id));
-      api
-        .deletePosition(id)
-        .catch((error) => {
-          console.error('Delete position failed:', error);
-          refreshData();
-        });
+    async (id: string) => {
+      await api.deletePosition(id);
+      await refreshData();
     },
     [refreshData]
   );
@@ -874,33 +837,21 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   // Section CRUD (global)
   const addSection = useCallback(
-    (sectionData: Omit<Section, 'id'>) => {
-      const tempId = `temp-${Date.now()}`;
-      setSections((prev) => [...prev, { ...sectionData, id: tempId }]);
-
+    async (sectionData: Omit<Section, 'id'>) => {
       const mapped = {
         name: sectionData.name,
         grade_level: sectionData.gradeLevel,
       };
-      api
-        .addSection(mapped)
-        .catch((error) => {
-          console.error('Add section failed:', error);
-          refreshData();
-        });
+      await api.addSection(mapped);
+      await refreshData();
     },
     [refreshData]
   );
 
   const deleteSection = useCallback(
-    (id: string) => {
-      setSections(prev => prev.filter(s => s.id !== id));
-      api
-        .deleteSection(id)
-        .catch((error) => {
-          console.error('Delete section failed:', error);
-          refreshData();
-        });
+    async (id: string) => {
+      await api.deleteSection(id);
+      await refreshData();
     },
     [refreshData]
   );
@@ -1031,8 +982,10 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         updateMySection,
         rejectVoter,
         deleteVoter,
-        isInitializing,
-        isDataLoaded
+        isInitializing: isInitializing || isCheckingVotingStatus,
+        isDataLoaded,
+        dataError,
+        refreshData,
       }}
     >
       {children}

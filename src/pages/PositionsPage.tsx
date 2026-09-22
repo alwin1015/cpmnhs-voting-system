@@ -72,42 +72,37 @@ export default function PositionsPage() {
     const maxVotes = parseInt(newMaxVotes) || 1;
     const nameTrimmed = newPositionName.trim();
     
-    // Instant UI dismissal
-    setNewPositionName('');
-    setNewMaxVotes('1');
-    setShowForm(false);
-    setIsAdding(false);
-
+    setIsAdding(true);
     try {
-      addPosition({
+      await addPosition({
         name: nameTrimmed,
         maxVotes,
         order: positions.length + 1,
         strictGradeMapping: true,
-      }).then(() => {
-        toast({
-          title: 'Position Added',
-          description: `"${nameTrimmed}" was created successfully.`,
-        });
-      }).catch((error: any) => {
-        toast({
-          title: 'Failed to Add Position',
-          description: error.message || 'Could not create position.',
-          variant: 'destructive',
-        });
       });
-    } catch (error: any) {
-      // Synchronous errors
+      setNewPositionName('');
+      setNewMaxVotes('1');
+      setShowForm(false);
+      toast({ title: 'Position Added', description: `"${nameTrimmed}" was created successfully.` });
+    } catch (error: unknown) {
+      toast({
+        title: 'Failed to Add Position',
+        description: error instanceof Error ? error.message : 'Could not create position.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsAdding(false);
     }
   };
 
-  const handleDelete = (id: string) => {
-    deletePosition(id);
-    setDeleteConfirm(null);
-    toast({
-      title: 'Position Removed',
-      description: 'The position has been deleted.',
-    });
+  const handleDelete = async (id: string) => {
+    try {
+      await deletePosition(id);
+      setDeleteConfirm(null);
+      toast({ title: 'Position Removed', description: 'The position has been deleted.' });
+    } catch (error) {
+      toast({ title: 'Delete Failed', description: error instanceof Error ? error.message : 'Could not delete position.', variant: 'destructive' });
+    }
   };
 
   const handleCleanupDuplicates = async () => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
@@ -44,7 +44,7 @@ export default function LoginPage() {
   // Track previous voter status to detect approval transition
   const previousVoterStatusRef = React.useRef<string | null>(null);
 
-  const checkAndTriggerApprovalNotification = (targetLrn: string, forceShow?: boolean) => {
+  const checkAndTriggerApprovalNotification = useCallback((targetLrn: string, forceShow?: boolean) => {
     if (!targetLrn || targetLrn.length !== 12 || !voters || voters.length === 0) return;
 
     const voter = voters.find(v => v.lrn === targetLrn);
@@ -82,7 +82,7 @@ export default function LoginPage() {
       setShowApprovalBanner(true);
       setIsBannerFadingOut(false);
     }
-  };
+  }, [election?.id, sessions, showApprovalBanner, voters]);
 
   const dismissApprovalBanner = () => {
     setIsBannerFadingOut(true);
@@ -118,7 +118,7 @@ export default function LoginPage() {
       }
       checkAndTriggerApprovalNotification(knownLrn);
     }
-  }, [voters, sessions, isRegisterMode]);
+  }, [checkAndTriggerApprovalNotification, isRegisterMode, lrn]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

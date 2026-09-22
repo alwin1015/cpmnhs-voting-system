@@ -20,7 +20,7 @@ import {
 import { Vote, CheckCircle, ArrowRight, ArrowLeft, Send, Clock, User, Check } from 'lucide-react';
 
 export default function VotingPage() {
-  const { candidates, positions, votes, setVote, submitVotes, hasVoted, isLoggedIn, user, election, logout, sessions, activeSessionId, switchSession, voters, isInitializing, isDataLoaded } = useVoting();
+  const { candidates, positions, votes, setVote, submitVotes, hasVoted, isLoggedIn, user, election, logout, sessions, activeSessionId, switchSession, voters, isInitializing, isDataLoaded, dataError, refreshData } = useVoting();
   const [currentPositionIndex, setCurrentPositionIndex] = useState(0);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -97,6 +97,20 @@ export default function VotingPage() {
           </Card>
         </main>
         <Footer />
+      </div>
+    );
+  }
+
+  if (dataError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+        <Card className="max-w-md w-full text-center p-6 bg-white">
+          <CardContent className="pt-4">
+            <h2 className="text-xl font-bold text-slate-900 mb-2">Election Data Unavailable</h2>
+            <p className="text-sm text-slate-600 mb-5">{dataError}</p>
+            <Button onClick={() => void refreshData()} className="w-full">Try Again</Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
