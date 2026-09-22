@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import schoolLogo from '@/assets/school-logo.png';
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Eye, EyeOff, LogIn, User, Lock, UserPlus, BookOpen, GraduationCap, FileDigit, CheckCircle2, X } from 'lucide-react';
+import { isEligibleForSession } from '@/lib/electionRules';
 
 export default function LoginPage() {
   const [isRegisterMode, setIsRegisterMode] = useState(false);
@@ -58,11 +59,7 @@ export default function LoginPage() {
     }
 
     const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
-    const eligibleSession = activeSessions.find(s => {
-      const gradeOk = !s.eligibleGradeLevels || s.eligibleGradeLevels.length === 0 || s.eligibleGradeLevels.includes(voter.gradeLevel || '');
-      const sectionOk = !s.eligibleSections || s.eligibleSections.length === 0 || s.eligibleSections.includes(voter.section || '');
-      return gradeOk && sectionOk;
-    }) || (activeSessions.length > 0 ? activeSessions[0] : null);
+    const eligibleSession = activeSessions.find(s => isEligibleForSession(s, voter)) || (activeSessions.length > 0 ? activeSessions[0] : null);
 
     const sessionId = eligibleSession ? eligibleSession.id : (election?.id || 'current');
 
@@ -96,11 +93,7 @@ export default function LoginPage() {
       const voter = voters.find(v => v.lrn === lrn);
       if (voter) {
         const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
-        const eligibleSession = activeSessions.find(s => {
-          const gradeOk = !s.eligibleGradeLevels || s.eligibleGradeLevels.length === 0 || s.eligibleGradeLevels.includes(voter.gradeLevel || '');
-          const sectionOk = !s.eligibleSections || s.eligibleSections.length === 0 || s.eligibleSections.includes(voter.section || '');
-          return gradeOk && sectionOk;
-        }) || (activeSessions.length > 0 ? activeSessions[0] : null);
+        const eligibleSession = activeSessions.find(s => isEligibleForSession(s, voter)) || (activeSessions.length > 0 ? activeSessions[0] : null);
         const sessionId = eligibleSession ? eligibleSession.id : (election?.id || 'current');
         localStorage.setItem(`approval_dismissed_${voter.id}_${sessionId}`, 'true');
       }

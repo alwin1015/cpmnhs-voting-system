@@ -382,11 +382,17 @@ export const api = {
       status: 'upcoming',
       schedule_status: 'draft',
     };
-    if (data.start_date) payload.start_date = data.start_date;
-    if (data.end_date) payload.end_date = data.end_date;
-    if (data.eligible_grade_levels) payload.eligible_grade_levels = data.eligible_grade_levels;
-    if (data.eligible_sections) payload.eligible_sections = data.eligible_sections;
-    if (data.grade_mappings) payload.grade_mappings = data.grade_mappings;
+    if (data.start_date || data.startDate) payload.start_date = data.start_date || data.startDate;
+    if (data.end_date || data.endDate) payload.end_date = data.end_date || data.endDate;
+    if (data.eligible_grade_levels || data.eligibleGradeLevels) {
+      payload.eligible_grade_levels = data.eligible_grade_levels || data.eligibleGradeLevels;
+    }
+    if (data.eligible_sections || data.eligibleSections) {
+      payload.eligible_sections = data.eligible_sections || data.eligibleSections;
+    }
+    if (data.grade_mappings || data.gradeMappings) {
+      payload.grade_mappings = data.grade_mappings || data.gradeMappings;
+    }
 
     return adminManage('create_session', null, payload);
   },

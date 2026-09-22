@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Vote, CheckCircle, ArrowRight, ArrowLeft, Send, Clock, User, Check } from 'lucide-react';
+import { isEligibleForSession, formatSessionEligibility } from '@/lib/electionRules';
 
 export default function VotingPage() {
   const { candidates, positions, votes, setVote, submitVotes, hasVoted, isLoggedIn, user, election, logout, sessions, activeSessionId, switchSession, voters, isInitializing, isDataLoaded, dataError, refreshData } = useVoting();
@@ -32,18 +33,12 @@ export default function VotingPage() {
   useEffect(() => {
     if (user?.role === 'voter' && sessions.length > 0) {
       const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
-      const eligible = activeSessions.filter(s => {
-        const gradeOk = !s.eligibleGradeLevels || s.eligibleGradeLevels.length === 0 || s.eligibleGradeLevels.includes(user.gradeLevel || '');
-        const sectionOk = !s.eligibleSections || s.eligibleSections.length === 0 || s.eligibleSections.includes(user.section || '');
-        return gradeOk && sectionOk;
-      });
-      const prioritized = [...eligible].sort((a, b) => {
-        if (a.id === '1') return -1;
-        if (b.id === '1') return 1;
-        return Number(a.id) - Number(b.id);
-      });
-      if (prioritized.length > 0 && (!activeSessionId || !prioritized.find(s => s.id === activeSessionId))) {
-        switchSession(prioritized[0].id);
+      if (activeSessions.length > 0) {
+        const eligible = activeSessions.find(s => isEligibleForSession(s, user));
+        const target = eligible || activeSessions[0];
+        if (target && target.id !== activeSessionId) {
+          switchSession(target.id);
+        }
       }
     }
   }, [user, sessions, activeSessionId, switchSession]);
@@ -164,29 +159,9 @@ export default function VotingPage() {
   }
 
 
-  // Check if election is active
-  if (election && !election.isActive) {
-    // Before showing the error, check if there's an active session the voter is eligible for
-    // that just hasn't been auto-selected yet (race condition on initial load)
-    const hasEligibleActiveSession = sessions.some(s => {
-      if (!s.isActive || s.status !== 'active') return false;
-      const gradeOk = !s.eligibleGradeLevels || s.eligibleGradeLevels.length === 0 || s.eligibleGradeLevels.includes(user?.gradeLevel || '');
-      const sectionOk = !s.eligibleSections || s.eligibleSections.length === 0 || s.eligibleSections.includes(user?.section || '');
-      return gradeOk && sectionOk;
-    });
-
-    if (hasEligibleActiveSession) {
-      // An active session exists but hasn't been selected yet — wait for auto-select
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50">
-          <div className="flex flex-col items-center gap-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
-            <p className="text-slate-500 font-medium">Loading election...</p>
-          </div>
-        </div>
-      );
-    }
-
+  // Check if there is an active voting session
+  const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
+  if (activeSessions.length === 0 || !election || !election.isActive) {
     return (
       <div className="min-h-screen flex flex-col bg-slate-50">
         <Header />
@@ -196,9 +171,9 @@ export default function VotingPage() {
               <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-4">
                 <Clock className="h-7 w-7" />
               </div>
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-1.5">Election Not Active</h2>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-1.5">No Active Voting Session</h2>
               <p className="text-xs sm:text-sm text-slate-500 mb-6">
-                The voting period has not started yet or has concluded. Please check with your election administrator.
+                There is currently no election session open for voting. Sessions are launched in sequence by the election administrator.
               </p>
               <Button 
                 variant="outline" 
@@ -206,6 +181,69 @@ export default function VotingPage() {
                 className="w-full rounded-xl h-11 text-sm font-medium"
               >
                 Return Home
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  // Strict Validation: Only students whose grade level and section are assigned to this session can vote
+  const isAssigned = isEligibleForSession(election, user);
+  if (!isAssigned) {
+    return (
+      <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/20 to-indigo-50/30">
+        <Header />
+        <main className="flex-1 flex items-center justify-center p-4">
+          <Card className="max-w-lg w-full p-6 sm:p-8 bg-white border border-slate-200/80 shadow-xl rounded-3xl animate-scale-in">
+            <CardContent className="pt-2 sm:pt-4 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center mx-auto mb-5 shadow-xs">
+                <Clock className="h-8 w-8 stroke-[2.2]" />
+              </div>
+
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-xs font-semibold uppercase tracking-wider mb-3">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping mr-1" />
+                Session In Progress
+              </div>
+
+              <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-2">
+                Waiting for Your Grade Level's Session
+              </h2>
+
+              <p className="text-xs sm:text-sm text-slate-500 mb-6 leading-relaxed">
+                Voting is currently open for another session. Each grade level votes in sequence. Your official ballot will automatically become available when your session is launched.
+              </p>
+
+              {/* Session details vs Student profile */}
+              <div className="space-y-3 p-4 rounded-2xl bg-slate-50 border border-slate-200/80 text-left mb-6 text-xs sm:text-sm">
+                <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-200">
+                  <span className="text-slate-500 font-medium">Active Session:</span>
+                  <span className="font-bold text-slate-800 text-right">{election.name}</span>
+                </div>
+                <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-200">
+                  <span className="text-slate-500 font-medium">Assigned To:</span>
+                  <span className="font-semibold text-blue-700 text-right">{formatSessionEligibility(election)}</span>
+                </div>
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-slate-500 font-medium">Your Profile:</span>
+                  <span className="font-semibold text-slate-700 text-right">
+                    Grade {user?.gradeLevel || 'N/A'} — Section {user?.section || 'N/A'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center gap-2 text-xs text-slate-400 mb-6">
+                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Live connection active. Auto-refreshes when your session launches.</span>
+              </div>
+
+              <Button 
+                onClick={() => navigate('/')}
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-xl h-11 text-sm font-semibold shadow-xs"
+              >
+                Return to Home
               </Button>
             </CardContent>
           </Card>

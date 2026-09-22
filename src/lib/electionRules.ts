@@ -10,17 +10,59 @@ export function parseStoredJson<T>(value: unknown, fallback: T): T {
   }
 }
 
-export function isEligibleForSession(
-  session: Pick<VotingSession, 'eligibleGradeLevels' | 'eligibleSections'>,
-  voter: { gradeLevel?: string; section?: string },
-): boolean {
-  return (!session.eligibleGradeLevels.length || session.eligibleGradeLevels.includes(voter.gradeLevel || ''))
-    && (!session.eligibleSections.length || session.eligibleSections.includes(voter.section || ''));
+export function normalizeGrade(grade: string | undefined | null): string {
+  if (!grade) return '';
+  const match = String(grade).match(/\b(\d+)\b/);
+  return match ? match[1] : String(grade).trim();
 }
 
-export function isSessionOpen(session: VotingSession | null, now = Date.now()): boolean {
+export function isEligibleForSession(
+  session: Pick<VotingSession, 'eligibleGradeLevels' | 'eligibleSections'> | null | undefined,
+  voter: { gradeLevel?: string; section?: string } | null | undefined,
+): boolean {
+  if (!session || !voter) return false;
+  const eligibleGrades = Array.isArray(session.eligibleGradeLevels) ? session.eligibleGradeLevels : [];
+  const eligibleSections = Array.isArray(session.eligibleSections) ? session.eligibleSections : [];
+
+  // If no grade levels specified, open to all grades
+  const gradeMatches = eligibleGrades.length === 0 || eligibleGrades.some(g => {
+    const normG = normalizeGrade(g).toLowerCase();
+    const normV = normalizeGrade(voter.gradeLevel).toLowerCase();
+    return (normG && normG === normV) || String(g).trim().toLowerCase() === String(voter.gradeLevel || '').trim().toLowerCase();
+  });
+
+  // If no sections specified, open to all sections
+  const sectionMatches = eligibleSections.length === 0 || eligibleSections.some(s => {
+    return String(s).trim().toLowerCase() === String(voter.section || '').trim().toLowerCase();
+  });
+
+  return gradeMatches && sectionMatches;
+}
+
+export function isSessionOpen(session: VotingSession | null | undefined, now = Date.now()): boolean {
   if (!session || !session.isActive || session.status !== 'active' || session.resultsFinalized) return false;
-  const start = session.startDate?.getTime();
-  const end = session.endDate?.getTime();
+  const start = session.startDate instanceof Date ? session.startDate.getTime() : (session.startDate ? new Date(session.startDate).getTime() : NaN);
+  const end = session.endDate instanceof Date ? session.endDate.getTime() : (session.endDate ? new Date(session.endDate).getTime() : NaN);
+
+  // If schedule status is explicitly marked as ongoing by admin, treat as open unless expired by end date
+  if (session.scheduleStatus === 'ongoing') {
+    return !Number.isFinite(end) || now < end;
+  }
+
   return (!Number.isFinite(start) || start <= now) && (!Number.isFinite(end) || now < end);
+}
+
+export function formatSessionEligibility(session: Pick<VotingSession, 'eligibleGradeLevels' | 'eligibleSections'> | null | undefined): string {
+  if (!session) return 'All Students';
+  const grades = Array.isArray(session.eligibleGradeLevels) ? session.eligibleGradeLevels : [];
+  const sections = Array.isArray(session.eligibleSections) ? session.eligibleSections : [];
+
+  if (grades.length === 0 && sections.length === 0) {
+    return 'All Grades & Sections';
+  }
+
+  const gradeStr = grades.length > 0 ? grades.map(g => `Grade ${normalizeGrade(g)}`).join(', ') : 'All Grades';
+  const sectionStr = sections.length > 0 ? `Sections: ${sections.join(', ')}` : 'All Sections';
+
+  return `${gradeStr} (${sectionStr})`;
 }

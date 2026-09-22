@@ -23,6 +23,8 @@ interface VotingContextType {
   deleteSession: (id: string) => Promise<void>;
   duplicateSession: (id: string) => Promise<VotingSession>;
   refreshSessions: () => Promise<void>;
+  launchSession: (id: string) => Promise<void>;
+  closeSession: (id: string) => Promise<void>;
   // System
   currentSchoolYear: string;
   processRollover: (newSchoolYear: string, voterUpdates: any[]) => Promise<void>;
@@ -652,23 +654,32 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         const parsed = rawSessions.map((s: any) => parseSession(s));
         if (isMounted) {
           setSessions(parsed);
-          const savedSessionId = localStorage.getItem('activeSessionId');
-          const isUserSelected = localStorage.getItem('session_user_selected') === 'true';
+          const activeSessions = parsed.filter((s: VotingSession) => s.isActive && s.status === 'active');
           const primarySession = parsed.find((s: VotingSession) => s.id === '1');
+          let savedSessionId: string | null = null;
+          let isUserSelected = false;
+          try {
+            savedSessionId = localStorage.getItem('activeSessionId');
+            isUserSelected = localStorage.getItem('session_user_selected') === 'true';
+          } catch (_) {}
           let resolvedSessionId: string | null = null;
 
-          if (savedSessionId && isUserSelected && parsed.find((s: VotingSession) => s.id === savedSessionId)) {
+          const currentUser = userRef.current;
+          if (currentUser?.role === 'voter' && activeSessions.length > 0) {
+            // Pick active session voter is assigned to
+            const eligible = activeSessions.find(s => isEligibleForSession(s, currentUser));
+            resolvedSessionId = eligible ? eligible.id : activeSessions[0].id;
+          } else if (currentUser?.role === 'admin' && savedSessionId && isUserSelected && parsed.some((s: VotingSession) => s.id === savedSessionId)) {
             resolvedSessionId = savedSessionId;
-          } else if (primarySession && primarySession.isActive) {
-            // Default to primary election (SSG General Election)
-            resolvedSessionId = primarySession.id;
-          } else if (savedSessionId && parsed.find((s: VotingSession) => s.id === savedSessionId)) {
+          } else if (activeSessions.length > 0) {
+            // First active session
+            resolvedSessionId = activeSessions[0].id;
+          } else if (savedSessionId && parsed.some((s: VotingSession) => s.id === savedSessionId)) {
             resolvedSessionId = savedSessionId;
           } else if (primarySession) {
             resolvedSessionId = primarySession.id;
           } else if (parsed.length > 0) {
-            const activeSession = parsed.find((s: VotingSession) => s.isActive && s.status === 'active');
-            resolvedSessionId = activeSession ? activeSession.id : parsed[0].id;
+            resolvedSessionId = parsed[0].id;
           }
           if (resolvedSessionId) {
             activeSessionIdRef.current = resolvedSessionId;
@@ -740,6 +751,25 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           const next = prev.map(s => s.id === id ? updated : s);
           return areSessionsEqual(prev, next) ? prev : next;
         });
+
+        // Real-time sequential transition: If this session just launched,
+        // automatically switch active session for students assigned to it or when currently inactive
+        if (updated.isActive && updated.status === 'active') {
+          const currentUser = userRef.current;
+          const currentSession = sessions.find(s => s.id === activeSessionIdRef.current);
+          const isCurrentActive = currentSession?.isActive && currentSession.status === 'active';
+
+          if (!isCurrentActive || (currentUser?.role === 'voter' && isEligibleForSession(updated, currentUser))) {
+            activeSessionIdRef.current = id;
+            setActiveSessionId(id);
+            setVotes({});
+            setHasVoted(false);
+            try {
+              localStorage.setItem('activeSessionId', id);
+            } catch (_) {}
+            refreshData(id).catch(console.error);
+          }
+        }
       } else if (eventType === 'DELETE' && oldRow) {
         markDeleted(oldRow.id);
         setSessions(prev => prev.filter(s => s.id !== String(oldRow.id)));
@@ -1134,22 +1164,148 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     return parsed;
   }, [broadcastChange]);
 
+  const launchSession = useCallback(async (id: string) => {
+    try {
+      const now = new Date();
+      const defaultEnd = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const target = sessions.find(s => s.id === id);
+
+      const startDate = target?.startDate && target.startDate.getTime() <= now.getTime()
+        ? target.startDate.toISOString()
+        : now.toISOString();
+      const endDate = target?.endDate && target.endDate.getTime() > now.getTime()
+        ? target.endDate.toISOString()
+        : defaultEnd.toISOString();
+
+      const launchPayload: any = {
+        is_active: true,
+        status: 'active',
+        schedule_status: 'ongoing',
+        start_date: startDate,
+        end_date: endDate,
+      };
+
+      // Sequential session transition: Close previous active session(s)
+      const previousActives = sessions.filter(s => s.id !== id && s.isActive);
+      for (const prevSession of previousActives) {
+        try {
+          await api.updateSession(prevSession.id, {
+            is_active: false,
+            status: 'completed',
+            schedule_status: 'completed',
+            end_date: now.toISOString(),
+          });
+        } catch (e) {
+          console.warn(`Could not close previous active session ${prevSession.id}:`, e);
+        }
+      }
+
+      // Optimistically update sessions state
+      setSessions(prev => prev.map(s => {
+        if (s.id === id) {
+          return {
+            ...s,
+            isActive: true,
+            status: 'active',
+            scheduleStatus: 'ongoing',
+            startDate: new Date(startDate),
+            endDate: new Date(endDate),
+          };
+        }
+        if (s.isActive) {
+          return {
+            ...s,
+            isActive: false,
+            status: 'completed',
+            scheduleStatus: 'completed',
+            endDate: now,
+          };
+        }
+        return s;
+      }));
+
+      activeSessionIdRef.current = id;
+      setActiveSessionId(id);
+      try {
+        localStorage.setItem('activeSessionId', id);
+        localStorage.setItem('session_user_selected', 'true');
+      } catch (_) {}
+
+      await api.updateSession(id, launchPayload);
+      broadcastChange('session_launched', { sessionId: id });
+      await refreshData(id);
+    } catch (error) {
+      console.error('Launch session failed:', error);
+      refreshData().catch(console.error);
+      throw error;
+    }
+  }, [sessions, refreshData, broadcastChange]);
+
+  const closeSession = useCallback(async (id: string) => {
+    try {
+      const now = new Date();
+      const closePayload: any = {
+        is_active: false,
+        status: 'completed',
+        schedule_status: 'completed',
+        end_date: now.toISOString(),
+      };
+
+      setSessions(prev => prev.map(s => {
+        if (s.id === id) {
+          return {
+            ...s,
+            isActive: false,
+            status: 'completed',
+            scheduleStatus: 'completed',
+            endDate: now,
+          };
+        }
+        return s;
+      }));
+
+      await api.updateSession(id, closePayload);
+      broadcastChange('session_closed', { sessionId: id });
+      await refreshData(id);
+    } catch (error) {
+      console.error('Close session failed:', error);
+      refreshData().catch(console.error);
+      throw error;
+    }
+  }, [refreshData, broadcastChange]);
+
   // Auth
   const login = useCallback(
     async (lrn: string, password: string): Promise<boolean> => {
       try {
         const data = await api.login(lrn, password);
         if (data && data.success && data.user) {
-          setUser({
+          const voterUser: User = {
             id: String(data.user.id),
             role: 'voter',
             name: data.user.name,
             lrn: data.user.lrn ?? lrn,
             gradeLevel: data.user.gradeLevel,
             section: data.user.section,
-          });
+          };
+          userRef.current = voterUser;
+          setUser(voterUser);
           setHasVoted(data.hasVoted ?? false);
-          refreshData();
+
+          // Find active sessions that match this student's grade/section
+          const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
+          const eligible = activeSessions.find(s => isEligibleForSession(s, voterUser));
+          const targetSessionId = eligible ? eligible.id : (activeSessions[0]?.id || activeSessionIdRef.current || '1');
+
+          if (targetSessionId !== activeSessionIdRef.current) {
+            activeSessionIdRef.current = targetSessionId;
+            setActiveSessionId(targetSessionId);
+            try {
+              localStorage.setItem('activeSessionId', targetSessionId);
+            } catch (_) {}
+          }
+
+          await refreshData(targetSessionId);
           return true;
         }
         return false;
@@ -1158,7 +1314,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         throw error;
       }
     },
-    [refreshData]
+    [sessions, refreshData]
   );
 
   const adminLogin = useCallback(
@@ -1328,7 +1484,20 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         if (updates.endDate !== undefined) {
           mapped.end_date = updates.endDate ? toMySQLDateTime(updates.endDate) : null;
         }
-        if (updates.isActive !== undefined) mapped.is_active = updates.isActive;
+        if (updates.isActive !== undefined) {
+          mapped.is_active = updates.isActive;
+          if (updates.isActive === true) {
+            const currentSession = sessions.find(s => s.id === activeSessionId);
+            const startMs = updates.startDate ? new Date(updates.startDate).getTime() : (currentSession?.startDate?.getTime() || 0);
+            if (!startMs || startMs > Date.now()) {
+              mapped.start_date = new Date().toISOString();
+            }
+            const endMs = updates.endDate ? new Date(updates.endDate).getTime() : (currentSession?.endDate?.getTime() || 0);
+            if (!endMs || endMs <= Date.now()) {
+              mapped.end_date = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            }
+          }
+        }
         if (updates.gradeMappings !== undefined) {
           mapped.grade_mappings = updates.gradeMappings;
         }
@@ -1354,7 +1523,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         throw error;
       }
     },
-    [activeSessionId, refreshData, broadcastChange]
+    [activeSessionId, sessions, refreshData, broadcastChange]
   );
 
   const resetSystem = useCallback(async () => {
@@ -1726,6 +1895,8 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         deleteSession: deleteSessionFn,
         duplicateSession: duplicateSessionFn,
         refreshSessions,
+        launchSession,
+        closeSession,
         currentSchoolYear,
         processRollover,
         login,

@@ -44,7 +44,9 @@ import {
   Check,
   Layers,
   History,
+  GraduationCap,
 } from 'lucide-react';
+import { formatSessionEligibility, normalizeGrade } from '@/lib/electionRules';
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
   draft: { label: 'Draft', color: 'text-slate-600', bg: 'bg-slate-100' },
@@ -57,7 +59,26 @@ const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }
 };
 
 export default function AdminDashboard() {
-  const { user, isLoggedIn, election, candidates, positions, getResults, voters, sections, updateElection, resetSystem, sessions, activeSessionId, switchSession, currentSchoolYear, processRollover, isDataLoaded } = useVoting();
+  const {
+    user,
+    isLoggedIn,
+    election,
+    candidates,
+    positions,
+    getResults,
+    voters,
+    sections,
+    updateElection,
+    resetSystem,
+    sessions,
+    activeSessionId,
+    switchSession,
+    currentSchoolYear,
+    processRollover,
+    isDataLoaded,
+    launchSession,
+    closeSession,
+  } = useVoting();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -76,6 +97,8 @@ export default function AdminDashboard() {
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndDate, setEditEndDate] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
+  const [editIsSchoolWide, setEditIsSchoolWide] = useState(true);
+  const [editGrades, setEditGrades] = useState<string[]>([]);
 
   // Grade Mappings state
   const GRADES = ['7', '8', '9', '10', '11', '12'];
@@ -106,6 +129,15 @@ export default function AdminDashboard() {
     setEditEndDate(formatDate(election?.endDate));
     setEditEndTime(formatTime(election?.endDate));
 
+    const existingEligibility = (election?.eligibleGradeLevels || []).map((g) => normalizeGrade(g));
+    if (existingEligibility.length === 0) {
+      setEditIsSchoolWide(true);
+      setEditGrades([]);
+    } else {
+      setEditIsSchoolWide(false);
+      setEditGrades(existingEligibility);
+    }
+
     setIsScheduleOpen(true);
   };
 
@@ -135,10 +167,11 @@ export default function AdminDashboard() {
         startDate: parsedStart,
         endDate: parsedEnd,
         scheduleStatus: nextScheduleStatus,
+        eligibleGradeLevels: editIsSchoolWide ? [] : editGrades,
       });
 
       setIsScheduleOpen(false);
-      toast({ title: 'Schedule Saved', description: 'Election schedule details updated successfully.' });
+      toast({ title: 'Schedule Saved', description: 'Election schedule and eligibility updated successfully.' });
     } catch (err) {
       console.error('Schedule update error:', err);
       toast({ title: 'Save Failed', description: 'The election schedule was not updated.', variant: 'destructive' });
@@ -150,7 +183,7 @@ export default function AdminDashboard() {
   const handleOpenMappings = () => {
     const existing = election?.gradeMappings || {};
     const fullMappings: Record<string, string> = {};
-    GRADES.forEach(g => {
+    GRADES.forEach((g) => {
       fullMappings[g] = existing[g] !== undefined ? existing[g] : g;
     });
     setEditMappings(fullMappings);
@@ -176,11 +209,11 @@ export default function AdminDashboard() {
 
     if (election.isActive) {
       // End election
-      await updateElection({ isActive: false, status: 'completed', scheduleStatus: 'completed' });
-      toast({ title: 'Election Ended', description: 'Voting has been closed.' });
+      await closeSession(election.id);
+      toast({ title: 'Election Ended', description: 'Voting session has been closed. The next session can now be launched.' });
     } else {
-      await updateElection({ isActive: true, status: 'active', scheduleStatus: 'ongoing' });
-      toast({ title: 'Election Launched!', description: 'Students can now cast their votes.' });
+      await launchSession(election.id);
+      toast({ title: 'Election Launched!', description: 'Students assigned to this session can now cast their votes.' });
     }
   };
 
@@ -360,6 +393,80 @@ export default function AdminDashboard() {
           <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">End Time</Label>
           <Input type="time" value={editEndTime} onChange={e => setEditEndTime(e.target.value)} className="bg-white" />
         </div>
+      </div>
+
+      {/* Voter Eligibility / Grade Levels */}
+      <div className="space-y-2 pt-1 border-t border-slate-100">
+        <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider flex items-center justify-between">
+          <span>Assigned Voter Eligibility</span>
+          <span className="text-[11px] font-normal text-slate-500">
+            {editIsSchoolWide ? 'All Grades' : `${editGrades.length} Grade(s) assigned`}
+          </span>
+        </Label>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setEditIsSchoolWide(true);
+              setEditGrades([]);
+            }}
+            className={`text-xs py-2 px-3 rounded-xl border text-center font-medium transition-all ${
+              editIsSchoolWide
+                ? 'bg-blue-50 border-blue-400 text-blue-700 font-bold shadow-2xs'
+                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            All Grades (School-wide)
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setEditIsSchoolWide(false);
+              if (editGrades.length === 0) setEditGrades(['7']);
+            }}
+            className={`text-xs py-2 px-3 rounded-xl border text-center font-medium transition-all ${
+              !editIsSchoolWide
+                ? 'bg-blue-50 border-blue-400 text-blue-700 font-bold shadow-2xs'
+                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            Specific Grade Level(s)
+          </button>
+        </div>
+
+        {!editIsSchoolWide && (
+          <div className="pt-1 animate-fade-in">
+            <p className="text-[11px] text-slate-500 mb-1.5">Select which grade levels can vote when this session is launched:</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {GRADES.map((grade) => {
+                const isSelected = editGrades.includes(grade);
+                return (
+                  <button
+                    key={grade}
+                    type="button"
+                    onClick={() => {
+                      if (isSelected) {
+                        if (editGrades.length > 1) {
+                          setEditGrades(editGrades.filter((g) => g !== grade));
+                        }
+                      } else {
+                        setEditGrades([...editGrades, grade]);
+                      }
+                    }}
+                    className={`text-xs py-1.5 px-2 rounded-lg border font-semibold transition-all ${
+                      isSelected
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    Grade {grade}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Read-only info: Positions & Sections auto-linked */}
@@ -582,6 +689,12 @@ export default function AdminDashboard() {
                   <span className={`text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${statusInfo.bg} ${statusInfo.color} border`}>
                     Schedule: {statusInfo.label}
                   </span>
+                  {election && (
+                    <span className="text-xs text-white/90 flex items-center gap-1.5 bg-black/20 px-3 py-1 rounded-full backdrop-blur-md border border-white/20 font-medium truncate max-w-full">
+                      <GraduationCap className="h-3.5 w-3.5 text-blue-200 flex-shrink-0" />
+                      <span className="truncate">Assigned: {formatSessionEligibility(election)}</span>
+                    </span>
+                  )}
                   {election && (
                     <span className="text-xs text-white/60 flex items-center gap-1.5 bg-black/10 px-3 py-1 rounded-full backdrop-blur-md border border-white/10 truncate max-w-full">
                       <CalendarClock className="h-3.5 w-3.5 flex-shrink-0" />

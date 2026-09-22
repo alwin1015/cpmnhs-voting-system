@@ -43,7 +43,13 @@ import {
   FolderKanban,
   Check,
   CalendarRange,
+  GraduationCap,
+  Rocket,
+  Power,
+  Settings2,
 } from 'lucide-react';
+import { formatSessionEligibility, normalizeGrade } from '@/lib/electionRules';
+import { api } from '@/lib/api';
 
 export default function SessionManagerPage() {
   const {
@@ -54,18 +60,31 @@ export default function SessionManagerPage() {
     deleteSession,
     duplicateSession,
     refreshSessions,
+    launchSession,
+    closeSession,
     user,
     isLoggedIn,
+    sections,
   } = useVoting();
 
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const GRADES = ['7', '8', '9', '10', '11', '12'];
+
   // Create session dialog state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [sessionName, setSessionName] = useState('');
   const [schoolYear, setSchoolYear] = useState('2026-2027');
+  const [isSchoolWide, setIsSchoolWide] = useState(true);
+  const [selectedGrades, setSelectedGrades] = useState<string[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+
+  // Edit Assignment dialog state
+  const [sessionToEdit, setSessionToEdit] = useState<VotingSession | null>(null);
+  const [editIsSchoolWide, setEditIsSchoolWide] = useState(true);
+  const [editGrades, setEditGrades] = useState<string[]>([]);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // Delete dialog state
   const [sessionToDelete, setSessionToDelete] = useState<VotingSession | null>(null);
@@ -73,6 +92,7 @@ export default function SessionManagerPage() {
 
   // Duplicating state
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  const [togglingSessionId, setTogglingSessionId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const isAdmin = isLoggedIn && user?.role === 'admin';
@@ -123,6 +143,8 @@ export default function SessionManagerPage() {
       await createSession({
         name: sessionName.trim(),
         school_year: schoolYear.trim() || '2026-2027',
+        eligible_grade_levels: isSchoolWide ? [] : selectedGrades,
+        eligible_sections: [],
       });
       toast({
         title: 'Session Created',
@@ -130,6 +152,8 @@ export default function SessionManagerPage() {
       });
       setSessionName('');
       setSchoolYear('2026-2027');
+      setIsSchoolWide(true);
+      setSelectedGrades([]);
       setIsCreateOpen(false);
     } catch (err: any) {
       console.error('Create session error:', err);
@@ -140,6 +164,89 @@ export default function SessionManagerPage() {
       });
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  // Handle Launch Session
+  const handleLaunchSession = async (session: VotingSession) => {
+    try {
+      setTogglingSessionId(session.id);
+      await launchSession(session.id);
+      toast({
+        title: 'Session Launched!',
+        description: `"${session.name}" is now live and accepting votes for assigned students.`,
+      });
+    } catch (err: any) {
+      console.error('Launch session error:', err);
+      toast({
+        title: 'Launch Failed',
+        description: err?.message || 'Failed to launch voting session.',
+        variant: 'destructive',
+      });
+    } finally {
+      setTogglingSessionId(null);
+    }
+  };
+
+  // Handle Close / End Session
+  const handleCloseSession = async (session: VotingSession) => {
+    try {
+      setTogglingSessionId(session.id);
+      await closeSession(session.id);
+      toast({
+        title: 'Session Closed',
+        description: `"${session.name}" has been completed. The next session in sequence can now be launched.`,
+      });
+    } catch (err: any) {
+      console.error('Close session error:', err);
+      toast({
+        title: 'Close Failed',
+        description: err?.message || 'Failed to close voting session.',
+        variant: 'destructive',
+      });
+    } finally {
+      setTogglingSessionId(null);
+    }
+  };
+
+  // Open Edit Assignment Dialog
+  const handleOpenEdit = (session: VotingSession) => {
+    setSessionToEdit(session);
+    const existing = (session.eligibleGradeLevels || []).map(g => normalizeGrade(g));
+    if (existing.length === 0) {
+      setEditIsSchoolWide(true);
+      setEditGrades([]);
+    } else {
+      setEditIsSchoolWide(false);
+      setEditGrades(existing);
+    }
+  };
+
+  // Save Edit Assignment
+  const handleSaveEdit = async () => {
+    if (!sessionToEdit) return;
+    try {
+      setIsSavingEdit(true);
+      const updatedGrades = editIsSchoolWide ? [] : editGrades;
+      await api.updateSession(sessionToEdit.id, {
+        eligible_grade_levels: updatedGrades,
+        eligible_sections: [],
+      });
+      await refreshSessions();
+      toast({
+        title: 'Eligibility Updated',
+        description: `Assigned grade levels for "${sessionToEdit.name}" were updated successfully.`,
+      });
+      setSessionToEdit(null);
+    } catch (err: any) {
+      console.error('Save assignment error:', err);
+      toast({
+        title: 'Update Failed',
+        description: err?.message || 'Failed to update session eligibility.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -391,7 +498,7 @@ export default function SessionManagerPage() {
                       </div>
                     </CardHeader>
 
-                    <CardContent className="px-6 py-2 space-y-4">
+                    <CardContent className="px-6 py-2 space-y-3">
                       {/* Dates Box */}
                       <div className="grid grid-cols-2 gap-2 p-3 rounded-2xl bg-slate-50/80 border border-slate-100 text-xs">
                         <div className="space-y-1">
@@ -413,11 +520,36 @@ export default function SessionManagerPage() {
                           </p>
                         </div>
                       </div>
+
+                      {/* Assigned Voters / Grade Assignment Box */}
+                      <div className="flex items-center justify-between p-3 rounded-2xl bg-blue-50/50 border border-blue-100 text-xs gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="p-1.5 rounded-lg bg-blue-100 text-blue-700 flex-shrink-0">
+                            <GraduationCap className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold text-blue-900/70 uppercase tracking-wider">Assigned Voters</p>
+                            <p className="font-bold text-slate-800 truncate text-xs" title={formatSessionEligibility(session)}>
+                              {formatSessionEligibility(session)}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenEdit(session)}
+                          className="h-7 px-2.5 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-100/70 rounded-xl font-semibold gap-1 flex-shrink-0"
+                          title="Assign Grade Levels for this session"
+                        >
+                          <Settings2 className="h-3 w-3" />
+                          <span>Assign</span>
+                        </Button>
+                      </div>
                     </CardContent>
                   </div>
 
                   {/* Actions Row */}
-                  <CardFooter className="px-6 pb-6 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 mt-4 bg-slate-50/30 rounded-b-3xl">
+                  <CardFooter className="px-6 pb-6 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 mt-4 bg-slate-50/30 rounded-b-3xl">
                     <div className="flex items-center gap-2">
                       {/* Duplicate Button */}
                       <Button
@@ -447,19 +579,46 @@ export default function SessionManagerPage() {
                       )}
                     </div>
 
-                    {/* Manage Button (Primary) */}
-                    <Button
-                      size="sm"
-                      onClick={() => handleManageSession(session)}
-                      className={`rounded-xl text-xs font-bold h-9 px-4 gap-1.5 shadow-sm transition-all ${
-                        isCurrent
-                          ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                          : 'bg-slate-900 hover:bg-slate-800 text-white'
-                      }`}
-                    >
-                      <span>Manage</span>
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {/* Launch / End Session Button */}
+                      {session.status === 'active' || session.isActive ? (
+                        <Button
+                          size="sm"
+                          onClick={() => handleCloseSession(session)}
+                          disabled={togglingSessionId === session.id}
+                          className="rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold h-9 px-3.5 gap-1.5 shadow-xs"
+                          title="Close this voting session"
+                        >
+                          <Power className={`h-3.5 w-3.5 ${togglingSessionId === session.id ? 'animate-spin' : ''}`} />
+                          <span>End Session</span>
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          onClick={() => handleLaunchSession(session)}
+                          disabled={togglingSessionId === session.id}
+                          className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold h-9 px-3.5 gap-1.5 shadow-xs"
+                          title="Launch this session for assigned grade levels"
+                        >
+                          <Rocket className={`h-3.5 w-3.5 ${togglingSessionId === session.id ? 'animate-bounce' : ''}`} />
+                          <span>Launch</span>
+                        </Button>
+                      )}
+
+                      {/* Manage Button (Primary) */}
+                      <Button
+                        size="sm"
+                        onClick={() => handleManageSession(session)}
+                        className={`rounded-xl text-xs font-bold h-9 px-3.5 gap-1.5 shadow-sm transition-all ${
+                          isCurrent
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                            : 'bg-slate-900 hover:bg-slate-800 text-white'
+                        }`}
+                      >
+                        <span>Manage</span>
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </CardFooter>
                 </Card>
               );
@@ -513,6 +672,80 @@ export default function SessionManagerPage() {
               />
             </div>
 
+            {/* Voter Eligibility / Grade Levels */}
+            <div className="space-y-2 pt-1 border-t border-slate-100">
+              <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                <span>Voter Eligibility</span>
+                <span className="text-[11px] font-normal text-slate-500">
+                  {isSchoolWide ? 'All Grades' : `${selectedGrades.length} Grade(s) selected`}
+                </span>
+              </Label>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSchoolWide(true);
+                    setSelectedGrades([]);
+                  }}
+                  className={`text-xs py-2 px-3 rounded-xl border text-center font-medium transition-all ${
+                    isSchoolWide
+                      ? 'bg-blue-50 border-blue-400 text-blue-700 font-bold shadow-2xs'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  All Grades (School-wide)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSchoolWide(false);
+                    if (selectedGrades.length === 0) setSelectedGrades(['7']);
+                  }}
+                  className={`text-xs py-2 px-3 rounded-xl border text-center font-medium transition-all ${
+                    !isSchoolWide
+                      ? 'bg-blue-50 border-blue-400 text-blue-700 font-bold shadow-2xs'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Specific Grade Level(s)
+                </button>
+              </div>
+
+              {!isSchoolWide && (
+                <div className="pt-2 animate-fade-in">
+                  <p className="text-[11px] text-slate-500 mb-2">Select which grade levels can vote in this session:</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {GRADES.map((grade) => {
+                      const isSelected = selectedGrades.includes(grade);
+                      return (
+                        <button
+                          key={grade}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              if (selectedGrades.length > 1) {
+                                setSelectedGrades(selectedGrades.filter((g) => g !== grade));
+                              }
+                            } else {
+                              setSelectedGrades([...selectedGrades, grade]);
+                            }
+                          }}
+                          className={`text-xs py-1.5 px-2 rounded-lg border font-semibold transition-all ${
+                            isSelected
+                              ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          Grade {grade}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <DialogFooter className="pt-3 gap-2 sm:gap-0">
               <Button
                 type="button"
@@ -525,7 +758,7 @@ export default function SessionManagerPage() {
               </Button>
               <Button
                 type="submit"
-                disabled={isCreating || !sessionName.trim()}
+                disabled={isCreating || !sessionName.trim() || (!isSchoolWide && selectedGrades.length === 0)}
                 className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-10 font-bold gap-2"
               >
                 {isCreating ? (
@@ -542,6 +775,119 @@ export default function SessionManagerPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Session Assignment Dialog */}
+      <Dialog open={Boolean(sessionToEdit)} onOpenChange={(open) => !open && setSessionToEdit(null)}>
+        <DialogContent className="sm:max-w-md rounded-3xl p-6 bg-white border border-slate-200 shadow-2xl">
+          <DialogHeader className="space-y-1 text-left">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center mb-2 border border-indigo-100 text-indigo-600">
+              <GraduationCap className="h-5 w-5" />
+            </div>
+            <DialogTitle className="text-xl font-extrabold text-slate-900">
+              Assign Grade Levels
+            </DialogTitle>
+            <DialogDescription className="text-sm text-slate-500">
+              Configure which students are authorized to vote in <span className="font-semibold text-slate-800">"{sessionToEdit?.name}"</span>.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditIsSchoolWide(true);
+                  setEditGrades([]);
+                }}
+                className={`text-xs py-2 px-3 rounded-xl border text-center font-medium transition-all ${
+                  editIsSchoolWide
+                    ? 'bg-blue-50 border-blue-400 text-blue-700 font-bold shadow-2xs'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                All Grades (School-wide)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditIsSchoolWide(false);
+                  if (editGrades.length === 0) setEditGrades(['7']);
+                }}
+                className={`text-xs py-2 px-3 rounded-xl border text-center font-medium transition-all ${
+                  !editIsSchoolWide
+                    ? 'bg-blue-50 border-blue-400 text-blue-700 font-bold shadow-2xs'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Specific Grade Level(s)
+              </button>
+            </div>
+
+            {!editIsSchoolWide && (
+              <div className="space-y-2 animate-fade-in">
+                <p className="text-[11px] text-slate-500">Select which grade levels can participate in this session:</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {GRADES.map((grade) => {
+                    const isSelected = editGrades.includes(grade);
+                    return (
+                      <button
+                        key={grade}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            if (editGrades.length > 1) {
+                              setEditGrades(editGrades.filter((g) => g !== grade));
+                            }
+                          } else {
+                            setEditGrades([...editGrades, grade]);
+                          }
+                        }}
+                        className={`text-xs py-2 px-2 rounded-xl border font-bold transition-all ${
+                          isSelected
+                            ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-white'
+                        }`}
+                      >
+                        Grade {grade}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="pt-3 gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSessionToEdit(null)}
+                disabled={isSavingEdit}
+                className="rounded-xl border-slate-200 text-slate-700 h-10 font-semibold"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSaveEdit}
+                disabled={isSavingEdit || (!editIsSchoolWide && editGrades.length === 0)}
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-10 font-bold gap-2"
+              >
+                {isSavingEdit ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Save Eligibility
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 
