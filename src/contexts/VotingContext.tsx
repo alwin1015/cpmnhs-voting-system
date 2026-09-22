@@ -25,6 +25,8 @@ interface VotingContextType {
   refreshSessions: () => Promise<void>;
   launchSession: (id: string) => Promise<void>;
   closeSession: (id: string) => Promise<void>;
+  votedSessionIds: string[];
+  checkVoterSessionStatuses: () => Promise<string[]>;
   // System
   currentSchoolYear: string;
   processRollover: (newSchoolYear: string, voterUpdates: any[]) => Promise<void>;
@@ -298,6 +300,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   const [user, setUser] = useState<User | null>(null);
   const [hasVoted, setHasVoted] = useState(false);
+  const [votedSessionIds, setVotedSessionIds] = useState<string[]>([]);
   const [votes, setVotes] = useState<Record<string, string>>({});
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
@@ -596,6 +599,52 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     }
   }, [activeSessionId, sessions, voters]);
 
+  // Check and sync voting status across ALL eligible active sessions for the current voter
+  const checkVoterSessionStatuses = useCallback(async (): Promise<string[]> => {
+    const currentUser = userRef.current;
+    if (!currentUser || currentUser.role !== 'voter') return [];
+    const eligibleActives = sessions.filter(
+      s => s.isActive && s.status === 'active' && isEligibleForSession(s, currentUser)
+    );
+    if (eligibleActives.length === 0) return [];
+
+    try {
+      const results = await Promise.all(
+        eligibleActives.map(async s => {
+          try {
+            const status = await api.getVoterSessionStatus(currentUser.id, s.id);
+            return { sessionId: s.id, hasVoted: Boolean(status.hasVoted) };
+          } catch {
+            return { sessionId: s.id, hasVoted: false };
+          }
+        })
+      );
+
+      const voted = results.filter(r => r.hasVoted).map(r => r.sessionId);
+      setVotedSessionIds(voted);
+
+      if (activeSessionIdRef.current) {
+        const cur = results.find(r => r.sessionId === activeSessionIdRef.current);
+        if (cur) {
+          setHasVoted(cur.hasVoted);
+        }
+      }
+      return voted;
+    } catch (err) {
+      console.warn('Failed to check voter session statuses:', err);
+      return [];
+    }
+  }, [sessions]);
+
+  // Sync voter session statuses whenever sessions or user changes
+  useEffect(() => {
+    if (user?.role === 'voter') {
+      checkVoterSessionStatuses();
+    } else {
+      setVotedSessionIds([]);
+    }
+  }, [user?.id, sessions, checkVoterSessionStatuses]);
+
   // Securely fetch and sync hasVoted state directly from database for the active session
   useEffect(() => {
     let cancelled = false;
@@ -640,7 +689,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
               gradeLevel: userData.gradeLevel || userData.grade_level,
               section: userData.section,
             });
-            setHasVoted(Boolean(meData.has_voted ?? meData.hasVoted ?? false));
           }
         }
       } catch {
@@ -1185,22 +1233,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         end_date: endDate,
       };
 
-      // Sequential session transition: Close previous active session(s)
-      const previousActives = sessions.filter(s => s.id !== id && s.isActive);
-      for (const prevSession of previousActives) {
-        try {
-          await api.updateSession(prevSession.id, {
-            is_active: false,
-            status: 'completed',
-            schedule_status: 'completed',
-            end_date: now.toISOString(),
-          });
-        } catch (e) {
-          console.warn(`Could not close previous active session ${prevSession.id}:`, e);
-        }
-      }
-
-      // Optimistically update sessions state
+      // Concurrently active sessions: Launch session without closing or pausing any other active sessions
       setSessions(prev => prev.map(s => {
         if (s.id === id) {
           return {
@@ -1210,15 +1243,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             scheduleStatus: 'ongoing',
             startDate: new Date(startDate),
             endDate: new Date(endDate),
-          };
-        }
-        if (s.isActive) {
-          return {
-            ...s,
-            isActive: false,
-            status: 'completed',
-            scheduleStatus: 'completed',
-            endDate: now,
           };
         }
         return s;
@@ -1294,8 +1318,31 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
           // Find active sessions that match this student's grade/section
           const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
-          const eligible = activeSessions.find(s => isEligibleForSession(s, voterUser));
-          const targetSessionId = eligible ? eligible.id : (activeSessions[0]?.id || activeSessionIdRef.current || '1');
+          const eligibleActives = activeSessions.filter(s => isEligibleForSession(s, voterUser));
+          let targetSessionId = activeSessionIdRef.current || '1';
+
+          if (eligibleActives.length > 0) {
+            try {
+              const checks = await Promise.all(
+                eligibleActives.map(async (s) => {
+                  try {
+                    const st = await api.getVoterSessionStatus(voterUser.id, s.id);
+                    return { id: s.id, hasVoted: Boolean(st.hasVoted) };
+                  } catch {
+                    return { id: s.id, hasVoted: false };
+                  }
+                })
+              );
+              const voted = checks.filter((c) => c.hasVoted).map((c) => c.id);
+              setVotedSessionIds(voted);
+              const unvoted = checks.find((c) => !c.hasVoted);
+              targetSessionId = unvoted ? unvoted.id : eligibleActives[0].id;
+            } catch (_) {
+              targetSessionId = eligibleActives[0].id;
+            }
+          } else if (activeSessions.length > 0) {
+            targetSessionId = activeSessions[0].id;
+          }
 
           if (targetSessionId !== activeSessionIdRef.current) {
             activeSessionIdRef.current = targetSessionId;
@@ -1416,6 +1463,9 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       }));
       await api.submitVotes(votesArray, activeSessionId || undefined);
       setHasVoted(true);
+      if (activeSessionId) {
+        setVotedSessionIds(prev => Array.from(new Set([...prev, activeSessionId])));
+      }
       broadcastChange('ballot_submitted', { sessionId: activeSessionId });
       await refreshData();
       return true;
@@ -1897,6 +1947,8 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         refreshSessions,
         launchSession,
         closeSession,
+        votedSessionIds,
+        checkVoterSessionStatuses,
         currentSchoolYear,
         processRollover,
         login,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isEligibleForSession, isSessionOpen, parseStoredJson, normalizeGrade, formatSessionEligibility } from './electionRules';
+import { isEligibleForSession, isSessionOpen, parseStoredJson, normalizeGrade, formatSessionEligibility, getEligibleActiveSessions } from './electionRules';
 import type { VotingSession } from '@/types/voting';
 
 const session = (overrides: Partial<VotingSession> = {}): VotingSession => ({
@@ -50,5 +50,26 @@ describe('election rules', () => {
   it('falls back safely for malformed stored JSON', () => {
     expect(parseStoredJson('{broken', [])).toEqual([]);
     expect(parseStoredJson('["7"]', [])).toEqual(['7']);
+  });
+
+  it('filters multiple concurrently active sessions based on student eligibility', () => {
+    const s1 = session({ id: '1', name: 'General Election', isActive: true, status: 'active', eligibleGradeLevels: [] });
+    const s2 = session({ id: '2', name: 'Grade 7 Rep', isActive: true, status: 'active', eligibleGradeLevels: ['7'] });
+    const s3 = session({ id: '3', name: 'Grade 8 Rep', isActive: true, status: 'active', eligibleGradeLevels: ['8'] });
+    const s4Inactive = session({ id: '4', name: 'Club Election', isActive: false, status: 'upcoming', eligibleGradeLevels: [] });
+
+    const allSessions = [s1, s2, s3, s4Inactive];
+    const grade7Student = { gradeLevel: '7', section: 'Sampaguita' };
+    const grade8Student = { gradeLevel: 'Grade 8', section: 'Rizal' };
+    const grade9Student = { gradeLevel: '9', section: 'Mabini' };
+
+    const activeForG7 = getEligibleActiveSessions(allSessions, grade7Student);
+    expect(activeForG7.map(s => s.id)).toEqual(['1', '2']);
+
+    const activeForG8 = getEligibleActiveSessions(allSessions, grade8Student);
+    expect(activeForG8.map(s => s.id)).toEqual(['1', '3']);
+
+    const activeForG9 = getEligibleActiveSessions(allSessions, grade9Student);
+    expect(activeForG9.map(s => s.id)).toEqual(['1']);
   });
 });
