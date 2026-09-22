@@ -44,7 +44,6 @@ import {
   Check,
   Layers,
   History,
-  Trash2,
 } from 'lucide-react';
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
@@ -58,7 +57,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }
 };
 
 export default function AdminDashboard() {
-  const { user, isLoggedIn, election, candidates, positions, getResults, voters, sections, updateElection, resetSystem, sessions, activeSessionId, switchSession, deleteSession, currentSchoolYear, processRollover, isDataLoaded } = useVoting();
+  const { user, isLoggedIn, election, candidates, positions, getResults, voters, sections, updateElection, resetSystem, sessions, activeSessionId, switchSession, currentSchoolYear, processRollover, isDataLoaded } = useVoting();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -69,8 +68,6 @@ export default function AdminDashboard() {
   const [isSavingMappings, setIsSavingMappings] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [isDeletingSession, setIsDeletingSession] = useState(false);
 
   // Schedule detail fields
   const [editName, setEditName] = useState('');
@@ -204,30 +201,6 @@ export default function AdminDashboard() {
       });
     } finally {
       setIsResetting(false);
-    }
-  };
-
-  const handleDeleteActiveSession = async () => {
-    if (!activeSessionId) return;
-    const currentSession = sessions.find(s => s.id === activeSessionId);
-    if (!currentSession) return;
-    setIsDeletingSession(true);
-    try {
-      await deleteSession(activeSessionId);
-      toast({
-        title: 'Session Deleted',
-        description: `"${currentSession.name}" has been removed.`,
-      });
-      setIsDeleteDialogOpen(false);
-    } catch (err: any) {
-      console.error('Delete session error:', err);
-      toast({
-        title: 'Delete Failed',
-        description: err?.message || 'Could not delete the session.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsDeletingSession(false);
     }
   };
 
@@ -539,28 +512,12 @@ export default function AdminDashboard() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                 </div>
               </div>
-              {/* Delete Active Session Button */}
-              <Button
-                onClick={() => setIsDeleteDialogOpen(true)}
-                variant="outline"
-                disabled={sessions.length <= 1}
-                title={sessions.length <= 1 ? "At least one session must remain in the system" : "Delete this session"}
-                className={`gap-1.5 h-10 px-3 font-semibold shadow-xs transition-all duration-200 rounded-xl whitespace-nowrap flex-shrink-0 ${
-                  sessions.length <= 1
-                    ? 'opacity-40 cursor-not-allowed text-slate-400 border-slate-200 bg-slate-50'
-                    : 'text-red-600 border-red-200 bg-red-50/60 hover:bg-red-100 hover:text-red-700 hover:border-red-300'
-                }`}
-              >
-                <Trash2 className="h-4 w-4 text-red-600" />
-                <span className="hidden sm:inline">Delete Session</span>
-              </Button>
-
               <Button
                 onClick={() => setIsResetDialogOpen(true)}
                 variant="outline"
-                className="gap-2 h-10 px-3 sm:px-4 text-amber-700 border-amber-200 bg-amber-50/60 hover:bg-amber-100 hover:text-amber-800 hover:border-amber-300 font-semibold shadow-xs transition-all duration-200 rounded-xl whitespace-nowrap flex-shrink-0"
+                className="gap-2 h-10 px-3 sm:px-4 text-red-600 border-red-200 bg-red-50/60 hover:bg-red-100 hover:text-red-700 hover:border-red-300 font-semibold shadow-xs transition-all duration-200 rounded-xl whitespace-nowrap flex-shrink-0"
               >
-                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <AlertTriangle className="h-4 w-4 text-red-600" />
                 <span className="hidden xs:inline sm:inline">Reset Session</span>
                 <span className="inline xs:hidden sm:hidden">Reset</span>
               </Button>
@@ -747,36 +704,6 @@ export default function AdminDashboard() {
                 className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
               >
                 {isResetting ? 'Resetting...' : 'Yes, Clear Votes'}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-
-        {/* Delete Session Dialog */}
-        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2 text-red-600">
-                <Trash2 className="h-5 w-5" />
-                Delete Voting Session?
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to permanently delete <strong>"{sessions.find(s => s.id === activeSessionId)?.name || 'this session'}"</strong>?
-                <br /><br />
-                This will delete all associated positions, candidates, and votes for this election session. This action <strong>cannot be undone</strong>.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={isDeletingSession}>Cancel</AlertDialogCancel>
-              <AlertDialogAction 
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleDeleteActiveSession();
-                }}
-                disabled={isDeletingSession}
-                className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
-              >
-                {isDeletingSession ? 'Deleting...' : 'Yes, Delete Session'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
