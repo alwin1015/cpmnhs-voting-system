@@ -372,6 +372,22 @@ export default function SessionManagerPage() {
                             {session.name}
                           </CardTitle>
                         </div>
+
+                        {/* Quick Delete Icon inside session card header */}
+                        {sessions.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSessionToDelete(session);
+                            }}
+                            className="h-8 w-8 rounded-full text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors flex-shrink-0"
+                            title="Delete this session"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </CardHeader>
 
@@ -416,14 +432,14 @@ export default function SessionManagerPage() {
                         <span className="hidden sm:inline">Duplicate</span>
                       </Button>
 
-                      {/* Delete Button (Only for upcoming sessions) */}
-                      {session.status === 'upcoming' && (
+                      {/* Delete Button */}
+                      {sessions.length > 1 && (
                         <Button
                           variant="destructive"
                           size="sm"
                           onClick={() => setSessionToDelete(session)}
                           className="rounded-xl bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 border border-red-200 text-xs font-semibold h-9 px-3 gap-1.5 shadow-2xs"
-                          title="Delete upcoming session"
+                          title="Delete session"
                         >
                           <Trash2 className="h-3.5 w-3.5 text-red-500" />
                           <span className="hidden sm:inline">Delete</span>
