@@ -206,12 +206,12 @@ export default function CandidatesPage() {
                 </button>
               </div>
               
-              <CardContent className="p-6 bg-[#f8faff] rounded-b-xl">
-                <div className="grid md:grid-cols-2 gap-5">
+              <CardContent className="p-4 sm:p-6 bg-[#f8faff] rounded-b-xl">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                   {/* Photo Upload */}
-                  <div className="md:col-span-2 flex items-center gap-5 bg-white p-4 rounded-xl border border-blue-50 shadow-sm">
+                  <div className="md:col-span-2 flex flex-col sm:flex-row items-center gap-4 sm:gap-5 bg-white p-4 rounded-xl border border-blue-50 shadow-sm">
                     <div 
-                      className="w-32 h-32 rounded-full border-2 border-dashed border-blue-200 flex items-center justify-center overflow-hidden cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all flex-shrink-0 relative group"
+                      className="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-2 border-dashed border-blue-200 flex items-center justify-center overflow-hidden cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all flex-shrink-0 relative group"
                       onClick={() => fileInputRef.current?.click()}
                     >
                       {form.photo ? (
@@ -373,32 +373,32 @@ export default function CandidatesPage() {
                     <Card className="border border-gray-100 shadow-lg overflow-hidden bg-white/95">
                       <div className="flex flex-col divide-y divide-gray-100/60">
                         {posCandidates.map((candidate) => (
-                          <div key={candidate.id} className="group flex items-center px-5 py-3 hover:bg-slate-50/80 transition-colors">
-                            <div className="flex-shrink-0 mr-4">
+                          <div key={candidate.id} className="group flex flex-wrap sm:flex-nowrap items-center px-4 sm:px-5 py-3 hover:bg-slate-50/80 transition-colors gap-3">
+                            <div className="flex-shrink-0">
                               {candidate.photo ? (
-                                <img src={candidate.photo} alt={candidate.name} className="w-20 h-20 rounded-full object-cover border-2 border-gray-100 shadow-sm" />
+                                <img src={candidate.photo} alt={candidate.name} className="w-14 h-14 sm:w-20 sm:h-20 rounded-full object-cover border-2 border-gray-100 shadow-sm" />
                               ) : (
-                                <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center border-2 border-slate-100 shadow-inner">
-                                  <User className="h-8 w-8 text-slate-400" />
+                                <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-slate-100 flex items-center justify-center border-2 border-slate-100 shadow-inner">
+                                  <User className="h-6 w-6 sm:h-8 sm:w-8 text-slate-400" />
                                 </div>
                               )}
                             </div>
                             
-                            <div className="flex-1 min-w-0 pr-4">
+                            <div className="flex-1 min-w-0">
                               <div className="flex flex-col">
                                 <span className="text-sm font-semibold text-gray-900 truncate">{candidate.name}</span>
-                                <div className="flex items-center gap-2 mt-0.5">
+                                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                                   {candidate.party && candidate.party !== 'Independent' && (
                                     <>
                                       <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wide">{candidate.party}</span>
-                                      <span className="text-gray-300 text-[10px]">�</span>
+                                      <span className="text-gray-300 text-[10px]">·</span>
                                     </>
                                   )}
                                   <span className="text-[11px] font-medium text-gray-500">Grade {candidate.gradeLevel} - {candidate.section}</span>
                                   {candidate.motto && (
                                     <>
-                                      <span className="text-gray-300 text-[10px]">�</span>
-                                      <span className="text-[11px] text-gray-400 italic truncate max-w-xs">"{candidate.motto}"</span>
+                                      <span className="text-gray-300 text-[10px]">·</span>
+                                      <span className="text-[11px] text-gray-400 italic truncate max-w-[200px]">"{candidate.motto}"</span>
                                     </>
                                   )}
                                 </div>

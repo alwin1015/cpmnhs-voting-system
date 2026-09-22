@@ -398,7 +398,7 @@ export default function VotersPage() {
                 </div>
 
                 {/* Filters Row */}
-                <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
                   <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold mr-1">
                     <Filter className="h-3.5 w-3.5 text-slate-400" />
                     <span>Filter:</span>
@@ -566,16 +566,16 @@ export default function VotersPage() {
                             {/* Section Table Content */}
                             <CardContent className="p-0">
                               <div className="overflow-x-auto">
-                                <table className="w-full text-left">
+                                <table className="w-full text-left min-w-[600px]">
                                   <thead>
                                     <tr className="border-b border-slate-100 bg-slate-50/30 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                                       <th className="py-2.5 px-4 w-12 text-center">#</th>
                                       <th className="py-2.5 px-4">Student Name</th>
-                                      <th className="py-2.5 px-4">Student ID (LRN)</th>
-                                      <th className="py-2.5 px-4">Grade & Section</th>
-                                      <th className="py-2.5 px-4 text-center">Registration Status</th>
-                                      <th className="py-2.5 px-4">Date Registered</th>
-                                      <th className="py-2.5 px-4 text-center">Voting Status</th>
+                                      <th className="py-2.5 px-4 hidden sm:table-cell">Student ID (LRN)</th>
+                                      <th className="py-2.5 px-4 hidden md:table-cell">Grade & Section</th>
+                                      <th className="py-2.5 px-4 text-center">Status</th>
+                                      <th className="py-2.5 px-4 hidden lg:table-cell">Date Registered</th>
+                                      <th className="py-2.5 px-4 text-center">Voted</th>
                                       <th className="py-2.5 px-4 text-right">Actions</th>
                                     </tr>
                                   </thead>
@@ -609,18 +609,18 @@ export default function VotersPage() {
                                               </div>
                                             )}
                                           </td>
-                                          <td className="py-3 px-4">
+                                          <td className="py-3 px-4 hidden sm:table-cell">
                                             <span className="font-mono text-xs text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200/60">
                                               {voter.lrn || 'N/A'}
                                             </span>
                                           </td>
-                                          <td className="py-3 px-4 text-slate-700 font-medium text-xs">
+                                          <td className="py-3 px-4 text-slate-700 font-medium text-xs hidden md:table-cell">
                                             Grade {voter.gradeLevel} – {voter.section}
                                           </td>
                                           <td className="py-3 px-4 text-center">
                                             {getStatusBadge(voter.status)}
                                           </td>
-                                          <td className="py-3 px-4 text-slate-500 text-xs">
+                                          <td className="py-3 px-4 text-slate-500 text-xs hidden lg:table-cell">
                                             {formatDate(voter.createdAt)}
                                           </td>
                                           <td className="py-3 px-4 text-center">

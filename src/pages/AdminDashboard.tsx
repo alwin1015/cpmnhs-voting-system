@@ -426,8 +426,8 @@ export default function AdminDashboard() {
 
         {/* Grade Mappings Modal Overlay */}
         {isMappingsOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in">
-            <Card className="w-full max-w-lg mx-4 animate-in zoom-in-95 shadow-2xl border-0 overflow-hidden">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in overflow-y-auto p-3 sm:p-4">
+            <Card className="w-full max-w-lg mx-auto animate-in zoom-in-95 shadow-2xl border-0 overflow-hidden my-auto">
               <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-white shadow-md relative overflow-hidden">
                 <div className="relative z-10">
                   <h2 className="text-xl font-bold flex items-center gap-2 text-white">
@@ -493,9 +493,9 @@ export default function AdminDashboard() {
               <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Admin Dashboard</h1>
               <p className="text-xs sm:text-sm text-slate-500">Welcome back, {user?.name || 'Administrator'}. Manage elections and student voting.</p>
             </div>
-            <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               {/* Session Selector */}
-              <div className="relative flex-1 sm:flex-initial min-w-[200px]">
+              <div className="relative flex-1 min-w-[160px]">
                 <select
                   value={activeSessionId || ''}
                   onChange={(e) => switchSession(e.target.value)}
@@ -513,10 +513,11 @@ export default function AdminDashboard() {
               <Button
                 onClick={() => setIsResetDialogOpen(true)}
                 variant="outline"
-                className="gap-2 h-10 px-4 text-red-600 border-red-200 bg-red-50/60 hover:bg-red-100 hover:text-red-700 hover:border-red-300 font-semibold shadow-xs transition-all duration-200 rounded-xl whitespace-nowrap"
+                className="gap-2 h-10 px-3 sm:px-4 text-red-600 border-red-200 bg-red-50/60 hover:bg-red-100 hover:text-red-700 hover:border-red-300 font-semibold shadow-xs transition-all duration-200 rounded-xl whitespace-nowrap flex-shrink-0"
               >
                 <AlertTriangle className="h-4 w-4 text-red-600" />
-                Reset Session
+                <span className="hidden xs:inline sm:inline">Reset Session</span>
+                <span className="inline xs:hidden sm:hidden">Reset</span>
               </Button>
             </div>
           </div>
@@ -529,48 +530,50 @@ export default function AdminDashboard() {
             <div className="absolute -top-24 -right-24 w-64 h-64 bg-white opacity-5 rounded-full blur-3xl group-hover:opacity-10 transition-opacity duration-700"></div>
             <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-white opacity-5 rounded-full blur-3xl group-hover:opacity-10 transition-opacity duration-700"></div>
             
-            <div className="relative z-10 py-6 px-8 sm:px-10 flex flex-col md:flex-row items-start md:items-center gap-6">
-              <div className="flex-1">
+            <div className="relative z-10 py-5 px-5 sm:px-8 flex flex-col md:flex-row items-start md:items-center gap-4 sm:gap-6">
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className={`p-2 rounded-full ${election?.isActive ? 'bg-green-400/20 text-green-100' : 'bg-slate-500/20 text-slate-200'} backdrop-blur-sm`}>
-                    {election?.isActive ? <CheckCircle className="h-6 w-6" /> : <Clock className="h-6 w-6" />}
+                  <div className={`p-2 rounded-full ${election?.isActive ? 'bg-green-400/20 text-green-100' : 'bg-slate-500/20 text-slate-200'} backdrop-blur-sm flex-shrink-0`}>
+                    {election?.isActive ? <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6" /> : <Clock className="h-5 w-5 sm:h-6 sm:w-6" />}
                   </div>
-                  <h2 className="text-2xl font-bold text-white tracking-tight">
+                  <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
                     {election?.isActive ? 'Voting is Now Live' : 'Election is Inactive'}
                   </h2>
                 </div>
-                <p className="text-sm md:text-base text-white/80 font-medium max-w-xl leading-relaxed ml-11">
+                <p className="text-sm text-white/80 font-medium max-w-xl leading-relaxed ml-11 hidden sm:block">
                   {election?.isActive 
                     ? 'Students can currently log in and cast their votes. Monitor the turnout and results in real-time.' 
                     : 'The election is currently closed. Set the schedule and click Launch Election to start voting.'}
                 </p>
                 {/* Schedule Status Badge */}
-                <div className="mt-3 flex items-center gap-2 ml-11 flex-wrap">
+                <div className="mt-2 flex items-center gap-2 ml-11 flex-wrap">
                   <span className={`text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${statusInfo.bg} ${statusInfo.color} border`}>
                     Schedule: {statusInfo.label}
                   </span>
                   {election && (
-                    <span className="text-xs text-white/60 flex items-center gap-1.5 bg-black/10 px-3 py-1 rounded-full backdrop-blur-md border border-white/10">
-                      <CalendarClock className="h-3.5 w-3.5" />
-                      {election.startDate && !isNaN(election.startDate.getTime()) ? election.startDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No start'} 
-                      <span className="mx-1 opacity-50">—</span>
-                      {election.endDate && !isNaN(election.endDate.getTime()) ? election.endDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No end'}
+                    <span className="text-xs text-white/60 flex items-center gap-1.5 bg-black/10 px-3 py-1 rounded-full backdrop-blur-md border border-white/10 truncate max-w-full">
+                      <CalendarClock className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span className="truncate">
+                        {election.startDate && !isNaN(election.startDate.getTime()) ? election.startDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No start'} 
+                        <span className="mx-1 opacity-50">—</span>
+                        {election.endDate && !isNaN(election.endDate.getTime()) ? election.endDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No end'}
+                      </span>
                     </span>
                   )}
                 </div>
               </div>
-              <div className="flex flex-wrap md:flex-col lg:flex-row gap-3 flex-shrink-0 justify-end w-full md:w-auto mt-4 md:mt-0">
+              <div className="flex flex-row sm:flex-col md:flex-row gap-2 flex-shrink-0 w-full md:w-auto mt-2 md:mt-0">
                 <Button 
                   variant="outline" 
                   onClick={handleOpenSchedule}
-                  className="gap-2 bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm transition-all h-11 px-5"
+                  className="gap-2 bg-white/10 hover:bg-white/20 text-white border-white/20 backdrop-blur-sm transition-all h-10 sm:h-11 px-4 sm:px-5 flex-1 md:flex-initial text-sm"
                 >
                   <CalendarClock className="h-4 w-4" />
                   Set Schedule
                 </Button>
                 <Button 
                   onClick={handleToggleElection}
-                  className={`gap-2 h-11 px-6 shadow-lg shadow-black/10 transition-all border-0 ${election?.isActive ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-white hover:bg-gray-50 text-slate-900'}`}
+                  className={`gap-2 h-10 sm:h-11 px-4 sm:px-6 shadow-lg shadow-black/10 transition-all border-0 flex-1 md:flex-initial text-sm ${election?.isActive ? 'bg-orange-500 hover:bg-orange-600 text-white' : 'bg-white hover:bg-gray-50 text-slate-900'}`}
                 >
                   <Rocket className="h-4 w-4" />
                   {election?.isActive ? 'End Election' : 'Launch Election'}

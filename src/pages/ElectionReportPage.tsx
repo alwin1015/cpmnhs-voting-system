@@ -353,8 +353,8 @@ export default function ElectionReportPage() {
     return (
       <div className="min-h-screen bg-white text-slate-900 font-sans">
         {/* Screen Controls Header (Hidden during Print) */}
-        <div className="no-print bg-slate-900 text-white px-6 py-4 flex items-center justify-between shadow-md sticky top-0 z-50">
-          <div className="flex items-center gap-3">
+        <div className="no-print bg-slate-900 text-white px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md sticky top-0 z-50">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <Button
               variant="ghost"
               size="sm"
@@ -363,16 +363,16 @@ export default function ElectionReportPage() {
             >
               <ArrowLeft className="h-4 w-4" /> Back to Report
             </Button>
-            <div className="h-4 w-px bg-slate-700" />
+            <div className="h-4 w-px bg-slate-700 hidden sm:block" />
             <span className="text-xs sm:text-sm font-medium text-slate-300">
               Official Printable Report Preview
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
             <Button
               onClick={() => window.print()}
               size="sm"
-              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm"
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm w-full sm:w-auto"
             >
               <Printer className="h-4 w-4" /> Print Final Results
             </Button>
@@ -380,7 +380,9 @@ export default function ElectionReportPage() {
         </div>
 
         {/* Printable Document Sheet */}
-        <OfficialResultsSheet ref={printRef} tieResolutions={tieResolutions} />
+        <div className="overflow-x-auto p-2 sm:p-4">
+          <OfficialResultsSheet ref={printRef} tieResolutions={tieResolutions} />
+        </div>
       </div>
     );
   }
@@ -390,19 +392,19 @@ export default function ElectionReportPage() {
     <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(180deg, #eff6ff 0%, #f8fafc 40%, #ffffff 100%)' }}>
       <Header />
 
-      <main className="flex-1 py-8">
-        <div className="container mx-auto px-4 max-w-6xl">
+      <main className="flex-1 py-6 sm:py-8">
+        <div className="container mx-auto px-3 sm:px-4 max-w-6xl">
           {/* Header */}
-          <div className="flex items-center justify-between mb-6 animate-slide-up">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 animate-slide-up">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-1">Election Results Report</h1>
-              <p className="text-gray-500">{election?.name} • S.Y. {election?.schoolYear}</p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-1">Election Results Report</h1>
+              <p className="text-xs sm:text-sm text-gray-500">{election?.name} • S.Y. {election?.schoolYear}</p>
             </div>
             <div className="flex items-center gap-2">
               {election?.resultsFinalized && (
                 <Button
                   onClick={handlePrintWithValidation}
-                  className="gap-2 text-white bg-emerald-600 hover:bg-emerald-700"
+                  className="gap-2 text-white bg-emerald-600 hover:bg-emerald-700 text-xs sm:text-sm h-10 px-4 rounded-xl shadow-xs"
                 >
                   <Printer className="h-4 w-4" />
                   Print Final Results
@@ -485,10 +487,10 @@ export default function ElectionReportPage() {
           <Card className="border border-gray-100 shadow-sm mb-6 animate-fade-in" style={{ background: 'rgba(255,255,255,0.95)' }}>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full min-w-[600px]">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50/50">
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Election</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider hidden md:table-cell">Election</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Grade</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Position</th>
                       <th className="text-left py-3 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">Candidate</th>
@@ -514,7 +516,7 @@ export default function ElectionReportPage() {
                             key={`${r.positionId}-${r.candidateId}`}
                             className={`border-b border-gray-50 hover:bg-blue-50/30 transition-colors ${isNewPosition && idx > 0 ? 'border-t-2 border-t-gray-100' : ''}`}
                           >
-                            <td className="py-3 px-4 text-sm text-gray-500">
+                            <td className="py-3 px-4 text-sm text-gray-500 hidden md:table-cell">
                               {isNewPosition ? `${election?.name || 'Election'}` : ''}
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-600">

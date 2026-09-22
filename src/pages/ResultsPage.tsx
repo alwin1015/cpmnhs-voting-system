@@ -233,8 +233,8 @@ export default function ResultsPage() {
     return (
       <div className="min-h-screen bg-white text-slate-900 font-sans">
         {/* Screen Controls Header (Hidden during Print) */}
-        <div className="no-print bg-slate-900 text-white px-6 py-4 flex items-center justify-between shadow-md sticky top-0 z-50">
-          <div className="flex items-center gap-3">
+        <div className="no-print bg-slate-900 text-white px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md sticky top-0 z-50">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <Button
               variant="ghost"
               size="sm"
@@ -243,16 +243,16 @@ export default function ResultsPage() {
             >
               <ArrowLeft className="h-4 w-4" /> Back to Dashboard
             </Button>
-            <div className="h-4 w-px bg-slate-700" />
+            <div className="h-4 w-px bg-slate-700 hidden sm:block" />
             <span className="text-xs sm:text-sm font-medium text-slate-300">
               Official Printable Report Preview
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="w-full sm:w-auto flex justify-end">
             <Button
               onClick={handlePrint}
               size="sm"
-              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm"
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm w-full sm:w-auto"
             >
               <Printer className="h-4 w-4" /> Print Final Results
             </Button>
@@ -260,7 +260,9 @@ export default function ResultsPage() {
         </div>
 
         {/* Printable Document Sheet */}
-        <OfficialResultsSheet ref={printRef} tieResolutions={tieResolutions} />
+        <div className="overflow-x-auto p-2 sm:p-4">
+          <OfficialResultsSheet ref={printRef} tieResolutions={tieResolutions} />
+        </div>
       </div>
     );
   }

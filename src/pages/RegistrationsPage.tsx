@@ -542,14 +542,14 @@ export default function RegistrationsPage() {
 
                               {/* Section Student Table */}
                               <div className="overflow-x-auto bg-white">
-                                <table className="w-full text-left text-xs sm:text-sm">
+                                <table className="w-full text-left text-xs sm:text-sm min-w-[540px]">
                                   <thead>
                                     <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                                       <th className="py-2.5 px-3 w-12 text-center">#</th>
                                       <th className="py-2.5 px-4">Student Name</th>
-                                      <th className="py-2.5 px-4">LRN</th>
-                                      <th className="py-2.5 px-4">Grade & Section</th>
-                                      <th className="py-2.5 px-4">Registration Date</th>
+                                      <th className="py-2.5 px-4 hidden sm:table-cell">LRN</th>
+                                      <th className="py-2.5 px-4 hidden md:table-cell">Grade & Section</th>
+                                      <th className="py-2.5 px-4 hidden lg:table-cell">Registration Date</th>
                                       <th className="py-2.5 px-4 text-center">Status</th>
                                       <th className="py-2.5 px-4 text-right">Actions</th>
                                     </tr>
@@ -582,17 +582,17 @@ export default function RegistrationsPage() {
                                         </td>
 
                                         {/* LRN */}
-                                        <td className="py-3 px-4 font-mono font-medium text-slate-700">
+                                        <td className="py-3 px-4 font-mono font-medium text-slate-700 hidden sm:table-cell">
                                           {student.lrn || 'N/A'}
                                         </td>
 
                                         {/* Grade & Section */}
-                                        <td className="py-3 px-4 text-slate-600 text-xs">
+                                        <td className="py-3 px-4 text-slate-600 text-xs hidden md:table-cell">
                                           Grade {student.gradeLevel} - {student.section || 'Unassigned'}
                                         </td>
 
                                         {/* Date */}
-                                        <td className="py-3 px-4 text-slate-500 text-xs whitespace-nowrap">
+                                        <td className="py-3 px-4 text-slate-500 text-xs whitespace-nowrap hidden lg:table-cell">
                                           {formatDate(student.createdAt)}
                                         </td>
 

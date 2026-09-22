@@ -60,17 +60,17 @@ export const OfficialResultsSheet = forwardRef<HTMLDivElement, OfficialResultsSh
     return (
       <div
         ref={ref}
-        className={`max-w-4xl mx-auto p-8 sm:p-12 print:p-0 print:max-w-none text-slate-900 bg-white border border-slate-200 shadow-md sm:rounded-xl print:border-0 print:shadow-none ${className}`}
+        className={`max-w-4xl mx-auto p-4 sm:p-8 md:p-12 print:p-0 print:max-w-none text-slate-900 bg-white border border-slate-200 shadow-md sm:rounded-xl print:border-0 print:shadow-none ${className}`}
       >
         {/* Header with 3 Logos (CPMNHS Left, DepEd Center, SSLG Right) */}
         <div className="border-b-2 border-slate-900 pb-3 mb-4">
-          <div className="flex items-center justify-between gap-4 mb-2">
+          <div className="flex items-center justify-between gap-2 sm:gap-4 mb-2">
             {/* Left Logo: CPMNHS Seal */}
-            <div className="w-32 flex-shrink-0 flex justify-center">
+            <div className="w-14 sm:w-24 md:w-32 flex-shrink-0 flex justify-center">
               <img
                 src={cpmnhsLogo}
                 alt="CPMNHS Seal"
-                className="w-24 h-24 sm:w-28 sm:h-28 object-contain rounded-full shadow-xs"
+                className="w-12 h-12 sm:w-20 sm:h-20 md:w-28 md:h-28 object-contain rounded-full shadow-xs"
               />
             </div>
 
@@ -81,26 +81,26 @@ export const OfficialResultsSheet = forwardRef<HTMLDivElement, OfficialResultsSh
                 <img
                   src={depedLogo}
                   alt="DepEd Logo"
-                  className="w-36 sm:w-40 object-contain"
+                  className="w-20 sm:w-32 md:w-40 object-contain"
                 />
               </div>
 
-              <p className="text-[10px] sm:text-xs text-slate-700 font-medium leading-tight">Republic of the Philippines</p>
-              <p className="text-[10px] sm:text-xs text-slate-700 font-medium leading-tight">Department of Education</p>
-              <p className="text-[10px] sm:text-xs text-slate-700 leading-tight">Region VII – Central Visayas</p>
-              <p className="text-[10px] sm:text-xs text-slate-700 leading-tight">Division of Bohol</p>
-              <h1 className="text-xs sm:text-base font-black text-slate-900 uppercase tracking-tight mt-1 leading-tight">
+              <p className="text-[9px] sm:text-xs text-slate-700 font-medium leading-tight">Republic of the Philippines</p>
+              <p className="text-[9px] sm:text-xs text-slate-700 font-medium leading-tight">Department of Education</p>
+              <p className="text-[9px] sm:text-xs text-slate-700 leading-tight">Region VII – Central Visayas</p>
+              <p className="text-[9px] sm:text-xs text-slate-700 leading-tight">Division of Bohol</p>
+              <h1 className="text-[11px] sm:text-sm md:text-base font-black text-slate-900 uppercase tracking-tight mt-1 leading-tight">
                 CONGRESSMAN PABLO MALASARTE NATIONAL HIGH SCHOOL
               </h1>
-              <p className="text-[10px] sm:text-xs text-slate-600 leading-tight">Cabad, Balilihan, Bohol</p>
+              <p className="text-[9px] sm:text-xs text-slate-600 leading-tight">Cabad, Balilihan, Bohol</p>
             </div>
 
             {/* Right Logo: SSLG Seal */}
-            <div className="w-32 flex-shrink-0 flex justify-center">
+            <div className="w-14 sm:w-24 md:w-32 flex-shrink-0 flex justify-center">
               <img
                 src={sslgLogo}
                 alt="SSLG Seal"
-                className="w-24 h-24 sm:w-28 sm:h-28 object-contain rounded-full shadow-xs"
+                className="w-12 h-12 sm:w-20 sm:h-20 md:w-28 md:h-28 object-contain rounded-full shadow-xs"
               />
             </div>
           </div>
