@@ -11,13 +11,6 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
-    proxy: {
-      '/api': {
-        target: 'http://localhost',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '/cpmnhs-api'),
-      },
-    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
@@ -31,7 +24,7 @@ export default defineConfig(({ mode }) => ({
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-export': ['xlsx', 'docx', 'file-saver'],
+          'vendor-export': ['xlsx', 'file-saver'],
           'vendor-charts': ['recharts'],
         },
       },

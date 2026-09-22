@@ -200,106 +200,135 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshRequestRef = React.useRef(0);
+  const realtimeChannelRef = React.useRef<any>(null);
+  const inFlightRefreshRef = React.useRef<Promise<void> | null>(null);
+  const queuedRefreshRef = React.useRef(false);
+  const queuedSessionIdRef = React.useRef<string | null | undefined>(undefined);
+
+  const broadcastChange = useCallback((event: string, payload?: any) => {
+    try {
+      if (realtimeChannelRef.current) {
+        realtimeChannelRef.current.send({
+          type: 'broadcast',
+          event: 'app_change',
+          payload: { event, ...payload },
+        }).catch(() => {});
+      }
+    } catch (_) {}
+  }, []);
 
   // Fetch scoped data for the active session
-  const refreshData = useCallback(async (overrideSessionId?: string | null) => {
+  const performRefresh = useCallback(async (overrideSessionId?: string | null) => {
     const requestId = ++refreshRequestRef.current;
 
     try {
       const sessionId = (overrideSessionId === undefined ? activeSessionIdRef.current : overrideSessionId) || undefined;
 
       const [candidatesRes, positionsRes, sectionsRes, votersRes, settingsRes, sessionsData, voterSessionsData] = await Promise.all([
-        sessionId ? api.getCandidates(sessionId) : Promise.resolve([]),
-        sessionId ? api.getPositions(sessionId) : Promise.resolve([]),
-        api.getSections(),
-        api.getVoters(),
+        sessionId ? api.getCandidates(sessionId).catch(err => { console.error('Candidates fetch error:', err); return null; }) : Promise.resolve([]),
+        sessionId ? api.getPositions(sessionId).catch(err => { console.error('Positions fetch error:', err); return null; }) : Promise.resolve([]),
+        api.getSections().catch(err => { console.error('Sections fetch error:', err); return null; }),
+        api.getVoters().catch(err => { console.error('Voters fetch error:', err); return null; }),
         api.getSystemSettings().catch(() => ({ currentSchoolYear: '2026-2027' })),
-        api.getSessions(),
-        sessionId ? api.getVoterSessions(sessionId) : Promise.resolve([]),
+        api.getSessions().catch(err => { console.error('Sessions fetch error:', err); return null; }),
+        sessionId ? api.getVoterSessions(sessionId).catch(err => { console.error('VoterSessions fetch error:', err); return []; }) : Promise.resolve([]),
       ]);
       if (requestId !== refreshRequestRef.current) return;
 
-      const candidatesData = (candidatesRes as any)?.data ?? candidatesRes ?? [];
-      const positionsData = (positionsRes as any)?.data ?? positionsRes ?? [];
-      const sectionsData = (sectionsRes as any)?.data ?? sectionsRes ?? [];
-      const votersData = (votersRes as any)?.data ?? votersRes ?? [];
-      const rawSessions = Array.isArray(sessionsData) ? sessionsData : (sessionsData as any)?.data || [];
-      const parsedSessions = rawSessions.map((s: any) => parseSession(s));
+      if (sessionsData !== null) {
+        const rawSessions = Array.isArray(sessionsData) ? sessionsData : (sessionsData as any)?.data || [];
+        const parsedSessions = rawSessions.map((s: any) => parseSession(s));
+        setSessions(parsedSessions);
+      }
 
-      setSessions(parsedSessions);
-      setCurrentSchoolYear(settingsRes?.currentSchoolYear || '2026-2027');
+      if (settingsRes?.currentSchoolYear) {
+        setCurrentSchoolYear(settingsRes.currentSchoolYear);
+      }
 
-      // Map candidates
-      setCandidates(
-        (Array.isArray(candidatesData) ? candidatesData : []).map((c: any) => ({
-          id: String(c.id),
-          name: c.name,
-          position: String(c.position_id ?? c.position),
-          party: c.party ?? '',
-          photo: c.photo_url ?? c.photo ?? '',
-          motto: c.motto ?? '',
-          gradeLevel: c.grade_level ?? c.gradeLevel ?? '',
-          section: c.section ?? '',
-          votes: Number(c.votes ?? 0),
-          sessionId: String(c.session_id ?? sessionId ?? '1'),
-        }))
-      );
+      // Map candidates only if successfully fetched
+      if (candidatesRes !== null) {
+        const candidatesData = (candidatesRes as any)?.data ?? candidatesRes ?? [];
+        setCandidates(
+          (Array.isArray(candidatesData) ? candidatesData : []).map((c: any) => ({
+            id: String(c.id),
+            name: c.name,
+            position: String(c.position_id ?? c.position),
+            party: c.party ?? '',
+            photo: c.photo_url ?? c.photo ?? '',
+            motto: c.motto ?? '',
+            gradeLevel: c.grade_level ?? c.gradeLevel ?? '',
+            section: c.section ?? '',
+            votes: Number(c.votes ?? 0),
+            sessionId: String(c.session_id ?? sessionId ?? '1'),
+          }))
+        );
+      }
 
-      // Map positions with deduplication
-      const seenPositionNames = new Set<string>();
-      const uniquePositions: Position[] = [];
-      (Array.isArray(positionsData) ? positionsData : []).forEach((p: any) => {
-        const normalized = (p.name || '').trim().toLowerCase();
-        if (!seenPositionNames.has(normalized)) {
-          seenPositionNames.add(normalized);
-          uniquePositions.push({
-            id: String(p.id),
-            name: p.name,
-            order: Number(p.display_order ?? p.order ?? 0),
-            maxVotes: Number(p.max_votes ?? p.maxVotes ?? 1),
-            strictGradeMapping: Boolean(p.strict_grade_mapping ?? p.strictGradeMapping ?? false),
-            sessionId: String(p.session_id ?? sessionId ?? '1'),
-          });
+      // Map positions with deduplication only if successfully fetched
+      if (positionsRes !== null) {
+        const positionsData = (positionsRes as any)?.data ?? positionsRes ?? [];
+        const seenPositionNames = new Set<string>();
+        const uniquePositions: Position[] = [];
+        (Array.isArray(positionsData) ? positionsData : []).forEach((p: any) => {
+          const normalized = (p.name || '').trim().toLowerCase();
+          if (!seenPositionNames.has(normalized)) {
+            seenPositionNames.add(normalized);
+            uniquePositions.push({
+              id: String(p.id),
+              name: p.name,
+              order: Number(p.display_order ?? p.order ?? 0),
+              maxVotes: Number(p.max_votes ?? p.maxVotes ?? 1),
+              strictGradeMapping: Boolean(p.strict_grade_mapping ?? p.strictGradeMapping ?? false),
+              sessionId: String(p.session_id ?? sessionId ?? '1'),
+            });
+          }
+        });
+        setPositions(uniquePositions.sort((a, b) => a.order - b.order));
+      }
+
+      // Map sections (global) only if successfully fetched
+      if (sectionsRes !== null) {
+        const sectionsData = (sectionsRes as any)?.data ?? sectionsRes ?? [];
+        setSections(
+          (Array.isArray(sectionsData) ? sectionsData : []).map((s: any) => ({
+            id: String(s.id),
+            name: s.name,
+            gradeLevel: s.grade_level ?? s.gradeLevel ?? '',
+          }))
+        );
+      }
+
+      // Map voters (global) only if successfully fetched
+      if (votersRes !== null) {
+        const votersData = (votersRes as any)?.data ?? votersRes ?? [];
+        const voterSessions = Array.isArray(voterSessionsData) ? voterSessionsData : [];
+        const voterSessionMap = new Map(voterSessions.map(vs => [String(vs.voter_id), vs]));
+
+        const mappedVoters: Voter[] = (Array.isArray(votersData) ? votersData : []).map((v: any) => {
+          const vs = voterSessionMap.get(String(v.id));
+          let academicHistory = [];
+          try {
+            academicHistory = v.academic_history ? (typeof v.academic_history === 'string' ? JSON.parse(v.academic_history) : v.academic_history) : [];
+          } catch (_) {}
+
+          return {
+            id: String(v.id),
+            lrn: v.lrn,
+            name: v.name,
+            gradeLevel: v.grade_level ?? v.gradeLevel ?? '',
+            section: v.section ?? '',
+            hasVoted: vs ? Boolean(vs.has_voted) : false,
+            votedAt: vs && vs.voted_at ? new Date(vs.voted_at) : undefined,
+            status: v.status ?? 'pending',
+            createdAt: v.created_at ? new Date(v.created_at) : v.createdAt ? new Date(v.createdAt) : undefined,
+            academicHistory
+          };
+        });
+        setVoters(mappedVoters);
+        const currentUser = userRef.current;
+        if (currentUser?.role === 'voter') {
+          setHasVoted(Boolean(voterSessionMap.get(currentUser.id)?.has_voted));
         }
-      });
-      setPositions(uniquePositions.sort((a, b) => a.order - b.order));
-
-      // Map sections (global)
-      setSections(
-        (Array.isArray(sectionsData) ? sectionsData : []).map((s: any) => ({
-          id: String(s.id),
-          name: s.name,
-          gradeLevel: s.grade_level ?? s.gradeLevel ?? '',
-        }))
-      );
-
-      const voterSessionMap = new Map(voterSessionsData.map(vs => [String(vs.voter_id), vs]));
-
-      // Map voters (global) + merge session-specific voting status
-      const mappedVoters: Voter[] = (Array.isArray(votersData) ? votersData : []).map((v: any) => {
-        const vs = voterSessionMap.get(String(v.id));
-        let academicHistory = [];
-        try {
-          academicHistory = v.academic_history ? (typeof v.academic_history === 'string' ? JSON.parse(v.academic_history) : v.academic_history) : [];
-        } catch (_) {}
-
-        return {
-          id: String(v.id),
-          lrn: v.lrn,
-          name: v.name,
-          gradeLevel: v.grade_level ?? v.gradeLevel ?? '',
-          section: v.section ?? '',
-          hasVoted: vs ? Boolean(vs.has_voted) : false,
-          votedAt: vs && vs.voted_at ? new Date(vs.voted_at) : undefined,
-          status: v.status ?? 'pending',
-          createdAt: v.created_at ? new Date(v.created_at) : v.createdAt ? new Date(v.createdAt) : undefined,
-          academicHistory
-        };
-      });
-      setVoters(mappedVoters);
-      const currentUser = userRef.current;
-      if (currentUser?.role === 'voter') {
-        setHasVoted(Boolean(voterSessionMap.get(currentUser.id)?.has_voted));
       }
       setDataError(null);
       setIsDataLoaded(true);
@@ -309,6 +338,34 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       setDataError(error instanceof Error ? error.message : 'Unable to load election data. Please retry.');
     }
   }, []);
+
+  // Coalescing single-flight refresh to prevent network saturation and hard freezes
+  const refreshData = useCallback(async (overrideSessionId?: string | null): Promise<void> => {
+    if (inFlightRefreshRef.current) {
+      queuedRefreshRef.current = true;
+      if (overrideSessionId !== undefined) {
+        queuedSessionIdRef.current = overrideSessionId;
+      }
+      return inFlightRefreshRef.current;
+    }
+
+    const run = async () => {
+      try {
+        await performRefresh(overrideSessionId);
+      } finally {
+        inFlightRefreshRef.current = null;
+        if (queuedRefreshRef.current) {
+          queuedRefreshRef.current = false;
+          const nextSession = queuedSessionIdRef.current;
+          queuedSessionIdRef.current = undefined;
+          refreshData(nextSession).catch(console.error);
+        }
+      }
+    };
+
+    inFlightRefreshRef.current = run();
+    return inFlightRefreshRef.current;
+  }, [performRefresh]);
 
   // Keep election in sync with activeSession from sessions state
   useEffect(() => {
@@ -357,17 +414,23 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       try {
         const meData = await api.getMe();
         if (isMounted && meData && (meData.user || meData.id)) {
-          const userData = meData.user || meData;
-          setUser({
-            id: String(userData.id),
-            role: userData.role,
-            name: userData.name,
-            lrn: userData.lrn,
-            email: userData.email,
-            gradeLevel: userData.gradeLevel || userData.grade_level,
-            section: userData.section,
-          });
-          setHasVoted(Boolean(meData.has_voted ?? meData.hasVoted ?? false));
+          // If token is missing from old session, clear stale auth so RPCs don't fail
+          if (!meData.token) {
+            localStorage.removeItem('voting_session');
+            setUser(null);
+          } else {
+            const userData = meData.user || meData;
+            setUser({
+              id: String(userData.id),
+              role: userData.role,
+              name: userData.name,
+              lrn: userData.lrn,
+              email: userData.email,
+              gradeLevel: userData.gradeLevel || userData.grade_level,
+              section: userData.section,
+            });
+            setHasVoted(Boolean(meData.has_voted ?? meData.hasVoted ?? false));
+          }
         }
       } catch {
         // No active user session
@@ -381,17 +444,29 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         if (isMounted) {
           setSessions(parsed);
           const savedSessionId = localStorage.getItem('activeSessionId');
+          const isUserSelected = localStorage.getItem('session_user_selected') === 'true';
+          const primarySession = parsed.find((s: VotingSession) => s.id === '1');
           let resolvedSessionId: string | null = null;
-          if (savedSessionId && parsed.find((s: VotingSession) => s.id === savedSessionId)) {
+
+          if (savedSessionId && isUserSelected && parsed.find((s: VotingSession) => s.id === savedSessionId)) {
             resolvedSessionId = savedSessionId;
+          } else if (primarySession && primarySession.isActive) {
+            // Default to primary election (SSG General Election)
+            resolvedSessionId = primarySession.id;
+          } else if (savedSessionId && parsed.find((s: VotingSession) => s.id === savedSessionId)) {
+            resolvedSessionId = savedSessionId;
+          } else if (primarySession) {
+            resolvedSessionId = primarySession.id;
           } else if (parsed.length > 0) {
-            // Prefer an active/launched session over the newest one
             const activeSession = parsed.find((s: VotingSession) => s.isActive && s.status === 'active');
             resolvedSessionId = activeSession ? activeSession.id : parsed[0].id;
           }
           if (resolvedSessionId) {
             activeSessionIdRef.current = resolvedSessionId;
             setActiveSessionId(resolvedSessionId);
+            try {
+              localStorage.setItem('activeSessionId', resolvedSessionId);
+            } catch (_) {}
           }
           // Pass the resolved session ID directly to avoid the race condition
           // where activeSessionId state hasn't updated yet
@@ -441,22 +516,66 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    const handleSections = (payload: any) => {
+      if (!isMounted) return;
+      const { eventType, new: newRow, old: oldRow } = payload;
+      if (eventType === 'INSERT' && newRow) {
+        setSections(prev => {
+          const id = String(newRow.id);
+          if (prev.some(s => s.id === id)) return prev;
+          const tempIdx = prev.findIndex(s => s.id.startsWith('temp-') && s.name.trim().toLowerCase() === String(newRow.name).trim().toLowerCase() && s.gradeLevel === String(newRow.grade_level || ''));
+          if (tempIdx !== -1) {
+            const next = [...prev];
+            next[tempIdx] = { id, name: String(newRow.name), gradeLevel: String(newRow.grade_level || '') };
+            return next;
+          }
+          return [...prev, { id, name: String(newRow.name), gradeLevel: String(newRow.grade_level || '') }];
+        });
+      } else if (eventType === 'UPDATE' && newRow) {
+        const id = String(newRow.id);
+        setSections(prev => prev.map(s => s.id === id ? { id, name: String(newRow.name), gradeLevel: String(newRow.grade_level || '') } : s));
+      } else if (eventType === 'DELETE' && oldRow) {
+        setSections(prev => prev.filter(s => s.id !== String(oldRow.id)));
+      }
+    };
+
     const channel = supabase
-      .channel('db-realtime-sync')
+      .channel('cpmnhs-realtime-global', { config: { broadcast: { self: false } } })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'voting_sessions' }, handleSessions)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'positions' }, handlePositions)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sections' }, handleSections)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_settings' }, () => {
+        if (isMounted) refreshData();
+      })
+      .on('broadcast', { event: 'app_change' }, () => {
+        if (isMounted) refreshData();
+      })
       .subscribe();
 
-    // Sensitive voter tables are RPC-only, so refresh their status periodically.
+    realtimeChannelRef.current = channel;
+
+    // Fast polling fallback: 4 seconds for immediate live data synchronization
     const pollInterval = setInterval(() => {
       if (isMounted) refreshData();
-    }, 30000);
+    }, 4000);
+
+    // Refresh immediately when window/tab is focused or becomes visible
+    const handleVisibility = () => {
+      if (isMounted && document.visibilityState === 'visible') {
+        refreshData();
+      }
+    };
+    window.addEventListener('focus', handleVisibility);
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       isMounted = false;
       ++requestRef.current;
       clearInterval(pollInterval);
+      window.removeEventListener('focus', handleVisibility);
+      document.removeEventListener('visibilitychange', handleVisibility);
       supabase.removeChannel(channel);
+      realtimeChannelRef.current = null;
     };
   }, [refreshData]);
 
@@ -471,6 +590,10 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   // Session management
   const switchSession = useCallback((id: string) => {
+    try {
+      localStorage.setItem('activeSessionId', id);
+      localStorage.setItem('session_user_selected', 'true');
+    } catch (_) {}
     activeSessionIdRef.current = id;
     setActiveSessionId(id);
     setVotes({});
@@ -484,12 +607,15 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   const createSessionFn = useCallback(async (data: any): Promise<VotingSession> => {
     const created = await api.createSession(data);
-    await refreshData();
-    return parseSession(created);
-  }, [refreshData]);
+    const parsed = parseSession(created);
+    setSessions(prev => [parsed, ...prev.filter(s => s.id !== parsed.id)]);
+    broadcastChange('session_created');
+    refreshData().catch(console.error);
+    return parsed;
+  }, [refreshData, broadcastChange]);
 
   const deleteSessionFn = useCallback(async (id: string) => {
-    await api.deleteSession(id);
+    setSessions(prev => prev.filter(s => s.id !== id));
     if (activeSessionId === id) {
       const remaining = sessions.filter(s => s.id !== id);
       const nextId = remaining[0]?.id ?? null;
@@ -498,14 +624,19 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       setVotes({});
       setHasVoted(false);
     }
-    await refreshData();
-  }, [activeSessionId, sessions, refreshData]);
+    await api.deleteSession(id);
+    broadcastChange('session_deleted');
+    refreshData().catch(console.error);
+  }, [activeSessionId, sessions, refreshData, broadcastChange]);
 
   const duplicateSessionFn = useCallback(async (id: string): Promise<VotingSession> => {
     const created = await api.duplicateSession(id);
-    await refreshData();
-    return parseSession(created);
-  }, [refreshData]);
+    const parsed = parseSession(created);
+    setSessions(prev => [parsed, ...prev.filter(s => s.id !== parsed.id)]);
+    broadcastChange('session_duplicated');
+    refreshData().catch(console.error);
+    return parsed;
+  }, [refreshData, broadcastChange]);
 
   // Auth
   const login = useCallback(
@@ -528,7 +659,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         return false;
       } catch (error) {
         console.error('Login failed:', error);
-        return false;
+        throw error;
       }
     },
     [refreshData]
@@ -564,6 +695,8 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     ): Promise<{ success: boolean; message: string }> => {
       try {
         const data = await api.register({ lrn, firstName, middleInitial, lastName, gradeLevel, section, password });
+        broadcastChange('voter_registered');
+        await refreshData();
         return {
           success: data.success ?? true,
           message: data.message ?? 'Registration submitted! Please wait for admin approval.',
@@ -572,13 +705,14 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         return { success: false, message: error.message || 'Registration failed.' };
       }
     },
-    []
+    [refreshData, broadcastChange]
   );
 
   const bulkRegister = useCallback(
     async (students: any[]): Promise<{ success: boolean; message: string; errors?: string[] }> => {
       try {
         const data = await api.bulkRegister(students);
+        broadcastChange('voters_bulk_registered');
         await refreshData();
         return {
           success: data.success ?? true,
@@ -588,7 +722,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         return { success: false, message: error.message || 'Bulk registration failed.' };
       }
     },
-    [refreshData]
+    [refreshData, broadcastChange]
   );
 
   const adminChangePassword = useCallback(
@@ -630,13 +764,14 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       }));
       await api.submitVotes(votesArray, activeSessionId || undefined);
       setHasVoted(true);
+      broadcastChange('ballot_submitted', { sessionId: activeSessionId });
       await refreshData();
       return true;
     } catch (error) {
       console.error('Submit votes failed:', error);
       return false;
     }
-  }, [votes, user, hasVoted, isDataLoaded, dataError, election, activeSessionId, refreshData]);
+  }, [votes, user, hasVoted, isDataLoaded, dataError, election, activeSessionId, refreshData, broadcastChange]);
 
   const getResults = useCallback(() => {
     return positions.map((position) => ({
@@ -650,22 +785,24 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   const finalizeResults = useCallback(async () => {
     try {
       await api.finalizeResults(activeSessionId || undefined);
-      await refreshData();
+      broadcastChange('results_finalized', { sessionId: activeSessionId });
+      refreshData().catch(console.error);
     } catch (error) {
       console.error('Finalize results failed:', error);
       throw error;
     }
-  }, [activeSessionId, refreshData]);
+  }, [activeSessionId, refreshData, broadcastChange]);
 
   const unfinalizeResults = useCallback(async () => {
     try {
       await api.unfinalizeResults(activeSessionId || undefined);
-      await refreshData();
+      broadcastChange('results_unfinalized', { sessionId: activeSessionId });
+      refreshData().catch(console.error);
     } catch (error) {
       console.error('Unfinalize results failed:', error);
       throw error;
     }
-  }, [activeSessionId, refreshData]);
+  }, [activeSessionId, refreshData, broadcastChange]);
 
   const updateElection = useCallback(
     async (updates: Partial<Election>) => {
@@ -676,9 +813,11 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         if (updates.name !== undefined) mapped.name = updates.name;
         if (updates.schoolYear !== undefined) mapped.school_year = updates.schoolYear;
 
-        const toMySQLDateTime = (d: Date) => {
-          if (isNaN(d.getTime())) return null;
-          return d.toISOString();
+        const toMySQLDateTime = (d: Date | string | null | undefined) => {
+          if (!d) return null;
+          const date = d instanceof Date ? d : new Date(d);
+          if (isNaN(date.getTime())) return null;
+          return date.toISOString();
         };
 
         if (updates.startDate !== undefined) {
@@ -699,66 +838,92 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         if ((updates as any).eligibleGradeLevels !== undefined) mapped.eligible_grade_levels = (updates as any).eligibleGradeLevels;
         if ((updates as any).eligibleSections !== undefined) mapped.eligible_sections = (updates as any).eligibleSections;
 
+        // Optimistically update sessions and election so UI immediately reflects changes
+        setSessions(prev =>
+          prev.map(s => (s.id === activeSessionId ? { ...s, ...updates } : s))
+        );
+        setElection(prev => (prev ? { ...prev, ...updates } : null));
+
         await api.updateSession(activeSessionId || '1', mapped);
-        await refreshData();
+        broadcastChange('election_updated', { sessionId: activeSessionId });
+        refreshData().catch(console.error);
       } catch (error) {
         console.error('Update election failed:', error);
+        refreshData().catch(console.error);
         throw error;
       }
     },
-    [activeSessionId, refreshData]
+    [activeSessionId, refreshData, broadcastChange]
   );
 
   const resetSystem = useCallback(async () => {
     try {
       await api.resetSession(activeSessionId || '1');
+      broadcastChange('session_reset', { sessionId: activeSessionId });
       await refreshData();
     } catch (error) {
       console.error('Reset system failed:', error);
       throw error;
     }
-  }, [activeSessionId, refreshData]);
+  }, [activeSessionId, refreshData, broadcastChange]);
 
   const processRollover = useCallback(async (newSchoolYear: string, voterUpdates: any[]) => {
     try {
       await api.processYearRollover(newSchoolYear, voterUpdates);
+      broadcastChange('rollover_processed');
       await refreshData();
     } catch (error) {
       console.error('Process rollover failed:', error);
       throw error;
     }
-  }, [refreshData]);
+  }, [refreshData, broadcastChange]);
 
   // Candidate CRUD
   const addCandidate = useCallback(
     async (candidateData: Omit<Candidate, 'id' | 'votes' | 'sessionId'>) => {
       if (!activeSessionId) throw new Error('Select an election first.');
 
+      const tempId = 'temp-cand-' + Date.now();
+      const newCandidate: Candidate = {
+        ...candidateData,
+        id: tempId,
+        votes: 0,
+        sessionId: activeSessionId || '1',
+      };
+      setCandidates(prev => [...prev, newCandidate]);
+
       const mapped: any = {
-        name: candidateData.name,
+        name: candidateData.name.trim(),
         position_id: candidateData.position,
-        party: candidateData.party,
+        party: candidateData.party.trim() || 'Independent',
         photo_url: candidateData.photo,
-        motto: candidateData.motto,
+        motto: candidateData.motto.trim(),
         grade_level: candidateData.gradeLevel,
         section: candidateData.section,
         session_id: activeSessionId || '1',
       };
       try {
-        await api.addCandidate(mapped);
-        await refreshData();
+        const res = await api.addCandidate(mapped);
+        const realId = res?.id ? String(res.id) : tempId;
+        setCandidates(prev => prev.map(c => c.id === tempId ? { ...c, id: realId } : c));
+        broadcastChange('candidate_added', { id: realId, sessionId: activeSessionId });
+        refreshData().catch(console.error);
       } catch (error) {
+        setCandidates(prev => prev.filter(c => c.id !== tempId));
         console.error('Add candidate failed:', error);
-        await refreshData();
         throw error;
       }
     },
-    [activeSessionId, refreshData]
+    [activeSessionId, refreshData, broadcastChange]
   );
 
   const updateCandidate = useCallback(
     async (id: string, updates: Partial<Candidate>) => {
-      setCandidates(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+      let original: Candidate | undefined;
+      setCandidates(prev => {
+        original = prev.find(c => c.id === id);
+        return prev.map(c => c.id === id ? { ...c, ...updates } : c);
+      });
       const mapped: any = { id };
       if (updates.name !== undefined) mapped.name = updates.name;
       if (updates.position !== undefined) mapped.position_id = updates.position;
@@ -769,27 +934,39 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       if (updates.section !== undefined) mapped.section = updates.section;
       try {
         await api.updateCandidate(mapped);
+        broadcastChange('candidate_updated', { id, sessionId: activeSessionId });
+        refreshData().catch(console.error);
       } catch (error) {
+        if (original) {
+          setCandidates(prev => prev.map(c => c.id === id ? original! : c));
+        }
         console.error('Update candidate failed:', error);
-        await refreshData();
         throw error;
       }
     },
-    [refreshData]
+    [activeSessionId, refreshData, broadcastChange]
   );
 
   const deleteCandidate = useCallback(
     async (id: string) => {
-      setCandidates(prev => prev.filter(c => c.id !== id));
+      let removed: Candidate | undefined;
+      setCandidates(prev => {
+        removed = prev.find(c => c.id === id);
+        return prev.filter(c => c.id !== id);
+      });
       try {
         await api.deleteCandidate(id);
+        broadcastChange('candidate_deleted', { id, sessionId: activeSessionId });
+        refreshData().catch(console.error);
       } catch (error) {
+        if (removed) {
+          setCandidates(prev => [...prev, removed!]);
+        }
         console.error('Delete candidate failed:', error);
-        await refreshData();
         throw error;
       }
     },
-    [refreshData]
+    [activeSessionId, refreshData, broadcastChange]
   );
 
   // Position CRUD
@@ -797,63 +974,130 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     async (positionData: Omit<Position, 'id' | 'sessionId'>) => {
       if (!activeSessionId) throw new Error('Select an election first.');
 
+      const tempId = 'temp-pos-' + Date.now();
+      const newPos: Position = {
+        id: tempId,
+        name: positionData.name.trim(),
+        order: positionData.order,
+        maxVotes: positionData.maxVotes,
+        strictGradeMapping: positionData.strictGradeMapping,
+        sessionId: activeSessionId || '1',
+      };
+      setPositions(prev => [...prev, newPos].sort((a, b) => a.order - b.order));
+
       const mapped: any = {
-        name: positionData.name,
+        name: positionData.name.trim(),
         display_order: positionData.order,
         max_votes: positionData.maxVotes,
         strict_grade_mapping: positionData.strictGradeMapping ? true : false,
         session_id: activeSessionId || '1',
       };
       try {
-        await api.addPosition(mapped);
-        await refreshData();
+        const res = await api.addPosition(mapped);
+        const realId = res?.id ? String(res.id) : tempId;
+        setPositions(prev => prev.map(p => p.id === tempId ? { ...p, id: realId } : p).sort((a, b) => a.order - b.order));
+        broadcastChange('position_added', { id: realId, sessionId: activeSessionId });
+        refreshData().catch(console.error);
       } catch (error) {
+        setPositions(prev => prev.filter(p => p.id !== tempId));
         console.error('Add position failed:', error);
-        await refreshData();
         throw error;
       }
     },
-    [activeSessionId, refreshData]
+    [activeSessionId, refreshData, broadcastChange]
   );
 
   const deletePosition = useCallback(
     async (id: string) => {
-      await api.deletePosition(id);
-      await refreshData();
+      let removed: Position | undefined;
+      setPositions(prev => {
+        removed = prev.find(p => p.id === id);
+        return prev.filter(p => p.id !== id);
+      });
+
+      try {
+        await api.deletePosition(id);
+        broadcastChange('position_deleted', { id, sessionId: activeSessionId });
+        refreshData().catch(console.error);
+      } catch (error) {
+        if (removed) {
+          setPositions(prev => [...prev, removed!].sort((a, b) => a.order - b.order));
+        }
+        console.error('Delete position failed:', error);
+        throw error;
+      }
     },
-    [refreshData]
+    [activeSessionId, refreshData, broadcastChange]
   );
 
   const cleanupDuplicatePositions = useCallback(async () => {
     try {
       const result = await api.cleanupDuplicatePositions(activeSessionId || undefined);
-      await refreshData();
+      broadcastChange('positions_cleaned');
+      refreshData().catch(console.error);
       return result;
     } catch (error) {
       console.error('Cleanup duplicate positions failed:', error);
       throw error;
     }
-  }, [activeSessionId, refreshData]);
+  }, [activeSessionId, refreshData, broadcastChange]);
 
   // Section CRUD (global)
   const addSection = useCallback(
     async (sectionData: Omit<Section, 'id'>) => {
-      const mapped = {
-        name: sectionData.name,
-        grade_level: sectionData.gradeLevel,
+      const tempId = 'temp-sec-' + Date.now();
+      const optimisticSec: Section = {
+        id: tempId,
+        name: sectionData.name.trim(),
+        gradeLevel: sectionData.gradeLevel,
       };
-      await api.addSection(mapped);
-      await refreshData();
+      setSections(prev => {
+        if (prev.some(s => s.name.trim().toLowerCase() === optimisticSec.name.toLowerCase() && s.gradeLevel === optimisticSec.gradeLevel)) {
+          return prev;
+        }
+        return [...prev, optimisticSec];
+      });
+
+      try {
+        const mapped = {
+          name: sectionData.name.trim(),
+          grade_level: sectionData.gradeLevel,
+        };
+        const res = await api.addSection(mapped);
+        const realId = res?.id ? String(res.id) : tempId;
+        setSections(prev => prev.map(s => s.id === tempId ? { ...s, id: realId } : s));
+        broadcastChange('section_added', { id: realId, name: sectionData.name, gradeLevel: sectionData.gradeLevel });
+        refreshData().catch(console.error);
+      } catch (err) {
+        setSections(prev => prev.filter(s => s.id !== tempId));
+        console.error('Add section error:', err);
+        throw err;
+      }
     },
-    [refreshData]
+    [refreshData, broadcastChange]
   );
 
   const deleteSection = useCallback(
     async (id: string) => {
-      await api.deleteSection(id);
-      await refreshData();
+      let removed: Section | undefined;
+      setSections(prev => {
+        removed = prev.find(s => s.id === id);
+        return prev.filter(s => s.id !== id);
+      });
+
+      try {
+        await api.deleteSection(id);
+        broadcastChange('section_deleted', { id });
+        refreshData().catch(console.error);
+      } catch (err) {
+        if (removed) {
+          setSections(prev => [...prev, removed!]);
+        }
+        console.error('Delete section error:', err);
+        throw err;
+      }
     },
-    [refreshData]
+    [refreshData, broadcastChange]
   );
 
   // Voter management
@@ -862,6 +1106,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       setVoters(prev => prev.map(v => v.id === id ? { ...v, status: 'approved' } : v));
       try {
         await api.approveVoter(id);
+        broadcastChange('voter_approved', { id });
         return true;
       } catch (error) {
         console.error('Approve voter failed:', error);
@@ -869,7 +1114,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [refreshData]
+    [refreshData, broadcastChange]
   );
 
   const approveAllVoters = useCallback(
@@ -877,6 +1122,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       setVoters(prev => prev.map(v => v.status === 'pending' ? { ...v, status: 'approved' } : v));
       try {
         await api.approveAllPendingVoters();
+        broadcastChange('voters_approved_all');
         return true;
       } catch (error) {
         console.error('Approve all voters failed:', error);
@@ -884,7 +1130,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [refreshData]
+    [refreshData, broadcastChange]
   );
 
   const updateMySection = useCallback(
@@ -895,13 +1141,14 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       }
       try {
         await api.updateMySection(voterId, newSection);
+        broadcastChange('section_updated', { voterId, newSection });
       } catch (error) {
         console.error('Update section failed:', error);
         refreshData();
         throw error;
       }
     },
-    [refreshData, user]
+    [refreshData, user, broadcastChange]
   );
 
   const rejectVoter = useCallback(
@@ -909,6 +1156,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       setVoters(prev => prev.map(v => v.id === id ? { ...v, status: 'rejected' } : v));
       try {
         await api.rejectVoter(id);
+        broadcastChange('voter_rejected', { id });
         return true;
       } catch (error) {
         console.error('Reject voter failed:', error);
@@ -916,7 +1164,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [refreshData]
+    [refreshData, broadcastChange]
   );
 
   const deleteVoter = useCallback(
@@ -924,6 +1172,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       setVoters(prev => prev.filter(v => v.id !== id));
       try {
         await api.deleteVoter(id);
+        broadcastChange('voter_deleted', { id });
         return true;
       } catch (error) {
         console.error('Delete voter failed:', error);
@@ -931,7 +1180,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [refreshData]
+    [refreshData, broadcastChange]
   );
 
   return (

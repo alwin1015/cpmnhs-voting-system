@@ -10,13 +10,13 @@ import { useVoting } from '@/contexts/VotingContext';
 import { useToast } from '@/hooks/use-toast';
 import schoolLogo from '@/assets/school-logo.png';
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Eye, EyeOff, LogIn, User, Lock, UserPlus, BookOpen, GraduationCap, FileDigit, CheckCircle2 } from 'lucide-react';
+import { Eye, EyeOff, LogIn, User, Lock, UserPlus, BookOpen, GraduationCap, FileDigit, CheckCircle2, X } from 'lucide-react';
 
 export default function LoginPage() {
   const [isRegisterMode, setIsRegisterMode] = useState(false);
 
   // Login state
-  const [lrn, setLrn] = useState('');
+  const [lrn, setLrn] = useState(() => localStorage.getItem('student_device_lrn') || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -92,9 +92,8 @@ export default function LoginPage() {
     }, 400);
 
     // Mark as dismissed so it doesn't show again for this session
-    const knownLrn = lrn || localStorage.getItem('student_device_lrn');
-    if (knownLrn && voters) {
-      const voter = voters.find(v => v.lrn === knownLrn);
+    if (lrn && voters) {
+      const voter = voters.find(v => v.lrn === lrn);
       if (voter) {
         const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
         const eligibleSession = activeSessions.find(s => {
@@ -108,17 +107,15 @@ export default function LoginPage() {
     }
   };
 
-  // Automatically check approval status on page load or when voters/sessions update (realtime)
+  // Automatically check approval status on 12-digit LRN or when voters/sessions update (realtime)
   useEffect(() => {
     if (isRegisterMode) return;
-    const knownLrn = lrn || localStorage.getItem('student_device_lrn');
-    if (knownLrn && knownLrn.length === 12) {
-      if (!lrn) {
-        setLrn(knownLrn);
-      }
-      checkAndTriggerApprovalNotification(knownLrn);
+    if (lrn && lrn.length === 12) {
+      checkAndTriggerApprovalNotification(lrn);
+    } else {
+      setShowApprovalBanner(false);
     }
-  }, [checkAndTriggerApprovalNotification, isRegisterMode, lrn]);
+  }, [checkAndTriggerApprovalNotification, isRegisterMode, lrn, voters]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,10 +178,13 @@ export default function LoginPage() {
           variant: 'destructive',
         });
       }
-    } catch (error) {
+    } catch (error: any) {
+      const errMsg = error?.message || '';
       toast({
-        title: 'Error',
-        description: 'An error occurred. Please try again.',
+        title: 'Login Failed',
+        description: errMsg.toLowerCase().includes('approved')
+          ? 'Your registration is still pending administrator approval. Please wait for an admin to approve your account.'
+          : (errMsg || 'Invalid LRN or password.'),
         variant: 'destructive',
       });
     } finally {
@@ -548,12 +548,30 @@ export default function LoginPage() {
                           if (val.length === 12) {
                             localStorage.setItem('student_device_lrn', val);
                             checkAndTriggerApprovalNotification(val);
+                          } else if (val === '') {
+                            localStorage.removeItem('student_device_lrn');
+                            setShowApprovalBanner(false);
                           }
                         }}
+                        placeholder="Enter 12-digit LRN"
                         maxLength={12}
-                        className="pl-9 bg-white/50"
+                        className="pl-9 pr-9 bg-white/50"
                         disabled={isLoading}
                       />
+                      {lrn && !isLoading && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLrn('');
+                            localStorage.removeItem('student_device_lrn');
+                            setShowApprovalBanner(false);
+                          }}
+                          className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 transition-colors p-0.5 rounded-full hover:bg-slate-100"
+                          title="Clear LRN"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
 

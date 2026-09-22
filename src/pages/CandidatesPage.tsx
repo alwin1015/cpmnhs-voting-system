@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useState, useRef, useMemo, useCallback } from 'react';
+import { useToast } from '@/hooks/use-toast';
 import { User, Plus, Pencil, Trash2, X, Upload, Save, Building2, Crop } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import { getCroppedImg } from '@/utils/cropImage';
@@ -31,8 +32,9 @@ const emptyForm: CandidateForm = {
 };
 
 export default function CandidatesPage() {
-  const { candidates, positions, addCandidate, updateCandidate, deleteCandidate, user, isLoggedIn, activeSession } = useVoting();
+  const { candidates, positions, addCandidate, updateCandidate, deleteCandidate, user, isLoggedIn, activeSession, sessions, activeSessionId, switchSession } = useVoting();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<CandidateForm>(emptyForm);
@@ -66,7 +68,11 @@ export default function CandidatesPage() {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        alert('Image must be less than 5MB');
+        toast({
+          title: 'File Too Large',
+          description: 'Image must be less than 5MB.',
+          variant: 'destructive',
+        });
         return;
       }
       const reader = new FileReader();
@@ -89,7 +95,11 @@ export default function CandidatesPage() {
       setImageToCrop(null);
     } catch (e) {
       console.error('Error cropping image:', e);
-      alert('Failed to crop image');
+      toast({
+        title: 'Crop Failed',
+        description: 'Failed to crop image.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -97,7 +107,11 @@ export default function CandidatesPage() {
 
   const handleSubmit = async () => {
     if (!form.name.trim() || !form.position || !form.gradeLevel.trim() || !form.section.trim()) {
-      alert('Please fill in all required fields: Name, Position, Grade Level, and Section.');
+      toast({
+        title: 'Validation Error',
+        description: 'Please fill in all required fields: Name, Position, Grade Level, and Section.',
+        variant: 'destructive',
+      });
       return;
     }
 
@@ -127,12 +141,20 @@ export default function CandidatesPage() {
       if (isEdit && currentEditingId) {
         updateCandidate(currentEditingId, payload).catch(err => {
           console.error('Save candidate error:', err);
-          alert('Failed to update candidate: ' + (err?.message || 'Please check your database connection or try again.'));
+          toast({
+            title: 'Update Failed',
+            description: err?.message || 'Please check your database connection or try again.',
+            variant: 'destructive',
+          });
         });
       } else {
         addCandidate(payload).catch(err => {
           console.error('Save candidate error:', err);
-          alert('Failed to add candidate: ' + (err?.message || 'Please check your database connection or try again.'));
+          toast({
+            title: 'Add Failed',
+            description: err?.message || 'Please check your database connection or try again.',
+            variant: 'destructive',
+          });
         });
       }
     } catch (err: any) {
@@ -175,22 +197,42 @@ export default function CandidatesPage() {
       
       <main className="flex-1 py-8">
         <div className="container mx-auto px-4 max-w-6xl">
-          <div className="flex flex-col sm:flex-row items-center justify-between mb-8 animate-slide-up">
-            <div className="text-center sm:text-left mb-4 sm:mb-0">
+          <div className="flex flex-col sm:flex-row items-center justify-between mb-8 animate-slide-up gap-4">
+            <div className="text-center sm:text-left mb-2 sm:mb-0">
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Candidates</h1>
               <p className="text-gray-500">Manage candidates for <span className="font-semibold text-blue-600">{activeSession?.name || 'Session 1'}</span></p>
             </div>
             
-            {isAdmin && !showForm && (
-              <Button
-                onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyForm); }}
-                className="gap-2 text-white shadow-lg hover:shadow-xl transition-all"
-                style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)' }}
-              >
-                <Plus className="h-5 w-5" />
-                Add Candidate
-              </Button>
-            )}
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-center sm:justify-end">
+              {sessions.length > 1 && (
+                <div className="relative min-w-[170px]">
+                  <select
+                    value={activeSessionId || ''}
+                    onChange={(e) => switchSession(e.target.value)}
+                    className="w-full appearance-none bg-white border border-slate-200 text-slate-800 font-semibold text-sm rounded-xl px-4 py-2 pr-10 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:bg-slate-50 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <option value="" disabled>Select session...</option>
+                    {sessions.map(s => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.schoolYear})</option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-500">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                  </div>
+                </div>
+              )}
+
+              {isAdmin && !showForm && (
+                <Button
+                  onClick={() => { setShowForm(true); setEditingId(null); setForm(emptyForm); }}
+                  className="gap-2 text-white shadow-lg hover:shadow-xl transition-all"
+                  style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)' }}
+                >
+                  <Plus className="h-5 w-5" />
+                  Add Candidate
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Add/Edit Form */}

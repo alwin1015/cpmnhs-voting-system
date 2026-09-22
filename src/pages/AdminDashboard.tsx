@@ -63,7 +63,9 @@ export default function AdminDashboard() {
 
   // Schedule panel state
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
   const [isMappingsOpen, setIsMappingsOpen] = useState(false);
+  const [isSavingMappings, setIsSavingMappings] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
@@ -86,13 +88,17 @@ export default function AdminDashboard() {
     setEditName(election?.name || '');
     setEditSchoolYear(election?.schoolYear || '');
     
-    const formatDate = (d?: Date) => {
-      if (!d || isNaN(d.getTime())) return '';
-      return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+    const formatDate = (d?: Date | string | null) => {
+      if (!d) return '';
+      const date = d instanceof Date ? d : new Date(d);
+      if (isNaN(date.getTime())) return '';
+      return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0];
     };
-    const formatTime = (d?: Date) => {
-      if (!d || isNaN(d.getTime())) return '';
-      return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[1].slice(0, 5);
+    const formatTime = (d?: Date | string | null) => {
+      if (!d) return '';
+      const date = d instanceof Date ? d : new Date(d);
+      if (isNaN(date.getTime())) return '';
+      return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[1].slice(0, 5);
     };
 
     setEditStartDate(formatDate(election?.startDate));
@@ -110,67 +116,49 @@ export default function AdminDashboard() {
     }
     const parseDateTime = (d: string, t: string) => {
       if (!d) return null;
-      return new Date(`${d}T${t || '00:00'}`);
+      const parsed = new Date(`${d}T${t || '00:00'}`);
+      return isNaN(parsed.getTime()) ? null : parsed;
     };
 
-    setIsScheduleOpen(false);
-
-    // Check for School Year Rollover
-    if (currentSchoolYear && editSchoolYear && currentSchoolYear !== editSchoolYear) {
-      try {
-        const updates = voters.map(v => {
-          if (v.status === 'graduated' || v.status === 'inactive' || !v.gradeLevel) return null;
-          let nextGrade = v.gradeLevel;
-          let nextStatus: Voter['status'] = v.status;
-          const numGrade = parseInt(v.gradeLevel, 10);
-          if (!isNaN(numGrade)) {
-            if (numGrade < 12) {
-              nextGrade = (numGrade + 1).toString();
-            } else if (numGrade === 12) {
-              nextGrade = 'Graduated';
-              nextStatus = 'graduated';
-            }
-          }
-          return {
-            id: v.id,
-            grade_level: nextGrade,
-            section: '',
-            status: nextStatus,
-            academic_history: [...(v.academicHistory || []), { schoolYear: currentSchoolYear, gradeLevel: v.gradeLevel, section: v.section }]
-          };
-        }).filter(Boolean) as any[];
-
-        if (updates.length > 0) {
-          await processRollover(editSchoolYear, updates);
-          toast({ title: 'School Year Updated', description: `Voters automatically promoted for ${editSchoolYear}. Grade 12 students graduated.` });
-        }
-      } catch (err) {
-        console.error("Rollover failed", err);
-        toast({ title: 'Rollover Error', description: 'Failed to automatically promote students.', variant: 'destructive' });
-        return;
-      }
-    }
+    setIsSavingSchedule(true);
     try {
+      const parsedStart = parseDateTime(editStartDate, editStartTime);
+      const parsedEnd = parseDateTime(editEndDate, editEndTime);
+
+      const nextScheduleStatus = election?.scheduleStatus === 'ongoing'
+        ? 'ongoing'
+        : (parsedStart || parsedEnd ? 'scheduled' : (election?.scheduleStatus || 'draft'));
+
       await updateElection({
-        name: editName,
-        schoolYear: editSchoolYear,
-        startDate: parseDateTime(editStartDate, editStartTime) || undefined,
-        endDate: parseDateTime(editEndDate, editEndTime) || undefined,
-        scheduleStatus: 'scheduled',
+        name: editName.trim(),
+        schoolYear: editSchoolYear.trim(),
+        startDate: parsedStart,
+        endDate: parsedEnd,
+        scheduleStatus: nextScheduleStatus,
       });
+
+      setIsScheduleOpen(false);
       toast({ title: 'Schedule Saved', description: 'Election schedule details updated successfully.' });
     } catch (err) {
       console.error('Schedule update error:', err);
       toast({ title: 'Save Failed', description: 'The election schedule was not updated.', variant: 'destructive' });
+    } finally {
+      setIsSavingSchedule(false);
     }
   };
 
   const handleOpenMappings = () => {
-    setEditMappings(election?.gradeMappings || {});
+    const existing = election?.gradeMappings || {};
+    const fullMappings: Record<string, string> = {};
+    GRADES.forEach(g => {
+      fullMappings[g] = existing[g] !== undefined ? existing[g] : g;
+    });
+    setEditMappings(fullMappings);
     setIsMappingsOpen(true);
   };
 
   const handleSaveMappings = async () => {
+    setIsSavingMappings(true);
     try {
       await updateElection({ gradeMappings: editMappings });
       setIsMappingsOpen(false);
@@ -178,6 +166,8 @@ export default function AdminDashboard() {
     } catch (err) {
       console.error('Save mappings error:', err);
       toast({ title: 'Save Failed', description: 'Representative mappings were not updated.', variant: 'destructive' });
+    } finally {
+      setIsSavingMappings(false);
     }
   };
 
@@ -387,9 +377,9 @@ export default function AdminDashboard() {
       </div>
 
       <div className="flex justify-end gap-2 pt-2">
-        <Button variant="outline" onClick={() => setIsScheduleOpen(false)} className="text-xs">Cancel</Button>
-        <Button onClick={handleSaveSchedule} className="text-xs bg-blue-600 hover:bg-blue-700 text-white">
-          Save Schedule
+        <Button variant="outline" onClick={() => setIsScheduleOpen(false)} className="text-xs" disabled={isSavingSchedule}>Cancel</Button>
+        <Button onClick={handleSaveSchedule} disabled={isSavingSchedule} className="text-xs bg-blue-600 hover:bg-blue-700 text-white">
+          {isSavingSchedule ? 'Saving...' : 'Save Schedule'}
         </Button>
       </div>
     </div>
@@ -487,8 +477,10 @@ export default function AdminDashboard() {
                   ))}
                 </div>
                 <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-gray-100">
-                  <Button variant="outline" onClick={() => setIsMappingsOpen(false)} className="hover:bg-gray-100">Cancel</Button>
-                  <Button onClick={handleSaveMappings} className="shadow-md hover:shadow-lg transition-all" style={{ background: 'linear-gradient(135deg, #9333ea, #4f46e5)', color: 'white' }}>Save Mappings</Button>
+                  <Button variant="outline" onClick={() => setIsMappingsOpen(false)} className="hover:bg-gray-100" disabled={isSavingMappings}>Cancel</Button>
+                  <Button onClick={handleSaveMappings} disabled={isSavingMappings} className="shadow-md hover:shadow-lg transition-all" style={{ background: 'linear-gradient(135deg, #9333ea, #4f46e5)', color: 'white' }}>
+                    {isSavingMappings ? 'Saving...' : 'Save Mappings'}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -532,6 +524,36 @@ export default function AdminDashboard() {
             </div>
           </div>
 
+          {/* Advisory banner if current session is empty but another session (like Session 1) exists */}
+          {positions.length === 0 && candidates.length === 0 && sessions.length > 1 && (() => {
+            const candidateSession = sessions.find(s => s.id !== activeSessionId);
+            if (!candidateSession) return null;
+            return (
+              <div className="mb-6 p-4 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-fade-in">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-amber-200 text-amber-800 flex-shrink-0">
+                    <AlertTriangle className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">
+                      You are viewing "{election?.name || 'an empty session'}" (0 positions, 0 candidates).
+                    </p>
+                    <p className="text-xs text-amber-700">
+                      Your configured election data is in another session: "{candidateSession.name}".
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => switchSession(candidateSession.id)}
+                  className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold whitespace-nowrap self-end sm:self-auto"
+                >
+                  Switch to {candidateSession.name}
+                </Button>
+              </div>
+            );
+          })()}
+
           {/* Election Status Banner */}
           <div className="mb-8 relative overflow-hidden rounded-2xl shadow-xl border-0 animate-fade-in group">
             <div className={`absolute inset-0 bg-gradient-to-br ${election?.isActive ? 'from-green-500 to-emerald-700' : 'from-slate-700 to-slate-900'} opacity-95 transition-colors duration-500`}></div>
@@ -564,9 +586,15 @@ export default function AdminDashboard() {
                     <span className="text-xs text-white/60 flex items-center gap-1.5 bg-black/10 px-3 py-1 rounded-full backdrop-blur-md border border-white/10 truncate max-w-full">
                       <CalendarClock className="h-3.5 w-3.5 flex-shrink-0" />
                       <span className="truncate">
-                        {election.startDate && !isNaN(election.startDate.getTime()) ? election.startDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No start'} 
+                        {(() => {
+                          const start = election.startDate ? (election.startDate instanceof Date ? election.startDate : new Date(election.startDate)) : null;
+                          return start && !isNaN(start.getTime()) ? start.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No start';
+                        })()} 
                         <span className="mx-1 opacity-50">—</span>
-                        {election.endDate && !isNaN(election.endDate.getTime()) ? election.endDate.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No end'}
+                        {(() => {
+                          const end = election.endDate ? (election.endDate instanceof Date ? election.endDate : new Date(election.endDate)) : null;
+                          return end && !isNaN(end.getTime()) ? end.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'No end';
+                        })()}
                       </span>
                     </span>
                   )}

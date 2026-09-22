@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { useVoting } from '@/contexts/VotingContext';
@@ -19,7 +20,8 @@ import {
 } from 'lucide-react';
 
 export default function PositionsPage() {
-  const { positions, addPosition, deletePosition, cleanupDuplicatePositions, user, isLoggedIn, activeSession } = useVoting();
+  const { positions, addPosition, deletePosition, cleanupDuplicatePositions, user, isLoggedIn, activeSession, sessions, activeSessionId, switchSession } = useVoting();
+  const navigate = useNavigate();
   const { toast } = useToast();
 
   const [showForm, setShowForm] = useState(false);
@@ -28,6 +30,7 @@ export default function PositionsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [isCleaning, setIsCleaning] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   const isAdmin = isLoggedIn && user?.role === 'admin';
 
@@ -46,7 +49,7 @@ export default function PositionsPage() {
                 Position management is restricted to administrators.
               </p>
               <Button
-                onClick={() => window.location.href = '/'}
+                onClick={() => navigate('/')}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg h-10 text-sm"
               >
                 Return Home
@@ -60,7 +63,8 @@ export default function PositionsPage() {
   }
 
   const handleAdd = async () => {
-    if (!newPositionName.trim()) {
+    const nameTrimmed = newPositionName.trim();
+    if (!nameTrimmed) {
       toast({
         title: 'Validation Error',
         description: 'Please enter a position name.',
@@ -69,10 +73,22 @@ export default function PositionsPage() {
       return;
     }
 
+    if (positions.some(p => p.name.trim().toLowerCase() === nameTrimmed.toLowerCase())) {
+      toast({
+        title: 'Duplicate Position',
+        description: `A position named "${nameTrimmed}" already exists in this election.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const maxVotes = parseInt(newMaxVotes) || 1;
-    const nameTrimmed = newPositionName.trim();
     
     setIsAdding(true);
+    setNewPositionName('');
+    setNewMaxVotes('1');
+    setShowForm(false);
+
     try {
       await addPosition({
         name: nameTrimmed,
@@ -80,11 +96,11 @@ export default function PositionsPage() {
         order: positions.length + 1,
         strictGradeMapping: true,
       });
-      setNewPositionName('');
-      setNewMaxVotes('1');
-      setShowForm(false);
       toast({ title: 'Position Added', description: `"${nameTrimmed}" was created successfully.` });
     } catch (error: unknown) {
+      setNewPositionName(nameTrimmed);
+      setNewMaxVotes(String(maxVotes));
+      setShowForm(true);
       toast({
         title: 'Failed to Add Position',
         description: error instanceof Error ? error.message : 'Could not create position.',
@@ -96,12 +112,15 @@ export default function PositionsPage() {
   };
 
   const handleDelete = async (id: string) => {
+    setIsDeleting(id);
     try {
       await deletePosition(id);
       setDeleteConfirm(null);
       toast({ title: 'Position Removed', description: 'The position has been deleted.' });
     } catch (error) {
       toast({ title: 'Delete Failed', description: error instanceof Error ? error.message : 'Could not delete position.', variant: 'destructive' });
+    } finally {
+      setIsDeleting(null);
     }
   };
 
@@ -154,7 +173,25 @@ export default function PositionsPage() {
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {sessions.length > 1 && (
+                <div className="relative min-w-[160px]">
+                  <select
+                    value={activeSessionId || ''}
+                    onChange={(e) => switchSession(e.target.value)}
+                    className="w-full appearance-none bg-white border border-slate-200 text-slate-800 font-semibold text-xs sm:text-sm rounded-lg px-3 py-2 pr-9 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:bg-slate-50 transition-colors cursor-pointer shadow-xs"
+                  >
+                    <option value="" disabled>Select session...</option>
+                    {sessions.map(s => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.schoolYear})</option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none text-slate-500">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                  </div>
+                </div>
+              )}
+
               <Button
                 variant="outline"
                 size="sm"
@@ -279,10 +316,11 @@ export default function PositionsPage() {
                           {deleteConfirm === position.id ? (
                             <div className="flex items-center justify-end gap-1.5">
                               <button
+                                disabled={isDeleting === position.id}
                                 onClick={() => handleDelete(position.id)}
-                                className="px-2 py-0.5 text-xs text-white bg-red-600 rounded hover:bg-red-700 font-medium"
+                                className="px-2 py-0.5 text-xs text-white bg-red-600 rounded hover:bg-red-700 font-medium disabled:opacity-50"
                               >
-                                Delete
+                                {isDeleting === position.id ? 'Deleting...' : 'Delete'}
                               </button>
                               <button
                                 onClick={() => setDeleteConfirm(null)}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { useVoting } from '@/contexts/VotingContext';
@@ -26,6 +27,7 @@ import { OfficialResultsSheet } from '@/components/OfficialResultsSheet';
 
 export default function ElectionReportPage() {
   const { election, candidates, positions, voters, user, isLoggedIn, finalizeResults, unfinalizeResults } = useVoting();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -335,7 +337,7 @@ export default function ElectionReportPage() {
                 The election report is only accessible to administrators.
               </p>
               <Button
-                onClick={() => window.location.href = '/'}
+                onClick={() => navigate('/')}
                 className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-11 transition-colors"
               >
                 Return Home

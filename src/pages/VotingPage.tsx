@@ -37,8 +37,13 @@ export default function VotingPage() {
         const sectionOk = !s.eligibleSections || s.eligibleSections.length === 0 || s.eligibleSections.includes(user.section || '');
         return gradeOk && sectionOk;
       });
-      if (eligible.length > 0 && (!activeSessionId || !eligible.find(s => s.id === activeSessionId))) {
-        switchSession(eligible[0].id);
+      const prioritized = [...eligible].sort((a, b) => {
+        if (a.id === '1') return -1;
+        if (b.id === '1') return 1;
+        return Number(a.id) - Number(b.id);
+      });
+      if (prioritized.length > 0 && (!activeSessionId || !prioritized.find(s => s.id === activeSessionId))) {
+        switchSession(prioritized[0].id);
       }
     }
   }, [user, sessions, activeSessionId, switchSession]);

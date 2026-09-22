@@ -18,6 +18,8 @@ export default function SectionsPage() {
   const [newSectionName, setNewSectionName] = useState('');
   const [newSectionGrade, setNewSectionGrade] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   const isAdmin = isLoggedIn && user?.role === 'admin';
 
@@ -34,28 +36,58 @@ export default function SectionsPage() {
   }
 
   const handleAdd = async () => {
-    if (!newSectionName.trim() || !newSectionGrade) {
-      alert('Please fill in both Section Name and Grade Level');
+    const trimmed = newSectionName.trim();
+    if (!trimmed || !newSectionGrade) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please fill in both Section Name and Grade Level.',
+        variant: 'destructive',
+      });
       return;
     }
+
+    if (sections.some(s => s.gradeLevel === newSectionGrade && s.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+      toast({
+        title: 'Duplicate Section',
+        description: `"${trimmed}" already exists for Grade ${newSectionGrade}.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    const nameToSave = trimmed;
+    const gradeToSave = newSectionGrade;
+
+    // Fluid UI: close form immediately
+    setNewSectionName('');
+    setNewSectionGrade('');
+    setShowForm(false);
+
     try {
-      await addSection({ name: newSectionName.trim(), gradeLevel: newSectionGrade });
-      setNewSectionName('');
-      setNewSectionGrade('');
-      setShowForm(false);
-      toast({ title: 'Section Added', description: 'The section was saved.' });
+      await addSection({ name: nameToSave, gradeLevel: gradeToSave });
+      toast({ title: 'Section Added', description: `Section "${nameToSave}" (Grade ${gradeToSave}) was saved.` });
     } catch (error) {
+      // Re-open and restore input on failure
+      setNewSectionName(nameToSave);
+      setNewSectionGrade(gradeToSave);
+      setShowForm(true);
       toast({ title: 'Save Failed', description: error instanceof Error ? error.message : 'Could not save the section.', variant: 'destructive' });
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
+    setIsDeleting(id);
     try {
       await deleteSection(id);
       setDeleteConfirm(null);
       toast({ title: 'Section Removed', description: 'The section was deleted.' });
     } catch (error) {
       toast({ title: 'Delete Failed', description: error instanceof Error ? error.message : 'Could not delete the section.', variant: 'destructive' });
+    } finally {
+      setIsDeleting(null);
     }
   };
 
@@ -111,12 +143,30 @@ export default function SectionsPage() {
                     <Input 
                       value={newSectionName} 
                       onChange={e => setNewSectionName(e.target.value)} 
+                      placeholder="e.g. Diamond, Archimedes"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAdd();
+                        }
+                      }}
                     />
                   </div>
                 </div>
                 <div className="flex justify-end">
-                  <Button onClick={handleAdd} className="bg-blue-600 text-white hover:bg-blue-700">
-                    Save Section
+                  <Button 
+                    onClick={handleAdd} 
+                    disabled={isSaving || !newSectionName.trim() || !newSectionGrade}
+                    className="bg-blue-600 text-white hover:bg-blue-700 min-w-[120px]"
+                  >
+                    {isSaving ? (
+                      <span className="flex items-center gap-2">
+                        <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Saving...
+                      </span>
+                    ) : (
+                      'Save Section'
+                    )}
                   </Button>
                 </div>
               </CardContent>
@@ -141,10 +191,11 @@ export default function SectionsPage() {
                               {deleteConfirm === section.id ? (
                                 <div className="flex items-center gap-1">
                                   <button
+                                    disabled={isDeleting === section.id}
                                     onClick={() => handleDelete(section.id)}
-                                    className="px-2 py-1 text-xs text-white bg-red-500 rounded hover:bg-red-600"
+                                    className="px-2 py-1 text-xs text-white bg-red-500 rounded hover:bg-red-600 disabled:opacity-50"
                                   >
-                                    Confirm
+                                    {isDeleting === section.id ? 'Deleting...' : 'Confirm'}
                                   </button>
                                   <button
                                     onClick={() => setDeleteConfirm(null)}

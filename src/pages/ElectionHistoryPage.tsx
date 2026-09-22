@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { useVoting } from '@/contexts/VotingContext';
@@ -85,6 +85,7 @@ function parseHistorySession(s: any): HistorySession {
 
 export default function ElectionHistoryPage() {
   const { user, isLoggedIn } = useVoting();
+  const navigate = useNavigate();
   const { toast } = useToast();
 
   const [historySessions, setHistorySessions] = useState<HistorySession[]>([]);

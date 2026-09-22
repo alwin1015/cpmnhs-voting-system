@@ -115,7 +115,7 @@ export const api = {
   
   approveVoter: async (id: string) => {
     const { error } = await supabase.rpc('secure_admin_voter_action', {
-      p_token: requireSessionToken('admin'), p_action: 'approve', p_voter_id: Number(id),
+      p_token: requireSessionToken('admin'), p_action: 'approve', p_voter_id: String(id),
     });
     if (error) throw new Error(error.message);
     return { success: true };
@@ -148,7 +148,7 @@ export const api = {
   
   rejectVoter: async (id: string) => {
     const { error } = await supabase.rpc('secure_admin_voter_action', {
-      p_token: requireSessionToken('admin'), p_action: 'reject', p_voter_id: Number(id),
+      p_token: requireSessionToken('admin'), p_action: 'reject', p_voter_id: String(id),
     });
     if (error) throw new Error(error.message);
     return { success: true };
@@ -160,7 +160,7 @@ export const api = {
 
   deleteVoter: async (id: string) => {
     const { error } = await supabase.rpc('secure_admin_voter_action', {
-      p_token: requireSessionToken('admin'), p_action: 'delete', p_voter_id: Number(id),
+      p_token: requireSessionToken('admin'), p_action: 'delete', p_voter_id: String(id),
     });
     if (error) throw new Error(error.message);
     return { success: true };
@@ -191,7 +191,7 @@ export const api = {
     const { data, error } = await supabase
       .from('voting_sessions')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('id', { ascending: true });
     if (error) throw new Error(error.message);
     return data || [];
   },
@@ -285,8 +285,8 @@ export const api = {
     if (data.position_id !== undefined && data.position_id !== '') {
       payload.position_id = isNaN(Number(data.position_id)) ? data.position_id : Number(data.position_id);
     }
-    await adminManage('add_candidate', null, payload);
-    return { success: true };
+    const res = await adminManage('add_candidate', null, payload);
+    return res || { success: true };
   },
   
   updateCandidate: async (data: any) => {
@@ -300,13 +300,13 @@ export const api = {
     if (data.position_id !== undefined && data.position_id !== '') {
       payload.position_id = isNaN(Number(data.position_id)) ? data.position_id : Number(data.position_id);
     }
-    await adminManage('update_candidate', data.id, payload);
-    return { success: true };
+    const res = await adminManage('update_candidate', data.id, payload);
+    return res || { success: true };
   },
   
   deleteCandidate: async (id: string) => {
-    await adminManage('delete_candidate', id);
-    return { success: true };
+    const res = await adminManage('delete_candidate', id);
+    return res || { success: true };
   },
 
   // ==================== Positions (Session-Scoped) ====================
@@ -320,13 +320,13 @@ export const api = {
   
   addPosition: async (data: any) => {
     const payload = { ...data, session_id: data.session_id || 1 };
-    await adminManage('add_position', null, payload);
-    return { success: true };
+    const res = await adminManage('add_position', null, payload);
+    return res || { success: true };
   },
   
   deletePosition: async (id: string) => {
-    await adminManage('delete_position', id);
-    return { success: true };
+    const res = await adminManage('delete_position', id);
+    return res || { success: true };
   },
 
   cleanupDuplicatePositions: async (sessionId?: string) => {
@@ -342,13 +342,13 @@ export const api = {
   },
   
   addSection: async (data: any) => {
-    await adminManage('add_section', null, data);
-    return { success: true };
+    const res = await adminManage('add_section', null, data);
+    return res || { success: true };
   },
   
   deleteSection: async (id: string) => {
-    await adminManage('delete_section', id);
-    return { success: true };
+    const res = await adminManage('delete_section', id);
+    return res || { success: true };
   },
 
   // ==================== Votes (Session-Scoped) ====================
@@ -409,7 +409,7 @@ export const api = {
   getVerificationVotes: async (selectedVoterIds: string[], positionId: string) => {
     const { data, error } = await supabase.rpc('secure_get_verification_votes', {
       p_token: requireSessionToken('admin'),
-      p_voter_ids: selectedVoterIds.map(Number), p_position_id: Number(positionId),
+      p_voter_ids: selectedVoterIds.map(String), p_position_id: Number(positionId),
     });
     if (error) throw new Error(error.message);
     return (data as any[]) || [];
