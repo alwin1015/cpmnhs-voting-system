@@ -16,6 +16,14 @@ export function normalizeGrade(grade: string | undefined | null): string {
   return match ? match[1] : String(grade).trim();
 }
 
+export function normalizeSection(section: string | undefined | null): string {
+  if (!section) return '';
+  const trimmed = String(section).trim();
+  // Strip redundant "Section" or "Sec." prefix if present
+  const cleaned = trimmed.replace(/^(?:section|sec\.?)\s*[-:]*\s*/i, '');
+  return cleaned.trim() || trimmed;
+}
+
 export function isEligibleForSession(
   session: Pick<VotingSession, 'eligibleGradeLevels' | 'eligibleSections'> | null | undefined,
   voter: { gradeLevel?: string; section?: string } | null | undefined,
@@ -33,7 +41,9 @@ export function isEligibleForSession(
 
   // If no sections specified, open to all sections
   const sectionMatches = eligibleSections.length === 0 || eligibleSections.some(s => {
-    return String(s).trim().toLowerCase() === String(voter.section || '').trim().toLowerCase();
+    const normS = normalizeSection(s).toLowerCase();
+    const normV = normalizeSection(voter.section).toLowerCase();
+    return (normS && normS === normV) || String(s).trim().toLowerCase() === String(voter.section || '').trim().toLowerCase();
   });
 
   return gradeMatches && sectionMatches;
@@ -61,8 +71,10 @@ export function formatSessionEligibility(session: Pick<VotingSession, 'eligibleG
     return 'All Grades & Sections';
   }
 
-  const gradeStr = grades.length > 0 ? grades.map(g => `Grade ${normalizeGrade(g)}`).join(', ') : 'All Grades';
-  const sectionStr = sections.length > 0 ? `Sections: ${sections.join(', ')}` : 'All Sections';
+  const gradeStr = grades.length > 0 
+    ? (grades.length === 1 ? `Grade ${normalizeGrade(grades[0])}` : grades.map(g => `Grade ${normalizeGrade(g)}`).join(', '))
+    : 'All Grades';
+  const sectionStr = sections.length > 0 ? `Sections: ${sections.map(s => normalizeSection(s)).join(', ')}` : 'All Sections';
 
   return `${gradeStr} (${sectionStr})`;
 }

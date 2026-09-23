@@ -46,7 +46,7 @@ import {
   History,
   GraduationCap,
 } from 'lucide-react';
-import { formatSessionEligibility, normalizeGrade } from '@/lib/electionRules';
+import { formatSessionEligibility, normalizeGrade, normalizeSection } from '@/lib/electionRules';
 
 const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
   draft: { label: 'Draft', color: 'text-slate-600', bg: 'bg-slate-100' },
@@ -99,10 +99,19 @@ export default function AdminDashboard() {
   const [editEndTime, setEditEndTime] = useState('');
   const [editIsSchoolWide, setEditIsSchoolWide] = useState(true);
   const [editGrades, setEditGrades] = useState<string[]>([]);
+  const [editIsAllSections, setEditIsAllSections] = useState(true);
+  const [editSections, setEditSections] = useState<string[]>([]);
+  const [customSectionInput, setCustomSectionInput] = useState('');
 
   // Grade Mappings state
   const GRADES = ['7', '8', '9', '10', '11', '12'];
   const [editMappings, setEditMappings] = useState<Record<string, string>>({});
+
+  const getSectionsForGrades = (isAllGrades: boolean, targetGrades: string[]) => {
+    if (isAllGrades) return sections;
+    const gradeSet = new Set(targetGrades.map((g) => normalizeGrade(g)));
+    return sections.filter((s) => gradeSet.has(normalizeGrade(s.gradeLevel)));
+  };
 
   const scheduleStatus = election?.scheduleStatus || 'draft';
   const statusInfo = STATUS_LABELS[scheduleStatus] || STATUS_LABELS.draft;
@@ -138,6 +147,16 @@ export default function AdminDashboard() {
       setEditGrades(existingEligibility);
     }
 
+    const existingSections = (election?.eligibleSections || []).map((s) => normalizeSection(s));
+    if (existingSections.length === 0) {
+      setEditIsAllSections(true);
+      setEditSections([]);
+    } else {
+      setEditIsAllSections(false);
+      setEditSections(existingSections);
+    }
+    setCustomSectionInput('');
+
     setIsScheduleOpen(true);
   };
 
@@ -168,6 +187,7 @@ export default function AdminDashboard() {
         endDate: parsedEnd,
         scheduleStatus: nextScheduleStatus,
         eligibleGradeLevels: editIsSchoolWide ? [] : editGrades,
+        eligibleSections: editIsAllSections ? [] : editSections,
       });
 
       setIsScheduleOpen(false);
@@ -464,6 +484,158 @@ export default function AdminDashboard() {
                   </button>
                 );
               })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Section Assignment */}
+      <div className="space-y-2 pt-2 border-t border-slate-100">
+        <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider flex items-center justify-between">
+          <span>Assigned Sections</span>
+          <span className="text-[11px] font-normal text-slate-500">
+            {editIsAllSections ? 'All Sections' : `${editSections.length} Section(s) assigned`}
+          </span>
+        </Label>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setEditIsAllSections(true);
+              setEditSections([]);
+            }}
+            className={`text-xs py-2 px-3 rounded-xl border text-center font-medium transition-all ${
+              editIsAllSections
+                ? 'bg-blue-50 border-blue-400 text-blue-700 font-bold shadow-2xs'
+                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            All Sections
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setEditIsAllSections(false);
+              const relevant = getSectionsForGrades(editIsSchoolWide, editGrades);
+              if (editSections.length === 0 && relevant.length > 0) {
+                setEditSections([relevant[0].name]);
+              }
+            }}
+            className={`text-xs py-2 px-3 rounded-xl border text-center font-medium transition-all ${
+              !editIsAllSections
+                ? 'bg-blue-50 border-blue-400 text-blue-700 font-bold shadow-2xs'
+                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            Specific Section(s)
+          </button>
+        </div>
+
+        {!editIsAllSections && (
+          <div className="pt-1 space-y-2 animate-fade-in">
+            <div className="flex items-center justify-between text-[11px] text-slate-500">
+              <span>Select allowed section(s):</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const relevant = getSectionsForGrades(editIsSchoolWide, editGrades);
+                    setEditSections(Array.from(new Set(relevant.map(s => s.name))));
+                  }}
+                  className="text-blue-600 hover:underline font-semibold"
+                >
+                  Select All
+                </button>
+                <span>•</span>
+                <button
+                  type="button"
+                  onClick={() => setEditSections([])}
+                  className="text-slate-500 hover:underline"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-2 border border-slate-100 rounded-xl bg-slate-50/50">
+              {getSectionsForGrades(editIsSchoolWide, editGrades).length === 0 && editSections.length === 0 ? (
+                <p className="text-xs text-slate-400 py-1 px-1">No sections pre-configured. Type a custom section name below.</p>
+              ) : (
+                getSectionsForGrades(editIsSchoolWide, editGrades).map((sec) => {
+                  const isSelected = editSections.some(s => normalizeSection(s).toLowerCase() === normalizeSection(sec.name).toLowerCase());
+                  return (
+                    <button
+                      key={sec.id}
+                      type="button"
+                      onClick={() => {
+                        if (isSelected) {
+                          setEditSections(editSections.filter(s => normalizeSection(s).toLowerCase() !== normalizeSection(sec.name).toLowerCase()));
+                        } else {
+                          setEditSections([...editSections, sec.name]);
+                        }
+                      }}
+                      className={`text-xs py-1 px-2.5 rounded-lg border font-medium transition-all flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                      <span>{sec.name}</span>
+                      <span className={`text-[10px] opacity-75 ${isSelected ? 'text-blue-100' : 'text-slate-400'}`}>(G{sec.gradeLevel})</span>
+                    </button>
+                  );
+                })
+              )}
+              {editSections
+                .filter(s => !getSectionsForGrades(editIsSchoolWide, editGrades).some(sec => normalizeSection(sec.name).toLowerCase() === normalizeSection(s).toLowerCase()))
+                .map((customSec) => (
+                  <button
+                    key={customSec}
+                    type="button"
+                    onClick={() => setEditSections(editSections.filter(s => s !== customSec))}
+                    className="text-xs py-1 px-2.5 rounded-lg border font-medium bg-blue-600 border-blue-600 text-white shadow-xs flex items-center gap-1.5"
+                  >
+                    <Check className="w-3 h-3 stroke-[3]" />
+                    <span>{customSec}</span>
+                    <span className="text-[10px] opacity-75">(Custom)</span>
+                  </button>
+                ))}
+            </div>
+
+            <div className="flex gap-1.5 pt-1">
+              <Input
+                placeholder="Add custom section name..."
+                value={customSectionInput}
+                onChange={(e) => setCustomSectionInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const val = customSectionInput.trim();
+                    if (val && !editSections.some(s => normalizeSection(s).toLowerCase() === normalizeSection(val).toLowerCase())) {
+                      setEditSections([...editSections, val]);
+                      setCustomSectionInput('');
+                    }
+                  }
+                }}
+                className="h-8 text-xs rounded-lg bg-white border-slate-200"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const val = customSectionInput.trim();
+                  if (val && !editSections.some(s => normalizeSection(s).toLowerCase() === normalizeSection(val).toLowerCase())) {
+                    setEditSections([...editSections, val]);
+                    setCustomSectionInput('');
+                  }
+                }}
+                className="h-8 px-2.5 text-xs rounded-lg"
+              >
+                Add
+              </Button>
             </div>
           </div>
         )}

@@ -369,6 +369,10 @@ export default function VotingPage() {
   // Strict Validation: Only students whose grade level and section are assigned to this session can vote
   const isAssigned = isEligibleForSession(election, user);
   if (!isAssigned) {
+    const alternateEligibleSession = eligibleActiveSessions.find(
+      (s) => s.id !== election.id && !votedSessionIds.includes(s.id)
+    );
+
     return (
       <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50/20 to-indigo-50/30">
         <Header />
@@ -385,11 +389,11 @@ export default function VotingPage() {
               </div>
 
               <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-2">
-                Waiting for Your Grade Level's Session
+                Session Not Assigned to Your Profile
               </h2>
 
               <p className="text-xs sm:text-sm text-slate-500 mb-6 leading-relaxed">
-                Voting is currently open for another session. Each grade level votes in sequence. Your official ballot will automatically become available when your session is launched.
+                Voting in this session is restricted to specific grade levels and sections. Your official ballot will automatically become available when a session assigned to your grade level and section is open.
               </p>
 
               {/* Session details vs Student profile */}
@@ -410,17 +414,41 @@ export default function VotingPage() {
                 </div>
               </div>
 
+              {alternateEligibleSession ? (
+                <div className="mb-4">
+                  <Button
+                    onClick={() => switchSession(alternateEligibleSession.id)}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-12 text-sm font-bold shadow-md shadow-blue-600/20 gap-2"
+                  >
+                    <span>Switch to {alternateEligibleSession.name}</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : null}
+
               <div className="flex items-center justify-center gap-2 text-xs text-slate-400 mb-6">
                 <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span>Live connection active. Auto-refreshes when your session launches.</span>
               </div>
 
-              <Button 
-                onClick={() => navigate('/')}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white rounded-xl h-11 text-sm font-semibold shadow-xs"
-              >
-                Return to Home
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => navigate('/')}
+                  variant="outline"
+                  className="flex-1 rounded-xl h-11 text-xs font-semibold border-slate-200 text-slate-700"
+                >
+                  Return to Home
+                </Button>
+                <Button 
+                  onClick={() => {
+                    logout();
+                    navigate('/login');
+                  }}
+                  className="flex-1 bg-slate-900 hover:bg-slate-800 text-white rounded-xl h-11 text-xs font-semibold shadow-xs"
+                >
+                  Log Out
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </main>

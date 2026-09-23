@@ -811,7 +811,11 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           const currentSession = sessions.find(s => s.id === activeSessionIdRef.current);
           const isCurrentActive = currentSession?.isActive && currentSession.status === 'active';
 
-          if (!isCurrentActive || (currentUser?.role === 'voter' && isEligibleForSession(updated, currentUser))) {
+          const shouldSwitch = currentUser?.role === 'voter'
+            ? isEligibleForSession(updated, currentUser) && (!isCurrentActive || hasVoted)
+            : !isCurrentActive;
+
+          if (shouldSwitch) {
             activeSessionIdRef.current = id;
             setActiveSessionId(id);
             setVotes({});

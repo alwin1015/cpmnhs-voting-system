@@ -72,4 +72,41 @@ describe('election rules', () => {
     const activeForG9 = getEligibleActiveSessions(allSessions, grade9Student);
     expect(activeForG9.map(s => s.id)).toEqual(['1']);
   });
+
+  it('normalizes section prefixes and whitespace correctly', () => {
+    const s = session({ eligibleGradeLevels: ['7'], eligibleSections: ['Diamond', 'Emerald'] });
+    expect(isEligibleForSession(s, { gradeLevel: '7', section: 'Section Diamond' })).toBe(true);
+    expect(isEligibleForSession(s, { gradeLevel: '7', section: 'Sec. Emerald' })).toBe(true);
+    expect(isEligibleForSession(s, { gradeLevel: '7', section: ' diamond ' })).toBe(true);
+    expect(isEligibleForSession(s, { gradeLevel: '7', section: 'Ruby' })).toBe(false);
+  });
+
+  it('handles multiple active sessions with independent grade and section combinations', () => {
+    const sG7Diamond = session({ id: '1', name: 'G7 Diamond Only', isActive: true, status: 'active', eligibleGradeLevels: ['7'], eligibleSections: ['Diamond'] });
+    const sG7All = session({ id: '2', name: 'G7 All Sections', isActive: true, status: 'active', eligibleGradeLevels: ['7'], eligibleSections: [] });
+    const sG8Ruby = session({ id: '3', name: 'G8 Ruby Only', isActive: true, status: 'active', eligibleGradeLevels: ['8'], eligibleSections: ['Ruby'] });
+    const sSchoolWide = session({ id: '4', name: 'School-wide', isActive: true, status: 'active', eligibleGradeLevels: [], eligibleSections: [] });
+
+    const sessionsList = [sG7Diamond, sG7All, sG8Ruby, sSchoolWide];
+
+    // Grade 7 Diamond student should match 1, 2, and 4, but NOT 3
+    const g7DiamondStudent = { gradeLevel: '7', section: 'Diamond' };
+    const eligibleG7Diamond = getEligibleActiveSessions(sessionsList, g7DiamondStudent);
+    expect(eligibleG7Diamond.map(s => s.id)).toEqual(['1', '2', '4']);
+
+    // Grade 7 Emerald student should match 2 and 4, but NOT 1 or 3
+    const g7EmeraldStudent = { gradeLevel: '7', section: 'Emerald' };
+    const eligibleG7Emerald = getEligibleActiveSessions(sessionsList, g7EmeraldStudent);
+    expect(eligibleG7Emerald.map(s => s.id)).toEqual(['2', '4']);
+
+    // Grade 8 Ruby student should match 3 and 4, but NOT 1 or 2
+    const g8RubyStudent = { gradeLevel: '8', section: 'Ruby' };
+    const eligibleG8Ruby = getEligibleActiveSessions(sessionsList, g8RubyStudent);
+    expect(eligibleG8Ruby.map(s => s.id)).toEqual(['3', '4']);
+
+    // Grade 8 Emerald student should only match 4
+    const g8EmeraldStudent = { gradeLevel: '8', section: 'Emerald' };
+    const eligibleG8Emerald = getEligibleActiveSessions(sessionsList, g8EmeraldStudent);
+    expect(eligibleG8Emerald.map(s => s.id)).toEqual(['4']);
+  });
 });
