@@ -680,7 +680,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             setUser(null);
           } else {
             const userData = meData.user || meData;
-            setUser({
+            const loadedUser: User = {
               id: String(userData.id),
               role: userData.role,
               name: userData.name,
@@ -688,7 +688,9 @@ export function VotingProvider({ children }: { children: ReactNode }) {
               email: userData.email,
               gradeLevel: userData.gradeLevel || userData.grade_level,
               section: userData.section,
-            });
+            };
+            userRef.current = loadedUser;
+            setUser(loadedUser);
           }
         }
       } catch {
@@ -703,7 +705,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         if (isMounted) {
           setSessions(parsed);
           const activeSessions = parsed.filter((s: VotingSession) => s.isActive && s.status === 'active');
-          const primarySession = parsed.find((s: VotingSession) => s.id === '1');
+          const primarySession = parsed.find((s: VotingSession) => s.id === '1') || parsed[0];
           let savedSessionId: string | null = null;
           let isUserSelected = false;
           try {
@@ -719,8 +721,10 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             resolvedSessionId = eligible ? eligible.id : activeSessions[0].id;
           } else if (currentUser?.role === 'admin' && savedSessionId && isUserSelected && parsed.some((s: VotingSession) => s.id === savedSessionId)) {
             resolvedSessionId = savedSessionId;
+          } else if (currentUser?.role === 'admin' && primarySession) {
+            // For admin, default to primary session (Session 1: SSG General Election) so data is immediately visible
+            resolvedSessionId = primarySession.id;
           } else if (activeSessions.length > 0) {
-            // First active session
             resolvedSessionId = activeSessions[0].id;
           } else if (savedSessionId && parsed.some((s: VotingSession) => s.id === savedSessionId)) {
             resolvedSessionId = savedSessionId;
@@ -1248,16 +1252,20 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         return s;
       }));
 
-      activeSessionIdRef.current = id;
-      setActiveSessionId(id);
-      try {
-        localStorage.setItem('activeSessionId', id);
-        localStorage.setItem('session_user_selected', 'true');
-      } catch (_) {}
+      // Concurrently active sessions: Launch session without closing or pausing any other active sessions
+      // Only set activeSessionId if no active workspace session is selected yet, so admin's view is not hijacked
+      if (!activeSessionIdRef.current) {
+        activeSessionIdRef.current = id;
+        setActiveSessionId(id);
+        try {
+          localStorage.setItem('activeSessionId', id);
+          localStorage.setItem('session_user_selected', 'true');
+        } catch (_) {}
+      }
 
       await api.updateSession(id, launchPayload);
       broadcastChange('session_launched', { sessionId: id });
-      await refreshData(id);
+      await refreshData(activeSessionIdRef.current || id);
     } catch (error) {
       console.error('Launch session failed:', error);
       refreshData().catch(console.error);
@@ -1369,13 +1377,26 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       try {
         const data = await api.adminLogin(username, password);
         if (data && data.success && data.user) {
-          setUser({
+          const adminUser: User = {
             id: String(data.user.id),
             role: 'admin',
             name: data.user.name ?? username,
             email: data.user.email,
-          });
-          refreshData();
+          };
+          userRef.current = adminUser;
+          setUser(adminUser);
+
+          // Find primary session (Session 1: SSG General Election) where candidates and positions live
+          const primary = sessions.find(s => s.id === '1') || sessions[0];
+          const targetSessionId = primary ? primary.id : (activeSessionIdRef.current || '1');
+          activeSessionIdRef.current = targetSessionId;
+          setActiveSessionId(targetSessionId);
+          try {
+            localStorage.setItem('activeSessionId', targetSessionId);
+            localStorage.setItem('session_user_selected', 'true');
+          } catch (_) {}
+
+          await refreshData(targetSessionId);
           return { success: true, mustChangePassword: Boolean(data.mustChangePassword) };
         }
         return { success: false, mustChangePassword: false };
@@ -1384,7 +1405,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         throw error;
       }
     },
-    [refreshData]
+    [sessions, refreshData]
   );
 
   const register = useCallback(

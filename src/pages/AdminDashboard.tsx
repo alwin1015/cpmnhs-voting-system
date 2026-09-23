@@ -612,7 +612,9 @@ export default function AdminDashboard() {
                 >
                   <option value="" disabled>Select a session...</option>
                   {sessions.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} ({s.schoolYear})</option>
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.schoolYear}){s.id === '1' ? ' ★ Main Election' : ''}
+                    </option>
                   ))}
                 </select>
                 <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-500">
@@ -633,29 +635,30 @@ export default function AdminDashboard() {
 
           {/* Advisory banner if current session is empty but another session (like Session 1) exists */}
           {isDataLoaded && positions.length === 0 && candidates.length === 0 && sessions.length > 1 && (() => {
-            const candidateSession = sessions.find(s => s.id !== activeSessionId);
+            const candidateSession = sessions.find(s => s.id === '1') || sessions.find(s => s.id !== activeSessionId);
             if (!candidateSession) return null;
             return (
-              <div className="mb-6 p-4 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-fade-in">
+              <div className="mb-6 p-4 rounded-2xl border-2 border-blue-300 bg-gradient-to-r from-blue-50 via-indigo-50 to-blue-50 text-blue-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md animate-fade-in">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-amber-200 text-amber-800 flex-shrink-0">
-                    <AlertTriangle className="h-5 w-5" />
+                  <div className="p-2.5 rounded-xl bg-blue-600 text-white flex-shrink-0 shadow-sm">
+                    <Layers className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold">
-                      You are viewing "{election?.name || 'an empty session'}" (0 positions, 0 candidates).
+                    <p className="text-sm font-bold text-slate-900">
+                      Currently viewing workspace: "{election?.name || 'Empty Session'}" (0 positions, 0 candidates)
                     </p>
-                    <p className="text-xs text-amber-700">
-                      Your configured election data is in another session: "{candidateSession.name}".
+                    <p className="text-xs text-blue-800 font-medium">
+                      Your full election configuration is saved in "{candidateSession.name}". Click below to switch back to your main election data.
                     </p>
                   </div>
                 </div>
                 <Button
                   size="sm"
                   onClick={() => switchSession(candidateSession.id)}
-                  className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold whitespace-nowrap self-end sm:self-auto"
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl whitespace-nowrap shadow-sm self-end sm:self-auto gap-1.5"
                 >
-                  Switch to {candidateSession.name}
+                  <span>Switch to {candidateSession.name}</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
                 </Button>
               </div>
             );

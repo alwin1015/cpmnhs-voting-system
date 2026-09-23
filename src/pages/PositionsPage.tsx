@@ -183,7 +183,9 @@ export default function PositionsPage() {
                   >
                     <option value="" disabled>Select session...</option>
                     {sessions.map(s => (
-                      <option key={s.id} value={s.id}>{s.name} ({s.schoolYear})</option>
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.schoolYear}){s.id === '1' ? ' ★ Main Election' : ''}
+                      </option>
                     ))}
                   </select>
                   <div className="absolute inset-y-0 right-0 flex items-center pr-2.5 pointer-events-none text-slate-500">
