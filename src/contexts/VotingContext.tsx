@@ -1092,9 +1092,11 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
     realtimeChannelRef.current = channel;
 
-    // Relaxed background polling fallback (15 seconds) to avoid network flooding and unnecessary CPU usage
+    // Intelligent polling fallback (15s): only poll when tab is active and visible to prevent idle quota consumption
     const pollInterval = setInterval(() => {
-      if (isMounted) refreshData();
+      if (isMounted && typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        refreshData();
+      }
     }, 15000);
 
     // Refresh immediately when window/tab is focused or becomes visible

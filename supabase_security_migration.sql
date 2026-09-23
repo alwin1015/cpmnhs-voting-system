@@ -407,6 +407,21 @@ create index if not exists positions_session_order_idx
 create index if not exists voters_lrn_idx
   on public.voters (lrn);
 
+create index if not exists voters_status_idx
+  on public.voters (status);
+
+create index if not exists voters_grade_section_idx
+  on public.voters (grade_level, section);
+
+create index if not exists votes_session_candidate_idx
+  on public.votes (session_id, candidate_id);
+
+create index if not exists votes_session_position_idx
+  on public.votes (session_id, position_id);
+
+create index if not exists voter_sessions_session_voted_idx
+  on public.voter_sessions (session_id, has_voted);
+
 -- =============================================================================
 -- PART 7: SECURITY DEFINER BACKEND RPC FUNCTIONS
 -- =============================================================================
@@ -783,8 +798,20 @@ begin
     when 'approve_all' then
       update public.voters set status = 'approved' where status = 'pending';
     when 'delete' then
+      -- Reconcile candidate vote counts before removing votes
+      update public.candidates c
+      set votes = greatest(c.votes - sub.cnt, 0)
+      from (
+        select candidate_id, count(*) as cnt
+        from public.votes
+        where voter_id::text = p_voter_id
+        group by candidate_id
+      ) sub
+      where c.id = sub.candidate_id;
+
       delete from public.votes where voter_id::text = p_voter_id;
       delete from public.voter_sessions where voter_id::text = p_voter_id;
+      delete from public.app_sessions where user_id = p_voter_id;
       delete from public.voters where id::text = p_voter_id;
     else
       raise exception 'Unsupported voter action';
@@ -820,15 +847,15 @@ begin
         grade_mappings, eligible_grade_levels, eligible_sections
       )
       values (
-        coalesce(nullif(trim(p_payload->>'name'), ''), 'New Election'),
-        coalesce(nullif(trim(p_payload->>'school_year'), ''), '2026-2027'),
-        'upcoming',
-        'draft',
-        nullif(p_payload->>'start_date', '')::timestamptz,
-        nullif(p_payload->>'end_date', '')::timestamptz,
-        coalesce(p_payload->'grade_mappings', '{}'::jsonb),
-        coalesce(p_payload->'eligible_grade_levels', '[]'::jsonb),
-        coalesce(p_payload->'eligible_sections', '[]'::jsonb)
+        coalesce(nullif(trim(coalesce(p_payload->>'name', '')), ''), 'New Election'),
+        coalesce(nullif(trim(coalesce(p_payload->>'school_year', p_payload->>'schoolYear', '')), ''), '2026-2027'),
+        coalesce(p_payload->>'status', 'upcoming'),
+        coalesce(p_payload->>'schedule_status', p_payload->>'scheduleStatus', 'draft'),
+        nullif(coalesce(p_payload->>'start_date', p_payload->>'startDate', ''), '')::timestamptz,
+        nullif(coalesce(p_payload->>'end_date', p_payload->>'endDate', ''), '')::timestamptz,
+        coalesce(p_payload->'grade_mappings', p_payload->'gradeMappings', '{}'::jsonb),
+        coalesce(p_payload->'eligible_grade_levels', p_payload->'eligibleGradeLevels', '[]'::jsonb),
+        coalesce(p_payload->'eligible_sections', p_payload->'eligibleSections', '[]'::jsonb)
       )
       returning id into v_new_id;
       return (select to_jsonb(s) from public.voting_sessions s where s.id = v_new_id);
@@ -836,21 +863,34 @@ begin
     when 'update_session' then
       update public.voting_sessions set
         name = case when p_payload ? 'name' then p_payload->>'name' else name end,
-        school_year = case when p_payload ? 'school_year' then p_payload->>'school_year' else school_year end,
-        start_date = case when p_payload ? 'start_date' then nullif(p_payload->>'start_date', '')::timestamptz else start_date end,
-        end_date = case when p_payload ? 'end_date' then nullif(p_payload->>'end_date', '')::timestamptz else end_date end,
-        is_active = case when p_payload ? 'is_active' then (p_payload->>'is_active')::boolean else is_active end,
+        school_year = case when p_payload ? 'school_year' then p_payload->>'school_year'
+                           when p_payload ? 'schoolYear' then p_payload->>'schoolYear' else school_year end,
+        start_date = case when p_payload ? 'start_date' then nullif(p_payload->>'start_date', '')::timestamptz
+                          when p_payload ? 'startDate' then nullif(p_payload->>'startDate', '')::timestamptz else start_date end,
+        end_date = case when p_payload ? 'end_date' then nullif(p_payload->>'end_date', '')::timestamptz
+                        when p_payload ? 'endDate' then nullif(p_payload->>'endDate', '')::timestamptz else end_date end,
+        is_active = case when p_payload ? 'is_active' then (p_payload->>'is_active')::boolean
+                         when p_payload ? 'isActive' then (p_payload->>'isActive')::boolean else is_active end,
         status = case when p_payload ? 'status' then p_payload->>'status' else status end,
-        schedule_status = case when p_payload ? 'schedule_status' then p_payload->>'schedule_status' else schedule_status end,
-        grade_mappings = case when p_payload ? 'grade_mappings' then p_payload->'grade_mappings' else grade_mappings end,
-        eligible_grade_levels = case when p_payload ? 'eligible_grade_levels' then p_payload->'eligible_grade_levels' else eligible_grade_levels end,
-        eligible_sections = case when p_payload ? 'eligible_sections' then p_payload->'eligible_sections' else eligible_sections end,
-        authorization_doc_generated = case when p_payload ? 'authorization_doc_generated' then (p_payload->>'authorization_doc_generated')::boolean else authorization_doc_generated end,
-        authorization_confirmed_at = case when p_payload ? 'authorization_confirmed_at' then nullif(p_payload->>'authorization_confirmed_at', '')::timestamptz else authorization_confirmed_at end,
+        schedule_status = case when p_payload ? 'schedule_status' then p_payload->>'schedule_status'
+                               when p_payload ? 'scheduleStatus' then p_payload->>'scheduleStatus' else schedule_status end,
+        grade_mappings = case when p_payload ? 'grade_mappings' then p_payload->'grade_mappings'
+                              when p_payload ? 'gradeMappings' then p_payload->'gradeMappings' else grade_mappings end,
+        eligible_grade_levels = case when p_payload ? 'eligible_grade_levels' then p_payload->'eligible_grade_levels'
+                                     when p_payload ? 'eligibleGradeLevels' then p_payload->'eligibleGradeLevels' else eligible_grade_levels end,
+        eligible_sections = case when p_payload ? 'eligible_sections' then p_payload->'eligible_sections'
+                                 when p_payload ? 'eligibleSections' then p_payload->'eligibleSections' else eligible_sections end,
+        authorization_doc_generated = case when p_payload ? 'authorization_doc_generated' then (p_payload->>'authorization_doc_generated')::boolean
+                                           when p_payload ? 'authorizationDocGenerated' then (p_payload->>'authorizationDocGenerated')::boolean else authorization_doc_generated end,
+        authorization_confirmed_at = case when p_payload ? 'authorization_confirmed_at' then nullif(p_payload->>'authorization_confirmed_at', '')::timestamptz
+                                          when p_payload ? 'authorizationConfirmedAt' then nullif(p_payload->>'authorizationConfirmedAt', '')::timestamptz else authorization_confirmed_at end,
         signatories = case when p_payload ? 'signatories' then p_payload->'signatories' else signatories end,
-        results_finalized = case when p_payload ? 'results_finalized' then (p_payload->>'results_finalized')::boolean else results_finalized end,
-        finalized_by = case when p_payload ? 'finalized_by' then p_payload->>'finalized_by' else finalized_by end,
-        finalized_at = case when p_payload ? 'finalized_at' then nullif(p_payload->>'finalized_at', '')::timestamptz else finalized_at end
+        results_finalized = case when p_payload ? 'results_finalized' then (p_payload->>'results_finalized')::boolean
+                                 when p_payload ? 'resultsFinalized' then (p_payload->>'resultsFinalized')::boolean else results_finalized end,
+        finalized_by = case when p_payload ? 'finalized_by' then p_payload->>'finalized_by'
+                            when p_payload ? 'finalizedBy' then p_payload->>'finalizedBy' else finalized_by end,
+        finalized_at = case when p_payload ? 'finalized_at' then nullif(p_payload->>'finalized_at', '')::timestamptz
+                            when p_payload ? 'finalizedAt' then nullif(p_payload->>'finalizedAt', '')::timestamptz else finalized_at end
       where id = p_id;
       if not found then raise exception 'Election session not found'; end if;
       return jsonb_build_object('success', true);
@@ -899,11 +939,11 @@ begin
 
     -- ===== CANDIDATES =====
     when 'add_candidate', 'create_candidate' then
-      if p_payload->>'position_id' is not null and p_payload->>'position_id' <> '' then
+      if coalesce(p_payload->>'position_id', p_payload->>'positionId') is not null and coalesce(p_payload->>'position_id', p_payload->>'positionId') <> '' then
         if not exists (
           select 1 from public.positions
-          where id = (p_payload->>'position_id')::bigint
-            and (p_payload->>'session_id' is null or p_payload->>'session_id' = '' or session_id = (p_payload->>'session_id')::bigint)
+          where id = coalesce(p_payload->>'position_id', p_payload->>'positionId')::bigint
+            and (coalesce(p_payload->>'session_id', p_payload->>'sessionId') is null or coalesce(p_payload->>'session_id', p_payload->>'sessionId') = '' or session_id = coalesce(p_payload->>'session_id', p_payload->>'sessionId')::bigint)
         ) then
           raise exception 'Position does not belong to this election';
         end if;
@@ -914,21 +954,21 @@ begin
         trim(p_payload->>'name'),
         coalesce(nullif(trim(p_payload->>'party'), ''), 'Independent'),
         coalesce(p_payload->>'motto', ''),
-        coalesce(p_payload->>'photo_url', ''),
-        coalesce(p_payload->>'grade_level', ''),
+        coalesce(p_payload->>'photo_url', p_payload->>'photoUrl', ''),
+        coalesce(p_payload->>'grade_level', p_payload->>'gradeLevel', ''),
         coalesce(p_payload->>'section', ''),
-        (p_payload->>'position_id')::bigint,
-        coalesce(nullif(p_payload->>'session_id', '')::bigint, 1),
+        coalesce(nullif(p_payload->>'position_id', ''), nullif(p_payload->>'positionId', ''))::bigint,
+        coalesce(nullif(p_payload->>'session_id', ''), nullif(p_payload->>'sessionId', ''), '1')::bigint,
         0
       )
       returning id into v_new_id;
       return jsonb_build_object('success', true, 'id', v_new_id);
 
     when 'update_candidate' then
-      if p_payload ? 'position_id' and p_payload->>'position_id' is not null and (p_payload->>'position_id') <> '' then
+      if (p_payload ? 'position_id' or p_payload ? 'positionId') and coalesce(p_payload->>'position_id', p_payload->>'positionId') is not null and coalesce(p_payload->>'position_id', p_payload->>'positionId') <> '' then
         if not exists (
           select 1 from public.positions p join public.candidates c on c.id = p_id
-          where p.id = (p_payload->>'position_id')::bigint and p.session_id = c.session_id
+          where p.id = coalesce(p_payload->>'position_id', p_payload->>'positionId')::bigint and p.session_id = c.session_id
         ) then
           raise exception 'Position does not belong to this election';
         end if;
@@ -938,10 +978,13 @@ begin
         name = case when p_payload ? 'name' then trim(p_payload->>'name') else name end,
         party = case when p_payload ? 'party' then coalesce(nullif(trim(p_payload->>'party'), ''), 'Independent') else party end,
         motto = case when p_payload ? 'motto' then p_payload->>'motto' else motto end,
-        photo_url = case when p_payload ? 'photo_url' then p_payload->>'photo_url' else photo_url end,
-        grade_level = case when p_payload ? 'grade_level' then p_payload->>'grade_level' else grade_level end,
+        photo_url = case when p_payload ? 'photo_url' then p_payload->>'photo_url'
+                         when p_payload ? 'photoUrl' then p_payload->>'photoUrl' else photo_url end,
+        grade_level = case when p_payload ? 'grade_level' then p_payload->>'grade_level'
+                           when p_payload ? 'gradeLevel' then p_payload->>'gradeLevel' else grade_level end,
         section = case when p_payload ? 'section' then p_payload->>'section' else section end,
-        position_id = case when p_payload ? 'position_id' and (p_payload->>'position_id') <> '' then (p_payload->>'position_id')::bigint else position_id end
+        position_id = case when (p_payload ? 'position_id' or p_payload ? 'positionId') and coalesce(p_payload->>'position_id', p_payload->>'positionId') <> ''
+                           then coalesce(p_payload->>'position_id', p_payload->>'positionId')::bigint else position_id end
       where id = p_id;
 
       if not found then raise exception 'Candidate not found'; end if;
@@ -957,7 +1000,7 @@ begin
     when 'add_position', 'create_position' then
       if exists (
         select 1 from public.positions
-        where session_id = coalesce(nullif(p_payload->>'session_id', '')::bigint, 1)
+        where session_id = coalesce(nullif(coalesce(p_payload->>'session_id', p_payload->>'sessionId'), ''), '1')::bigint
           and lower(trim(name)) = lower(trim(p_payload->>'name'))
       ) then
         raise exception 'A position with this name already exists';
@@ -966,10 +1009,10 @@ begin
       insert into public.positions (name, display_order, max_votes, strict_grade_mapping, session_id)
       values (
         trim(p_payload->>'name'),
-        coalesce((p_payload->>'display_order')::integer, 0),
-        coalesce((p_payload->>'max_votes')::integer, 1),
-        coalesce((p_payload->>'strict_grade_mapping')::boolean, false),
-        coalesce(nullif(p_payload->>'session_id', '')::bigint, 1)
+        coalesce((coalesce(p_payload->>'display_order', p_payload->>'order'))::integer, 0),
+        coalesce((coalesce(p_payload->>'max_votes', p_payload->>'maxVotes'))::integer, 1),
+        coalesce((coalesce(p_payload->>'strict_grade_mapping', p_payload->>'strictGradeMapping'))::boolean, false),
+        coalesce(nullif(coalesce(p_payload->>'session_id', p_payload->>'sessionId'), ''), '1')::bigint
       )
       returning id into v_new_id;
       return jsonb_build_object('success', true, 'id', v_new_id);
@@ -1052,16 +1095,29 @@ begin
     raise exception 'Voter is not eligible';
   end if;
 
+  -- Normalized Grade Level Eligibility Check
   if jsonb_typeof(v_session.eligible_grade_levels) = 'array'
-     and jsonb_array_length(v_session.eligible_grade_levels) > 0
-     and not (v_session.eligible_grade_levels ? coalesce(v_voter.grade_level, '')) then
-    raise exception 'Your grade level is not eligible for this election';
+     and jsonb_array_length(v_session.eligible_grade_levels) > 0 then
+    if not exists (
+      select 1 from jsonb_array_elements_text(v_session.eligible_grade_levels) g
+      where regexp_replace(lower(trim(g)), '[^0-9]', '', 'g') = regexp_replace(lower(trim(coalesce(v_voter.grade_level, ''))), '[^0-9]', '', 'g')
+         or lower(trim(g)) = lower(trim(coalesce(v_voter.grade_level, '')))
+    ) then
+      raise exception 'Your grade level is not eligible for this election';
+    end if;
   end if;
 
+  -- Normalized Section Eligibility Check
   if jsonb_typeof(v_session.eligible_sections) = 'array'
-     and jsonb_array_length(v_session.eligible_sections) > 0
-     and not (v_session.eligible_sections ? coalesce(v_voter.section, '')) then
-    raise exception 'Your section is not eligible for this election';
+     and jsonb_array_length(v_session.eligible_sections) > 0 then
+    if not exists (
+      select 1 from jsonb_array_elements_text(v_session.eligible_sections) s
+      where lower(trim(regexp_replace(regexp_replace(s, '^(section|sec\.?)\s*', '', 'i'), '^(grade|gr\.?|g)\s*[0-9]+\s*[-–—]?\s*', '', 'i'))) =
+            lower(trim(regexp_replace(regexp_replace(coalesce(v_voter.section, ''), '^(section|sec\.?)\s*', '', 'i'), '^(grade|gr\.?|g)\s*[0-9]+\s*[-–—]?\s*', '', 'i')))
+         or lower(trim(s)) = lower(trim(coalesce(v_voter.section, '')))
+    ) then
+      raise exception 'Your section is not eligible for this election';
+    end if;
   end if;
 
   if exists (select 1 from public.voter_sessions where voter_id::text = v_voter_id and session_id = p_session_id and has_voted) then
@@ -1142,10 +1198,19 @@ begin
   delete from public.vote_verifications where session_id = p_session_id;
   delete from public.votes where session_id = p_session_id;
 
-  update public.voters set has_voted = false, voted_at = null
-  where id::text in (select voter_id::text from public.voter_sessions where session_id = p_session_id);
-
   delete from public.voter_sessions where session_id = p_session_id;
+
+  -- Accurately recalculate voters.has_voted from any remaining active session records
+  update public.voters v
+  set has_voted = exists (
+    select 1 from public.voter_sessions vs
+    where vs.voter_id = v.id and vs.has_voted = true
+  ),
+  voted_at = (
+    select max(vs.voted_at) from public.voter_sessions vs
+    where vs.voter_id = v.id and vs.has_voted = true
+  );
+
   update public.candidates set votes = 0 where session_id = p_session_id;
 
   update public.voting_sessions

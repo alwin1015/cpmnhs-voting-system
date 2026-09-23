@@ -1,10 +1,48 @@
 import { supabase } from './supabase';
+import { isEligibleForSession } from './electionRules';
 
 export type StoredSession = {
   token?: string;
   user?: { id: string; role: 'admin' | 'voter'; name: string; lrn?: string; email?: string; gradeLevel?: string; section?: string };
   has_voted?: boolean;
   activeSessionId?: string;
+};
+
+const normalizeSessionPayload = (data: any) => {
+  const payload: any = { ...data };
+  if (data.school_year || data.schoolYear) {
+    payload.school_year = data.school_year || data.schoolYear;
+    payload.schoolYear = payload.school_year;
+  }
+  if (data.start_date || data.startDate) {
+    payload.start_date = data.start_date || data.startDate;
+    payload.startDate = payload.start_date;
+  }
+  if (data.end_date || data.endDate) {
+    payload.end_date = data.end_date || data.endDate;
+    payload.endDate = payload.end_date;
+  }
+  if (data.is_active !== undefined || data.isActive !== undefined) {
+    payload.is_active = data.is_active !== undefined ? data.is_active : data.isActive;
+    payload.isActive = payload.is_active;
+  }
+  if (data.schedule_status || data.scheduleStatus) {
+    payload.schedule_status = data.schedule_status || data.scheduleStatus;
+    payload.scheduleStatus = payload.schedule_status;
+  }
+  if (data.eligible_grade_levels || data.eligibleGradeLevels) {
+    payload.eligible_grade_levels = data.eligible_grade_levels || data.eligibleGradeLevels;
+    payload.eligibleGradeLevels = payload.eligible_grade_levels;
+  }
+  if (data.eligible_sections || data.eligibleSections) {
+    payload.eligible_sections = data.eligible_sections || data.eligibleSections;
+    payload.eligibleSections = payload.eligible_sections;
+  }
+  if (data.grade_mappings || data.gradeMappings) {
+    payload.grade_mappings = data.grade_mappings || data.gradeMappings;
+    payload.gradeMappings = payload.grade_mappings;
+  }
+  return payload;
 };
 
 // ============================================================================
@@ -398,7 +436,8 @@ export const api = {
   },
 
   updateSession: async (sessionId: string, data: any) => {
-    await adminManage('update_session', sessionId, data);
+    const payload = normalizeSessionPayload(data);
+    await adminManage('update_session', sessionId, payload);
     return { success: true };
   },
 
@@ -437,7 +476,8 @@ export const api = {
     const targetId = data.id || 1;
     const { id: _id, ...updates } = data;
     void _id;
-    await adminManage('update_session', targetId, updates);
+    const payload = normalizeSessionPayload(updates);
+    await adminManage('update_session', targetId, payload);
     try {
       const prev = JSON.parse(localStorage.getItem('election_schedule_backup') || '{}');
       localStorage.setItem('election_schedule_backup', JSON.stringify({ ...prev, ...data }));
@@ -469,13 +509,20 @@ export const api = {
       name: (data.name || '').trim(),
       party: (data.party || '').trim() || 'Independent',
       motto: (data.motto || '').trim(),
-      photo_url: data.photo_url || '',
-      grade_level: String(data.grade_level || ''),
+      photo_url: data.photo_url || data.photoUrl || '',
+      photoUrl: data.photo_url || data.photoUrl || '',
+      grade_level: String(data.grade_level || data.gradeLevel || ''),
+      gradeLevel: String(data.grade_level || data.gradeLevel || ''),
       section: String(data.section || ''),
-      session_id: data.session_id || 1,
+      session_id: data.session_id || data.sessionId || 1,
+      sessionId: data.session_id || data.sessionId || 1,
     };
     if (data.position_id !== undefined && data.position_id !== '') {
       payload.position_id = isNaN(Number(data.position_id)) ? data.position_id : Number(data.position_id);
+      payload.positionId = payload.position_id;
+    } else if (data.positionId !== undefined && data.positionId !== '') {
+      payload.position_id = isNaN(Number(data.positionId)) ? data.positionId : Number(data.positionId);
+      payload.positionId = payload.position_id;
     }
     const res = await adminManage('add_candidate', null, payload);
     return res || { success: true };
@@ -486,11 +533,19 @@ export const api = {
     if (data.name !== undefined) payload.name = data.name.trim();
     if (data.party !== undefined) payload.party = data.party.trim() || 'Independent';
     if (data.motto !== undefined) payload.motto = data.motto.trim();
-    if (data.photo_url !== undefined) payload.photo_url = data.photo_url;
-    if (data.grade_level !== undefined) payload.grade_level = String(data.grade_level);
+    if (data.photo_url !== undefined || data.photoUrl !== undefined) {
+      payload.photo_url = data.photo_url !== undefined ? data.photo_url : data.photoUrl;
+      payload.photoUrl = payload.photo_url;
+    }
+    if (data.grade_level !== undefined || data.gradeLevel !== undefined) {
+      payload.grade_level = String(data.grade_level !== undefined ? data.grade_level : data.gradeLevel);
+      payload.gradeLevel = payload.grade_level;
+    }
     if (data.section !== undefined) payload.section = String(data.section);
-    if (data.position_id !== undefined && data.position_id !== '') {
-      payload.position_id = isNaN(Number(data.position_id)) ? data.position_id : Number(data.position_id);
+    if ((data.position_id !== undefined && data.position_id !== '') || (data.positionId !== undefined && data.positionId !== '')) {
+      const posVal = data.position_id !== undefined && data.position_id !== '' ? data.position_id : data.positionId;
+      payload.position_id = isNaN(Number(posVal)) ? posVal : Number(posVal);
+      payload.positionId = payload.position_id;
     }
     const res = await adminManage('update_candidate', data.id, payload);
     return res || { success: true };
@@ -516,7 +571,15 @@ export const api = {
   },
   
   addPosition: async (data: any) => {
-    const payload = { ...data, session_id: data.session_id || 1 };
+    const payload = {
+      ...data,
+      session_id: data.session_id || data.sessionId || 1,
+      sessionId: data.session_id || data.sessionId || 1,
+      display_order: data.display_order !== undefined ? data.display_order : data.order,
+      order: data.display_order !== undefined ? data.display_order : data.order,
+      max_votes: data.max_votes !== undefined ? data.max_votes : data.maxVotes,
+      maxVotes: data.max_votes !== undefined ? data.max_votes : data.maxVotes,
+    };
     const res = await adminManage('add_position', null, payload);
     return res || { success: true };
   },
@@ -760,16 +823,16 @@ export const api = {
         if (error) throw new Error(error.message);
         if (!sessions || sessions.length === 0) return [];
 
-        // Filter sessions by voter eligibility
-        return sessions.filter((s: any) => {
-          const eligibleGrades: string[] = s.eligible_grade_levels || [];
-          const eligibleSections: string[] = s.eligible_sections || [];
-          
-          const gradeOk = eligibleGrades.length === 0 || eligibleGrades.includes(voterGradeLevel);
-          const sectionOk = eligibleSections.length === 0 || eligibleSections.includes(voterSection);
-          
-          return gradeOk && sectionOk;
-        });
+        // Filter sessions by voter eligibility using unified normalization rules
+        return sessions.filter((s: any) =>
+          isEligibleForSession(
+            {
+              eligibleGradeLevels: s.eligible_grade_levels,
+              eligibleSections: s.eligible_sections,
+            },
+            { gradeLevel: voterGradeLevel, section: voterSection }
+          )
+        );
       })
     );
   },
