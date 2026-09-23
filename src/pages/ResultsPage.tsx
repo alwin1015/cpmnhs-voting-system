@@ -344,7 +344,7 @@ export default function ResultsPage() {
                   <option value="" disabled>Select a session...</option>
                   {sessions.map(s => (
                     <option key={s.id} value={s.id}>
-                      {s.name} ({s.schoolYear}){s.id === '1' ? ' ★ Main Election' : ''}
+                      {s.name} ({s.schoolYear})
                     </option>
                   ))}
                 </select>

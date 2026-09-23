@@ -785,7 +785,7 @@ export default function AdminDashboard() {
                   <option value="" disabled>Select a session...</option>
                   {sessions.map(s => (
                     <option key={s.id} value={s.id}>
-                      {s.name} ({s.schoolYear}){s.id === '1' ? ' ★ Main Election' : ''}
+                      {s.name} ({s.schoolYear})
                     </option>
                   ))}
                 </select>
@@ -820,7 +820,7 @@ export default function AdminDashboard() {
                       Currently viewing workspace: "{election?.name || 'Empty Session'}" (0 positions, 0 candidates)
                     </p>
                     <p className="text-xs text-blue-800 font-medium">
-                      Your full election configuration is saved in "{candidateSession.name}". Click below to switch back to your main election data.
+                      Your full election configuration is saved in "{candidateSession.name}". Click below to switch back to this session.
                     </p>
                   </div>
                 </div>

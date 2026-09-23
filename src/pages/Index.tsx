@@ -16,8 +16,7 @@ import {
   Shield,
   CheckCircle,
   Clock,
-  ArrowRight,
-  Star
+  ArrowRight
 } from 'lucide-react';
 
 const heroImages = [heroSlide1, heroSlide2, heroSlide3, heroSlide4];
@@ -94,7 +93,6 @@ const Index = () => {
               {/* Content */}
               <div className="flex-1 text-center lg:text-left animate-slide-up order-2 lg:order-1">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-foreground/10 text-primary-foreground text-sm font-medium mb-6">
-                  <Star className="h-4 w-4" />
                   SSG Election {election?.schoolYear}
                 </div>
 

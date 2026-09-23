@@ -660,8 +660,8 @@ export default function SessionManagerPage() {
 
       {/* Create New Session Dialog */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="sm:max-w-md rounded-3xl p-6 bg-white border border-slate-200 shadow-2xl">
-          <DialogHeader className="space-y-1 text-left">
+        <DialogContent className="sm:max-w-lg max-h-[88vh] flex flex-col rounded-3xl p-0 bg-white border border-slate-200 shadow-2xl overflow-hidden">
+          <DialogHeader className="p-6 pb-3 space-y-1 text-left border-b border-slate-100 flex-shrink-0">
             <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center mb-2 border border-blue-100 text-blue-600">
               <Plus className="h-5 w-5" />
             </div>
@@ -673,11 +673,12 @@ export default function SessionManagerPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleCreateSession} className="space-y-4 pt-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="session-name" className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Session Name <span className="text-red-500">*</span>
-              </Label>
+          <form onSubmit={handleCreateSession} className="flex flex-col flex-1 overflow-hidden min-h-0">
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 custom-scrollbar">
+              <div className="space-y-1.5">
+                <Label htmlFor="session-name" className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Session Name <span className="text-red-500">*</span>
+                </Label>
               <Input
                 id="session-name"
                 placeholder="e.g. SSG General Election 2026-2027"
@@ -928,8 +929,9 @@ export default function SessionManagerPage() {
                 </div>
               )}
             </div>
+            </div>
 
-            <DialogFooter className="pt-3 gap-2 sm:gap-0">
+            <DialogFooter className="p-4 px-6 border-t border-slate-100 bg-slate-50/70 flex-shrink-0 gap-2 sm:gap-0">
               <Button
                 type="button"
                 variant="outline"
@@ -963,8 +965,8 @@ export default function SessionManagerPage() {
 
       {/* Edit Session Assignment Dialog */}
       <Dialog open={Boolean(sessionToEdit)} onOpenChange={(open) => !open && setSessionToEdit(null)}>
-        <DialogContent className="sm:max-w-md rounded-3xl p-6 bg-white border border-slate-200 shadow-2xl">
-          <DialogHeader className="space-y-1 text-left">
+        <DialogContent className="sm:max-w-lg max-h-[88vh] flex flex-col rounded-3xl p-0 bg-white border border-slate-200 shadow-2xl overflow-hidden">
+          <DialogHeader className="p-6 pb-3 space-y-1 text-left border-b border-slate-100 flex-shrink-0">
             <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center mb-2 border border-indigo-100 text-indigo-600">
               <GraduationCap className="h-5 w-5" />
             </div>
@@ -976,8 +978,9 @@ export default function SessionManagerPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 pt-2">
-            <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col flex-1 overflow-hidden min-h-0">
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 custom-scrollbar">
+              <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -1192,38 +1195,39 @@ export default function SessionManagerPage() {
                 </div>
               )}
             </div>
-
-            <DialogFooter className="pt-3 gap-2 sm:gap-0">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setSessionToEdit(null)}
-                disabled={isSavingEdit}
-                className="rounded-xl border-slate-200 text-slate-700 h-10 font-semibold"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={handleSaveEdit}
-                disabled={isSavingEdit || (!editIsSchoolWide && editGrades.length === 0)}
-                className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-10 font-bold gap-2"
-              >
-                {isSavingEdit ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Check className="h-4 w-4" />
-                    Save Eligibility
-                  </>
-                )}
-              </Button>
-            </DialogFooter>
           </div>
-        </DialogContent>
+
+          <DialogFooter className="p-4 px-6 border-t border-slate-100 bg-slate-50/70 flex-shrink-0 gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSessionToEdit(null)}
+              disabled={isSavingEdit}
+              className="rounded-xl border-slate-200 text-slate-700 h-10 font-semibold"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSaveEdit}
+              disabled={isSavingEdit || (!editIsSchoolWide && editGrades.length === 0)}
+              className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-10 font-bold gap-2"
+            >
+              {isSavingEdit ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" />
+                  Save Eligibility
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </div>
+      </DialogContent>
       </Dialog>
 
       {/* Delete Confirmation Alert Dialog */}
