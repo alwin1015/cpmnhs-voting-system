@@ -148,6 +148,49 @@ function dedupeInFlight<T>(key: string, fn: () => Promise<T>): Promise<T> {
 }
 
 // ============================================================================
+// IN-MEMORY TTL QUERY CACHE (Prevents Supabase Egress Quota Exhaustion)
+// ============================================================================
+
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+  ttl: number;
+}
+
+const queryCache = new Map<string, CacheEntry<any>>();
+
+export const clearApiCache = (prefix?: string) => {
+  if (!prefix) {
+    queryCache.clear();
+    return;
+  }
+  for (const key of queryCache.keys()) {
+    if (key.startsWith(prefix)) {
+      queryCache.delete(key);
+    }
+  }
+};
+
+function cachedFetch<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+  const entry = queryCache.get(key);
+  if (entry && Date.now() - entry.timestamp < entry.ttl) {
+    return Promise.resolve(entry.data as T);
+  }
+  return dedupeInFlight(key, async () => {
+    const data = await fn();
+    queryCache.set(key, { data, timestamp: Date.now(), ttl: ttlMs });
+    return data;
+  });
+}
+
+// Minimal column projections to eliminate select('*') over-fetching
+const SESSION_COLUMNS = 'id, name, school_year, start_date, end_date, is_active, status, schedule_status, grade_mappings, eligible_grade_levels, eligible_sections, results_finalized, finalized_by, finalized_at, authorization_doc_generated, authorization_confirmed_at, signatories';
+const POSITION_COLUMNS = 'id, session_id, name, display_order, max_votes, strict_grade_mapping';
+const SECTION_COLUMNS = 'id, name, grade_level';
+const SYSTEM_SETTINGS_COLUMNS = 'id, current_school_year';
+const LEGACY_ELECTION_COLUMNS = 'id, is_active, election_status, school_year';
+
+// ============================================================================
 // UNIFIED ADMIN DISPATCHER
 // ============================================================================
 
@@ -272,7 +315,7 @@ export const api = {
   getVoters: async () => {
     const token = readSession()?.token;
     if (!token) return [];
-    return dedupeInFlight(`getVoters:${token}`, () =>
+    return cachedFetch(`getVoters:${token}`, 15000, () =>
       withRetry(async () => {
         const { data, error } = await supabase.rpc('secure_get_voters', { p_token: token });
         if (error) {
@@ -292,6 +335,7 @@ export const api = {
       handleSessionError(error);
       throw new Error(error.message);
     }
+    clearApiCache('getVoters');
     return { success: true };
   },
 
@@ -303,6 +347,7 @@ export const api = {
       handleSessionError(error);
       throw new Error(error.message);
     }
+    clearApiCache('getVoters');
     return { success: true };
   },
 
@@ -313,6 +358,7 @@ export const api = {
       handleSessionError(error);
       throw new Error(error.message);
     }
+    clearApiCache('getVoters');
     
     // Update local storage session
     const sessionStr = localStorage.getItem('voting_session');
@@ -336,10 +382,12 @@ export const api = {
       handleSessionError(error);
       throw new Error(error.message);
     }
+    clearApiCache('getVoters');
     return { success: true };
   },
 
   resetVoter: async (id: string) => {
+    clearApiCache('getVoters');
     return api.deleteVoter(id);
   },
 
@@ -351,6 +399,7 @@ export const api = {
       handleSessionError(error);
       throw new Error(error.message);
     }
+    clearApiCache('getVoters');
     return { success: true };
   },
 
@@ -358,7 +407,7 @@ export const api = {
   getVoterSessions: async (sessionId: string) => {
     const token = readSession()?.token;
     if (!token) return [];
-    return dedupeInFlight(`getVoterSessions:${sessionId}:${token}`, () =>
+    return cachedFetch(`getVoterSessions:${sessionId}:${token}`, 15000, () =>
       withRetry(async () => {
         const { data, error } = await supabase.rpc('secure_get_voter_sessions', {
           p_token: token, p_session_id: Number(sessionId),
@@ -375,7 +424,7 @@ export const api = {
   getVoterSessionStatus: async (voterId: string, sessionId: string) => {
     void voterId;
     const token = requireSessionToken('voter');
-    return dedupeInFlight(`getVoterSessionStatus:${sessionId}:${token}`, () =>
+    return cachedFetch(`getVoterSessionStatus:${sessionId}:${token}`, 10000, () =>
       withRetry(async () => {
         const { data, error } = await supabase.rpc('secure_voter_session_status', {
           p_token: token, p_session_id: Number(sessionId),
@@ -391,11 +440,11 @@ export const api = {
 
   // ==================== Sessions ====================
   getSessions: async () => {
-    return dedupeInFlight('getSessions', () =>
+    return cachedFetch('getSessions', 30000, () =>
       withRetry(async () => {
         const { data, error } = await supabase
           .from('voting_sessions')
-          .select('*')
+          .select(SESSION_COLUMNS)
           .order('id', { ascending: true });
         if (error) throw new Error(error.message);
         return data || [];
@@ -404,9 +453,9 @@ export const api = {
   },
 
   getSession: async (id: string) => {
-    return dedupeInFlight(`getSession:${id}`, () =>
+    return cachedFetch(`getSession:${id}`, 30000, () =>
       withRetry(async () => {
-        const { data, error } = await supabase.from('voting_sessions').select('*').eq('id', id).single();
+        const { data, error } = await supabase.from('voting_sessions').select(SESSION_COLUMNS).eq('id', id).single();
         if (error) throw new Error(error.message);
         return data;
       })
@@ -432,37 +481,51 @@ export const api = {
       payload.grade_mappings = data.grade_mappings || data.gradeMappings;
     }
 
-    return adminManage('create_session', null, payload);
+    const res = await adminManage('create_session', null, payload);
+    clearApiCache('getSessions');
+    clearApiCache('getSession');
+    clearApiCache('getElection');
+    return res;
   },
 
   updateSession: async (sessionId: string, data: any) => {
     const payload = normalizeSessionPayload(data);
     await adminManage('update_session', sessionId, payload);
+    clearApiCache('getSessions');
+    clearApiCache('getSession');
+    clearApiCache('getElection');
     return { success: true };
   },
 
   deleteSession: async (sessionId: string) => {
     await adminManage('delete_session', sessionId);
+    clearApiCache('getSessions');
+    clearApiCache('getSession');
+    clearApiCache('getElection');
     return { success: true };
   },
 
   duplicateSession: async (sessionId: string) => {
-    return adminManage('duplicate_session', sessionId);
+    const res = await adminManage('duplicate_session', sessionId);
+    clearApiCache('getSessions');
+    clearApiCache('getSession');
+    clearApiCache('getElection');
+    return res;
   },
 
   // Legacy compat: getElection returns first session
   getElection: async () => {
-    return dedupeInFlight('getElection', () =>
+    return cachedFetch('getElection', 30000, () =>
       withRetry(async () => {
         const { data, error } = await supabase
           .from('voting_sessions')
-          .select('*')
+          .select(SESSION_COLUMNS)
           .order('id', { ascending: true })
           .limit(1)
           .single();
         if (error) {
           // Fallback to old election_settings table
-          const { data: legacy, error: legacyErr } = await supabase.from('election_settings').select('*').eq('id', 1).single();
+          const { data: legacy, error: legacyErr } = await supabase.from('election_settings').select(LEGACY_ELECTION_COLUMNS).eq('id', 1).single();
           if (legacyErr) throw new Error(legacyErr.message);
           return legacy;
         }
@@ -478,6 +541,9 @@ export const api = {
     void _id;
     const payload = normalizeSessionPayload(updates);
     await adminManage('update_session', targetId, payload);
+    clearApiCache('getSessions');
+    clearApiCache('getSession');
+    clearApiCache('getElection');
     try {
       const prev = JSON.parse(localStorage.getItem('election_schedule_backup') || '{}');
       localStorage.setItem('election_schedule_backup', JSON.stringify({ ...prev, ...data }));
@@ -489,7 +555,7 @@ export const api = {
   getCandidates: async (sessionId?: string) => {
     const token = readSession()?.token || null;
     const key = `getCandidates:${sessionId || 'all'}:${token || 'anon'}`;
-    return dedupeInFlight(key, () =>
+    return cachedFetch(key, 60000, () =>
       withRetry(async () => {
         const { data, error } = await supabase.rpc('secure_get_candidates', {
           p_token: token,
@@ -525,6 +591,7 @@ export const api = {
       payload.positionId = payload.position_id;
     }
     const res = await adminManage('add_candidate', null, payload);
+    clearApiCache('getCandidates');
     return res || { success: true };
   },
   
@@ -548,20 +615,22 @@ export const api = {
       payload.positionId = payload.position_id;
     }
     const res = await adminManage('update_candidate', data.id, payload);
+    clearApiCache('getCandidates');
     return res || { success: true };
   },
   
   deleteCandidate: async (id: string) => {
     const res = await adminManage('delete_candidate', id);
+    clearApiCache('getCandidates');
     return res || { success: true };
   },
 
   // ==================== Positions (Session-Scoped) ====================
   getPositions: async (sessionId?: string) => {
     const key = `getPositions:${sessionId || 'all'}`;
-    return dedupeInFlight(key, () =>
+    return cachedFetch(key, 300000, () =>
       withRetry(async () => {
-        let query = supabase.from('positions').select('*').order('display_order', { ascending: true });
+        let query = supabase.from('positions').select(POSITION_COLUMNS).order('display_order', { ascending: true });
         if (sessionId) query = query.eq('session_id', sessionId);
         const { data, error } = await query;
         if (error) throw new Error(error.message);
@@ -581,24 +650,27 @@ export const api = {
       maxVotes: data.max_votes !== undefined ? data.max_votes : data.maxVotes,
     };
     const res = await adminManage('add_position', null, payload);
+    clearApiCache('getPositions');
     return res || { success: true };
   },
   
   deletePosition: async (id: string) => {
     const res = await adminManage('delete_position', id);
+    clearApiCache('getPositions');
     return res || { success: true };
   },
 
   cleanupDuplicatePositions: async (sessionId?: string) => {
     const result = await adminManage('cleanup_positions', sessionId || null);
+    clearApiCache('getPositions');
     return (result as { success: true; count: number }) || { success: true, count: 0 };
   },
 
   // ==================== Sections (Global) ====================
   getSections: async () => {
-    return dedupeInFlight('getSections', () =>
+    return cachedFetch('getSections', 300000, () =>
       withRetry(async () => {
-        const { data, error } = await supabase.from('sections').select('*');
+        const { data, error } = await supabase.from('sections').select(SECTION_COLUMNS).order('name', { ascending: true });
         if (error) throw new Error(error.message);
         return data || [];
       })
@@ -607,11 +679,13 @@ export const api = {
   
   addSection: async (data: any) => {
     const res = await adminManage('add_section', null, data);
+    clearApiCache('getSections');
     return res || { success: true };
   },
   
   deleteSection: async (id: string) => {
     const res = await adminManage('delete_section', id);
+    clearApiCache('getSections');
     return res || { success: true };
   },
 
@@ -640,6 +714,9 @@ export const api = {
       session.has_voted = true;
       session.activeSessionId = activeSessionId;
       localStorage.setItem('voting_session', JSON.stringify(session));
+      clearApiCache('getVoterSessions');
+      clearApiCache('getVoterSessionStatus');
+      clearApiCache('getCandidates');
       return { success: true };
     } catch (err) {
       handleSessionError(err);
@@ -663,6 +740,9 @@ export const api = {
         handleSessionError(error);
         throw new Error(error.message);
       }
+      clearApiCache('getCandidates');
+      clearApiCache('getVoterSessions');
+      clearApiCache('getVoterSessionStatus');
       return { success: true };
     } catch (err) {
       handleSessionError(err);
@@ -793,6 +873,9 @@ export const api = {
 
     const targetId = sessionId || '1';
     await adminManage('update_session', targetId, finalData);
+    clearApiCache('getSessions');
+    clearApiCache('getSession');
+    clearApiCache('getCandidates');
     return { success: true };
   },
 
@@ -806,17 +889,20 @@ export const api = {
       finalized_at: null,
       status: 'completed',
     });
+    clearApiCache('getSessions');
+    clearApiCache('getSession');
+    clearApiCache('getCandidates');
     return { success: true };
   },
 
   // ==================== Eligible Sessions for a Voter ====================
   getEligibleSessions: async (voterGradeLevel: string, voterSection: string) => {
     const key = `getEligibleSessions:${voterGradeLevel}:${voterSection}`;
-    return dedupeInFlight(key, () =>
+    return cachedFetch(key, 30000, () =>
       withRetry(async () => {
         const { data: sessions, error } = await supabase
           .from('voting_sessions')
-          .select('*')
+          .select('id, name, school_year, is_active, status, eligible_grade_levels, eligible_sections')
           .eq('is_active', true)
           .eq('status', 'active');
         
@@ -839,9 +925,9 @@ export const api = {
 
   // ==================== School Year Rollover ====================
   getSystemSettings: async () => {
-    return dedupeInFlight('getSystemSettings', () =>
+    return cachedFetch('getSystemSettings', 600000, () =>
       withRetry(async () => {
-        const { data, error } = await supabase.from('system_settings').select('*').eq('id', 1).single();
+        const { data, error } = await supabase.from('system_settings').select(SYSTEM_SETTINGS_COLUMNS).eq('id', 1).single();
         if (error) return { currentSchoolYear: '2026-2027' };
         return { currentSchoolYear: data.current_school_year || '2026-2027' };
       }).catch(() => ({ currentSchoolYear: '2026-2027' }))
@@ -857,6 +943,9 @@ export const api = {
         handleSessionError(error);
         throw new Error(error.message);
       }
+      clearApiCache('getSystemSettings');
+      clearApiCache('getVoters');
+      clearApiCache('getSessions');
       return { success: true };
     } catch (err) {
       handleSessionError(err);
@@ -866,11 +955,11 @@ export const api = {
 
   // ==================== Election History ====================
   getElectionHistory: async () => {
-    return dedupeInFlight('getElectionHistory', () =>
+    return cachedFetch('getElectionHistory', 60000, () =>
       withRetry(async () => {
         const { data, error } = await supabase
           .from('voting_sessions')
-          .select('*')
+          .select(SESSION_COLUMNS)
           .in('status', ['completed', 'finalized'])
           .order('created_at', { ascending: false });
         if (error) throw new Error(error.message);
@@ -882,15 +971,19 @@ export const api = {
   getElectionHistoryDetail: async (sessionId: string) => {
     return dedupeInFlight(`getElectionHistoryDetail:${sessionId}`, async () => {
       try {
-        const [sessionRes, candidatesRes, positionsRes, voterSessions, auditRes, voters] = await Promise.all([
-          supabase.from('voting_sessions').select('*').eq('id', sessionId).maybeSingle(),
+        const [sessionRes, candidatesRes, positionsRes, voterSessions, auditRes, approvedCount] = await Promise.all([
+          supabase.from('voting_sessions').select(SESSION_COLUMNS).eq('id', sessionId).maybeSingle(),
           api.getCandidates(sessionId).then(data => ({ data, error: null })),
-          supabase.from('positions').select('*').eq('session_id', sessionId).order('display_order', { ascending: true }),
+          supabase.from('positions').select(POSITION_COLUMNS).eq('session_id', sessionId).order('display_order', { ascending: true }),
           api.getVoterSessions(sessionId),
           supabase.rpc('secure_get_audit_data', {
             p_token: requireSessionToken('admin'), p_session_id: Number(sessionId),
           }),
-          api.getVoters(),
+          supabase
+            .from('voters')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'approved')
+            .then(({ count, error }) => (error ? 0 : count || 0)),
         ]);
 
         if (sessionRes.error) {
@@ -912,7 +1005,7 @@ export const api = {
 
         // Count total approved voters and those who voted in this session
         const totalVoted = voterSessions.filter((vs: any) => vs.has_voted).length;
-        const totalVoters = voters.filter((v: any) => v.status === 'approved').length || voterSessions.length;
+        const totalVoters = approvedCount || voterSessions.length;
 
         return {
           session: sessionRes.data,

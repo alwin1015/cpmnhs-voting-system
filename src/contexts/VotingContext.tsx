@@ -399,15 +399,16 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
     try {
       const sessionId = (overrideSessionId === undefined ? activeSessionIdRef.current : overrideSessionId) || undefined;
+      const isAdmin = userRef.current?.role === 'admin';
 
       const [candidatesRes, positionsRes, sectionsRes, votersRes, settingsRes, sessionsData, voterSessionsData] = await Promise.all([
         sessionId ? api.getCandidates(sessionId).catch(err => { console.error('Candidates fetch error:', err); return null; }) : Promise.resolve([]),
         sessionId ? api.getPositions(sessionId).catch(err => { console.error('Positions fetch error:', err); return null; }) : Promise.resolve([]),
         api.getSections().catch(err => { console.error('Sections fetch error:', err); return null; }),
-        api.getVoters().catch(err => { console.error('Voters fetch error:', err); return null; }),
+        isAdmin ? api.getVoters().catch(err => { console.error('Voters fetch error:', err); return null; }) : Promise.resolve([]),
         api.getSystemSettings().catch(() => ({ currentSchoolYear: '2026-2027' })),
         api.getSessions().catch(err => { console.error('Sessions fetch error:', err); return null; }),
-        sessionId ? api.getVoterSessions(sessionId).catch(err => { console.error('VoterSessions fetch error:', err); return []; }) : Promise.resolve([]),
+        isAdmin && sessionId ? api.getVoterSessions(sessionId).catch(err => { console.error('VoterSessions fetch error:', err); return []; }) : Promise.resolve([]),
       ]);
       if (requestId !== refreshRequestRef.current) return;
 
@@ -505,8 +506,8 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         });
       }
 
-      // Map voters with status overrides & tombstone filtering
-      if (votersRes !== null) {
+      // Map voters with status overrides & tombstone filtering (admin only)
+      if (isAdmin && votersRes !== null) {
         const votersData = (votersRes as any)?.data ?? votersRes ?? [];
         const voterSessions = Array.isArray(voterSessionsData) ? voterSessionsData : [];
         const voterSessionMap = new Map(voterSessions.map(vs => [String(vs.voter_id), vs]));
@@ -971,8 +972,16 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sections' }, handleSections)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, handleCandidates)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, handleVoters)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'voter_sessions' }, () => {
-        if (isMounted) refreshData();
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'voter_sessions' }, (payload: any) => {
+        if (!isMounted || userRef.current?.role !== 'admin') return;
+        const newRow = payload?.new;
+        if (newRow?.session_id) {
+          const sId = String(newRow.session_id);
+          setSessions(prev => prev.map(s => s.id === sId ? { ...s, totalVoted: (s.totalVoted ?? 0) + 1 } : s));
+          if (sId === activeSessionIdRef.current) {
+            setElection(prev => prev ? { ...prev, totalVoted: (prev.totalVoted ?? 0) + 1 } : null);
+          }
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'system_settings' }, () => {
         if (isMounted) refreshData();
@@ -1077,6 +1086,16 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           if (p.sessionId === activeSessionIdRef.current) {
             setElection(prev => prev ? { ...prev, ...updates } : null);
           }
+        } else if (p.event === 'ballot_submitted') {
+          // Update admin turnout counters locally with zero network roundtrips
+          if (userRef.current?.role === 'admin' && p.sessionId) {
+            const sId = String(p.sessionId);
+            setSessions(prev => prev.map(s => s.id === sId ? { ...s, totalVoted: (s.totalVoted ?? 0) + 1 } : s));
+            if (sId === activeSessionIdRef.current) {
+              setElection(prev => prev ? { ...prev, totalVoted: (prev.totalVoted ?? 0) + 1 } : null);
+            }
+          }
+          // Students / voters do not need to refresh anything
         } else {
           // Only perform single-flight refresh for unhandled / global actions
           refreshData().catch(console.error);
@@ -1092,17 +1111,22 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
     realtimeChannelRef.current = channel;
 
-    // Intelligent polling fallback (15s): only poll when tab is active and visible to prevent idle quota consumption
+    // Slow safety-net poll (5 mins): Realtime WebSocket already delivers instant push updates.
     const pollInterval = setInterval(() => {
       if (isMounted && typeof document !== 'undefined' && document.visibilityState === 'visible') {
         refreshData();
       }
-    }, 15000);
+    }, 300000);
 
-    // Refresh immediately when window/tab is focused or becomes visible
+    // Throttled visibility/focus sync (max once every 2 minutes) to prevent egress exhaustion from tab switching
+    let lastVisibilitySync = Date.now();
     const handleVisibility = () => {
-      if (isMounted && document.visibilityState === 'visible') {
-        refreshData();
+      if (isMounted && typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        const now = Date.now();
+        if (now - lastVisibilitySync > 120000) {
+          lastVisibilitySync = now;
+          refreshData();
+        }
       }
     };
     window.addEventListener('focus', handleVisibility);
@@ -1494,13 +1518,12 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         setVotedSessionIds(prev => Array.from(new Set([...prev, activeSessionId])));
       }
       broadcastChange('ballot_submitted', { sessionId: activeSessionId });
-      await refreshData();
       return true;
     } catch (error) {
       console.error('Submit votes failed:', error);
       return false;
     }
-  }, [votes, user, hasVoted, isDataLoaded, dataError, election, activeSessionId, refreshData, broadcastChange]);
+  }, [votes, user, hasVoted, isDataLoaded, dataError, election, activeSessionId, broadcastChange]);
 
   const getResults = useCallback(() => {
     return positions.map((position) => ({
