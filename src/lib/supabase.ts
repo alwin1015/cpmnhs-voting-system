@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://yjahkkxelrjnvfbaazsr.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_44j1Ik-C3oAKIc--hOCZBw_D_dgibeV';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://kteepriolbfmfdhayhmj.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_VLTR4HQZCya03SX2KuFd7w_rrUa68k4';
 
 // Custom fetch wrapper with a 15-second timeout guard to prevent stalled TCP/HTTP connections
 const DEFAULT_TIMEOUT_MS = 15000;
