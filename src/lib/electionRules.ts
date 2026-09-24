@@ -51,15 +51,22 @@ export function isEligibleForSession(
 
 export function isSessionOpen(session: VotingSession | null | undefined, now = Date.now()): boolean {
   if (!session || !session.isActive || session.status !== 'active' || session.resultsFinalized) return false;
+  if (session.scheduleStatus === 'completed' || session.scheduleStatus === 'ended' || session.scheduleStatus === 'cancelled') return false;
+
   const start = session.startDate instanceof Date ? session.startDate.getTime() : (session.startDate ? new Date(session.startDate).getTime() : NaN);
   const end = session.endDate instanceof Date ? session.endDate.getTime() : (session.endDate ? new Date(session.endDate).getTime() : NaN);
 
-  // If schedule status is explicitly marked as ongoing by admin, treat as open
+  // If configured End Date and Time is reached, the session is ended automatically
+  if (Number.isFinite(end) && now >= end) {
+    return false;
+  }
+
+  // If schedule status is explicitly marked as ongoing by admin, treat as open as long as end date hasn't elapsed
   if (session.scheduleStatus === 'ongoing') {
     return true;
   }
 
-  return (!Number.isFinite(start) || start <= now) && (!Number.isFinite(end) || now < end);
+  return (!Number.isFinite(start) || start <= now);
 }
 
 export function formatSessionEligibility(session: Pick<VotingSession, 'eligibleGradeLevels' | 'eligibleSections'> | null | undefined): string {

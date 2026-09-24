@@ -96,14 +96,27 @@ function parseSession(eData: any, voters?: Voter[]): VotingSession {
     } catch (_) {}
   }
 
+  const startDate = new Date(eData.start_date ?? eData.startDate ?? NaN);
+  const endDate = new Date(eData.end_date ?? eData.endDate ?? NaN);
+  const isPastEndDate = !isNaN(endDate.getTime()) && Date.now() >= endDate.getTime();
+
+  const rawActive = Boolean(eData.is_active ?? eData.isActive ?? false);
+  const rawStatus = eData.status || 'upcoming';
+  const rawSchedule = eData.schedule_status ?? eData.scheduleStatus ?? 'draft';
+
+  // Automatically end if configured end date and time has been reached
+  const effectiveActive = isPastEndDate ? false : rawActive;
+  const effectiveStatus = isPastEndDate ? 'completed' : rawStatus;
+  const effectiveSchedule = isPastEndDate ? 'completed' : rawSchedule;
+
   return {
     id: String(eData.id),
     name: eData.name || 'Untitled Election',
     schoolYear: eData.school_year ?? eData.schoolYear ?? '',
-    startDate: new Date(eData.start_date ?? eData.startDate ?? NaN),
-    endDate: new Date(eData.end_date ?? eData.endDate ?? NaN),
-    isActive: Boolean(eData.is_active ?? eData.isActive ?? false),
-    status: eData.status || 'upcoming',
+    startDate,
+    endDate,
+    isActive: effectiveActive,
+    status: effectiveStatus,
     gradeMappings: parsedMappings,
     eligibleGradeLevels: eligibleGrades,
     eligibleSections: eligibleSections,
@@ -112,7 +125,7 @@ function parseSession(eData: any, voters?: Voter[]): VotingSession {
     resultsFinalized: Boolean(eData.results_finalized ?? false),
     finalizedBy: eData.finalized_by ?? null,
     finalizedAt: eData.finalized_at ? new Date(eData.finalized_at) : undefined,
-    scheduleStatus: eData.schedule_status ?? eData.scheduleStatus ?? 'draft',
+    scheduleStatus: effectiveSchedule,
     authorizationDocGenerated: Boolean(eData.authorization_doc_generated ?? eData.authorizationDocGenerated ?? false),
     authorizationConfirmedAt: eData.authorization_confirmed_at ?? eData.authorizationConfirmedAt ?? null,
     signatories: parseStoredJson(eData.signatories, null),
@@ -317,6 +330,10 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   const activeSessionIdRef = React.useRef<string | null>(null);
   const userRef = React.useRef<User | null>(null);
   userRef.current = user;
+  const votersRef = React.useRef<Voter[]>([]);
+  votersRef.current = voters;
+  const sessionsRef = React.useRef<VotingSession[]>([]);
+  sessionsRef.current = sessions;
 
   // Deletion tombstones to prevent deleted items from temporarily reappearing due to race conditions
   const deletedIdsRef = React.useRef<Map<string, number>>(new Map());
@@ -1283,8 +1300,6 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     setActiveSessionId(id);
     setVotes({});
     setHasVoted(false);
-    setCandidates([]);
-    setPositions([]);
 
     // Invalidate API caches so we fetch fresh data for this specific session
     clearApiCache('getCandidates');
@@ -1296,10 +1311,11 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     setSessions(prev => {
       const s = prev.find(sess => sess.id === id);
       if (s) {
+        const vList = votersRef.current || [];
         setElection({
           ...s,
-          totalVoters: voters.filter(v => v.status === 'approved' && isEligibleForSession(s, v)).length,
-          totalVoted: voters.filter(v => v.status === 'approved' && v.hasVoted).length,
+          totalVoters: vList.filter(v => v.status === 'approved' && isEligibleForSession(s, v)).length,
+          totalVoted: vList.filter(v => v.status === 'approved' && v.hasVoted).length,
         });
       }
       return prev;
@@ -1328,7 +1344,77 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         setHasVoted(voted);
       } catch (_) {}
     }
-  }, [refreshData, voters]);
+  }, [refreshData]);
+
+  // Real-time automatic session ending when configured end_date is reached across all devices
+  useEffect(() => {
+    const checkExpiredSessions = async () => {
+      const now = Date.now();
+      const curSessions = sessionsRef.current;
+      if (!Array.isArray(curSessions) || curSessions.length === 0) return;
+
+      const expired = curSessions.filter(s =>
+        (s.isActive || s.status === 'active' || s.scheduleStatus === 'ongoing') &&
+        s.endDate && !isNaN(new Date(s.endDate).getTime()) &&
+        now >= new Date(s.endDate).getTime()
+      );
+
+      if (expired.length === 0) return;
+
+      setSessions(prev =>
+        prev.map(s => {
+          const isExpired = (s.isActive || s.status === 'active' || s.scheduleStatus === 'ongoing') &&
+            s.endDate && !isNaN(new Date(s.endDate).getTime()) &&
+            now >= new Date(s.endDate).getTime();
+          if (isExpired) {
+            return {
+              ...s,
+              isActive: false,
+              status: 'completed',
+              scheduleStatus: 'completed',
+            };
+          }
+          return s;
+        })
+      );
+
+      setElection(prev => {
+        if (!prev) return null;
+        const isExpired = (prev.isActive || prev.status === 'active' || prev.scheduleStatus === 'ongoing') &&
+          prev.endDate && !isNaN(new Date(prev.endDate).getTime()) &&
+          now >= new Date(prev.endDate).getTime();
+        if (isExpired) {
+          return {
+            ...prev,
+            isActive: false,
+            status: 'completed',
+            scheduleStatus: 'completed',
+          };
+        }
+        return prev;
+      });
+
+      expired.forEach(s => {
+        broadcastChange('session_closed', { sessionId: s.id });
+      });
+
+      if (userRef.current?.role === 'admin') {
+        for (const s of expired) {
+          try {
+            await api.updateSession(s.id, {
+              is_active: false,
+              status: 'completed',
+              schedule_status: 'completed',
+              end_date: new Date(s.endDate).toISOString(),
+            });
+          } catch (_) {}
+        }
+      }
+    };
+
+    const intervalId = setInterval(checkExpiredSessions, 1000);
+    return () => clearInterval(intervalId);
+  }, [broadcastChange]);
 
   const createSessionFn = useCallback(async (data: any): Promise<VotingSession> => {
     const created = await api.createSession(data);

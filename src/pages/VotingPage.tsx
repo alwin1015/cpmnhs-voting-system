@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
@@ -437,43 +437,45 @@ export default function VotingPage() {
   };
 
   // Filter positions: each voter only sees the Representative assigned to their grade, or none if set to 'none'
-  const votablePositions = positions.filter(p => {
-    const isRep = /representative|rep\b/i.test(p.name);
-    if (!isRep) return true; // Non-representative positions (President, VP, etc.) are always visible
+  const votablePositions = useMemo(() => {
+    return positions.filter(p => {
+      const isRep = /representative|rep\b/i.test(p.name);
+      if (!isRep) return true; // Non-representative positions (President, VP, etc.) are always visible
 
-    // If election has gradeMappings configured and voter has a gradeLevel:
-    if (user?.gradeLevel) {
-      const userGrade = normalizeGrade(user.gradeLevel);
-      const targetGrade = (election?.gradeMappings && (election.gradeMappings[user.gradeLevel] || election.gradeMappings[userGrade])) 
-        || userGrade;
+      // If election has gradeMappings configured and voter has a gradeLevel:
+      if (user?.gradeLevel) {
+        const userGrade = normalizeGrade(user.gradeLevel);
+        const targetGrade = (election?.gradeMappings && (election.gradeMappings[user.gradeLevel] || election.gradeMappings[userGrade])) 
+          || userGrade;
 
-      // If 'none' is selected, this grade cannot see or vote for any Grade 7–12 Representative
-      if (targetGrade === 'none') {
-        return false;
-      }
-
-      // If mapped to a specific grade (e.g. '8')
-      if (targetGrade) {
-        const repGrade = getRepresentativeGrade(p.name);
-        // If this position has a specific grade in its title (e.g. "Grade 8 Representative"),
-        // only keep it if it matches the target grade
-        if (repGrade) {
-          return repGrade === targetGrade;
+        // If 'none' is selected, this grade cannot see or vote for any Grade 7–12 Representative
+        if (targetGrade === 'none') {
+          return false;
         }
-        // Generic representative position with no grade in title: keep it
-        return true;
+
+        // If mapped to a specific grade (e.g. '8')
+        if (targetGrade) {
+          const repGrade = getRepresentativeGrade(p.name);
+          // If this position has a specific grade in its title (e.g. "Grade 8 Representative"),
+          // only keep it if it matches the target grade
+          if (repGrade) {
+            return repGrade === targetGrade;
+          }
+          // Generic representative position with no grade in title: keep it
+          return true;
+        }
       }
-    }
 
-    return true;
-  });
+      return true;
+    });
+  }, [positions, user?.gradeLevel, election?.gradeMappings]);
 
-  // Guard against out-of-bounds position index
+  // Guard against out-of-bounds position index only if currentPositionIndex exceeds bounds
   useEffect(() => {
     if (votablePositions.length > 0 && currentPositionIndex >= votablePositions.length) {
-      setCurrentPositionIndex(0);
+      setCurrentPositionIndex(Math.max(0, votablePositions.length - 1));
     }
-  }, [currentPositionIndex, votablePositions.length]);
+  }, [votablePositions.length]);
 
   if (votablePositions.length === 0) {
     return (
@@ -519,8 +521,10 @@ export default function VotingPage() {
 
   const handleNext = () => {
     if (currentPositionIndex < votablePositions.length - 1) {
-      setCurrentPositionIndex(prev => prev + 1);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setCurrentPositionIndex(prev => Math.min(prev + 1, votablePositions.length - 1));
+      try {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (_) {}
     }
   };
 

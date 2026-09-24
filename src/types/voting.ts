@@ -59,7 +59,7 @@ export interface VotingSession {
   startDate: Date;
   endDate: Date;
   isActive: boolean;
-  status: 'upcoming' | 'active' | 'completed' | 'finalized';
+  status: 'upcoming' | 'active' | 'completed' | 'ended' | 'finalized';
   gradeMappings?: Record<string, string>;
   eligibleGradeLevels: string[];
   eligibleSections: string[];
@@ -68,7 +68,7 @@ export interface VotingSession {
   finalizedAt?: Date;
   totalVoters?: number;
   totalVoted?: number;
-  scheduleStatus?: 'draft' | 'pending_authorization' | 'authorized' | 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
+  scheduleStatus?: 'draft' | 'pending_authorization' | 'authorized' | 'scheduled' | 'ongoing' | 'completed' | 'ended' | 'cancelled';
   authorizationDocGenerated?: boolean;
   authorizationConfirmedAt?: string;
   signatories?: {

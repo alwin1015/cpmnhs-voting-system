@@ -54,7 +54,8 @@ const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }
   authorized: { label: 'Authorized', color: 'text-blue-700', bg: 'bg-blue-50' },
   scheduled: { label: 'Scheduled', color: 'text-indigo-700', bg: 'bg-indigo-50' },
   ongoing: { label: 'Ongoing', color: 'text-green-700', bg: 'bg-green-50' },
-  completed: { label: 'Completed', color: 'text-emerald-700', bg: 'bg-emerald-50' },
+  completed: { label: 'Ended', color: 'text-rose-700', bg: 'bg-rose-50' },
+  ended: { label: 'Ended', color: 'text-rose-700', bg: 'bg-rose-50' },
   cancelled: { label: 'Cancelled', color: 'text-red-700', bg: 'bg-red-50' },
 };
 
@@ -113,7 +114,10 @@ export default function AdminDashboard() {
     return sections.filter((s) => gradeSet.has(normalizeGrade(s.gradeLevel)));
   };
 
-  const scheduleStatus = election?.scheduleStatus || 'draft';
+  const isPastEndDate = Boolean(election?.endDate && !isNaN(new Date(election.endDate).getTime()) && Date.now() >= new Date(election.endDate).getTime());
+  const scheduleStatus = (isPastEndDate || election?.status === 'completed' || election?.status === 'ended' || election?.scheduleStatus === 'completed' || election?.scheduleStatus === 'ended')
+    ? 'ended'
+    : (election?.scheduleStatus || 'draft');
   const statusInfo = STATUS_LABELS[scheduleStatus] || STATUS_LABELS.draft;
 
   const handleOpenSchedule = () => {
@@ -851,13 +855,13 @@ export default function AdminDashboard() {
                     {election?.isActive ? <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6" /> : <Clock className="h-5 w-5 sm:h-6 sm:w-6" />}
                   </div>
                   <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-                    {election?.isActive ? 'Voting is Now Live' : 'Election is Inactive'}
+                    {election?.isActive ? 'Voting is Now Live' : (statusInfo.label === 'Ended' ? 'Election has Ended' : 'Election is Inactive')}
                   </h2>
                 </div>
                 <p className="text-sm text-white/80 font-medium max-w-xl leading-relaxed ml-11 hidden sm:block">
                   {election?.isActive 
                     ? 'Students can currently log in and cast their votes. Monitor the turnout and results in real-time.' 
-                    : 'The election is currently closed. Set the schedule and click Launch Election to start voting.'}
+                    : (statusInfo.label === 'Ended' ? 'This voting session has ended automatically. No new ballots can be submitted, and all existing votes and results remain safely preserved.' : 'The election is currently closed. Set the schedule and click Launch Election to start voting.')}
                 </p>
                 {/* Schedule Status Badge */}
                 <div className="mt-2 flex items-center gap-2 ml-11 flex-wrap">

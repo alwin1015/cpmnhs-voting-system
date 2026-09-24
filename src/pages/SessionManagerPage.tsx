@@ -357,10 +357,11 @@ export default function SessionManagerPage() {
           dotColor: 'bg-emerald-500',
         };
       case 'completed':
+      case 'ended':
         return {
-          label: 'Completed',
-          className: 'bg-amber-50 text-amber-700 border-amber-200 font-semibold',
-          dotColor: 'bg-amber-500',
+          label: 'Ended',
+          className: 'bg-rose-50 text-rose-700 border-rose-200 font-semibold',
+          dotColor: 'bg-rose-500',
         };
       case 'finalized':
         return {

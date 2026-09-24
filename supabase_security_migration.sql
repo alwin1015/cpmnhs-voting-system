@@ -1076,6 +1076,29 @@ begin
 end;
 $$;
 
+-- Automatically end any voting sessions whose configured end_date and end_time has passed
+create or replace function public.secure_auto_end_expired_sessions()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions, pg_temp
+as $$
+declare
+  v_count int := 0;
+begin
+  update public.voting_sessions
+  set is_active = false,
+      status = 'completed',
+      schedule_status = 'completed'
+  where (is_active = true or status = 'active' or schedule_status = 'ongoing')
+    and end_date is not null
+    and now() >= end_date;
+
+  get diagnostics v_count = row_count;
+  return jsonb_build_object('success', true, 'ended_count', v_count);
+end;
+$$;
+
 -- Submit Complete Ballot (High Integrity, Atomic Transaction)
 create or replace function public.secure_submit_ballot(p_token text, p_session_id bigint, p_votes jsonb)
 returns void
@@ -1101,15 +1124,16 @@ begin
     raise exception 'Ballot is empty';
   end if;
 
+  -- Automatically end any expired sessions in real time
+  perform public.secure_auto_end_expired_sessions();
+
   select * into v_session from public.voting_sessions where id = p_session_id for update;
 
   if v_session.id is null or not v_session.is_active or v_session.status <> 'active'
      or coalesce(v_session.results_finalized, false)
-     or (coalesce(v_session.schedule_status, '') <> 'ongoing' and (
-          (v_session.start_date is not null and now() < v_session.start_date) or
-          (v_session.end_date is not null and now() >= v_session.end_date)
-        )) then
-    raise exception 'Election is not open for voting';
+     or (v_session.end_date is not null and now() >= v_session.end_date)
+     or (v_session.start_date is not null and now() < v_session.start_date) then
+    raise exception 'This voting session has ended. No further ballots can be accepted.';
   end if;
 
   select * into v_voter from public.voters where id::text = v_voter_id for update;
@@ -1551,6 +1575,7 @@ grant execute on function public.secure_update_my_section(text, text) to anon, a
 grant execute on function public.secure_admin_voter_action(text, text, text) to anon, authenticated;
 grant execute on function public.secure_admin_manage(text, text, bigint, jsonb) to anon, authenticated;
 grant execute on function public.secure_submit_ballot(text, bigint, jsonb) to anon, authenticated;
+grant execute on function public.secure_auto_end_expired_sessions() to anon, authenticated;
 grant execute on function public.secure_reset_session(text, bigint) to anon, authenticated;
 grant execute on function public.secure_get_audit_data(text, bigint) to anon, authenticated;
 grant execute on function public.secure_initiate_verification(text, bigint, jsonb, jsonb, bigint) to anon, authenticated;
