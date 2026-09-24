@@ -680,7 +680,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     } else {
       setVotedSessionIds([]);
     }
-  }, [user?.id, sessions, checkVoterSessionStatuses]);
+  }, [user?.id, user?.role, sessions, checkVoterSessionStatuses]);
 
   // Securely fetch and sync hasVoted state directly from database for the active session
   useEffect(() => {

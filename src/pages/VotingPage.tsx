@@ -21,6 +21,15 @@ import { Vote, CheckCircle, CheckCircle2, ArrowRight, ArrowLeft, Send, Clock, Us
 import { isEligibleForSession, formatSessionEligibility, normalizeGrade } from '@/lib/electionRules';
 import type { VotingSession } from '@/types/voting';
 
+// Helper to extract grade number from a Representative position name (e.g. "Grade 8 Representative" -> "8")
+const getRepresentativeGrade = (posName: string): string | null => {
+  if (!/representative|rep\b/i.test(posName)) return null;
+  const m = posName.match(/(?:grade|gr\.?|g)\s*(\d+)/i) ||
+            posName.match(/(\d+)(?:st|nd|rd|th)?\s*(?:grade|gr\.?|representative|rep)/i) ||
+            posName.match(/\b(\d+)\b/);
+  return m ? m[1] : null;
+};
+
 export default function VotingPage() {
   const {
     candidates,
@@ -72,6 +81,50 @@ export default function VotingPage() {
   useEffect(() => {
     setCurrentPositionIndex(0);
   }, [activeSessionId]);
+
+  // Filter positions: each voter only sees the Representative assigned to their grade, or none if set to 'none'
+  const votablePositions = useMemo(() => {
+    return positions.filter(p => {
+      const isRep = /representative|rep\b/i.test(p.name);
+      if (!isRep) return true; // Non-representative positions (President, VP, etc.) are always visible
+
+      // If election has gradeMappings configured and voter has a gradeLevel:
+      if (user?.gradeLevel) {
+        const userGrade = normalizeGrade(user.gradeLevel);
+        const targetGrade = (election?.gradeMappings && (election.gradeMappings[user.gradeLevel] || election.gradeMappings[userGrade])) 
+          || userGrade;
+
+        // If 'none' is selected, this grade cannot see or vote for any Grade 7–12 Representative
+        if (targetGrade === 'none') {
+          return false;
+        }
+
+        // If mapped to a specific grade (e.g. '8')
+        if (targetGrade) {
+          const repGrade = getRepresentativeGrade(p.name);
+          // If this position has a specific grade in its title (e.g. "Grade 8 Representative"),
+          // only keep it if it matches the target grade
+          if (repGrade) {
+            return repGrade === targetGrade;
+          }
+          // Generic representative position with no grade in title: keep it
+          return true;
+        }
+      }
+
+      return true;
+    });
+  }, [positions, user?.gradeLevel, election?.gradeMappings]);
+
+  // Guard against out-of-bounds position index only if currentPositionIndex exceeds bounds
+  useEffect(() => {
+    setCurrentPositionIndex(prev => {
+      if (votablePositions.length > 0 && prev >= votablePositions.length) {
+        return Math.max(0, votablePositions.length - 1);
+      }
+      return prev;
+    });
+  }, [votablePositions.length]);
 
   // Redirect if not logged in or not a voter
   if (!isLoggedIn || user?.role !== 'voter') {
@@ -427,55 +480,6 @@ export default function VotingPage() {
     );
   }
 
-  // Helper to extract grade number from a Representative position name (e.g. "Grade 8 Representative" -> "8")
-  const getRepresentativeGrade = (posName: string): string | null => {
-    if (!/representative|rep\b/i.test(posName)) return null;
-    const m = posName.match(/(?:grade|gr\.?|g)\s*(\d+)/i) ||
-              posName.match(/(\d+)(?:st|nd|rd|th)?\s*(?:grade|gr\.?|representative|rep)/i) ||
-              posName.match(/\b(\d+)\b/);
-    return m ? m[1] : null;
-  };
-
-  // Filter positions: each voter only sees the Representative assigned to their grade, or none if set to 'none'
-  const votablePositions = useMemo(() => {
-    return positions.filter(p => {
-      const isRep = /representative|rep\b/i.test(p.name);
-      if (!isRep) return true; // Non-representative positions (President, VP, etc.) are always visible
-
-      // If election has gradeMappings configured and voter has a gradeLevel:
-      if (user?.gradeLevel) {
-        const userGrade = normalizeGrade(user.gradeLevel);
-        const targetGrade = (election?.gradeMappings && (election.gradeMappings[user.gradeLevel] || election.gradeMappings[userGrade])) 
-          || userGrade;
-
-        // If 'none' is selected, this grade cannot see or vote for any Grade 7–12 Representative
-        if (targetGrade === 'none') {
-          return false;
-        }
-
-        // If mapped to a specific grade (e.g. '8')
-        if (targetGrade) {
-          const repGrade = getRepresentativeGrade(p.name);
-          // If this position has a specific grade in its title (e.g. "Grade 8 Representative"),
-          // only keep it if it matches the target grade
-          if (repGrade) {
-            return repGrade === targetGrade;
-          }
-          // Generic representative position with no grade in title: keep it
-          return true;
-        }
-      }
-
-      return true;
-    });
-  }, [positions, user?.gradeLevel, election?.gradeMappings]);
-
-  // Guard against out-of-bounds position index only if currentPositionIndex exceeds bounds
-  useEffect(() => {
-    if (votablePositions.length > 0 && currentPositionIndex >= votablePositions.length) {
-      setCurrentPositionIndex(Math.max(0, votablePositions.length - 1));
-    }
-  }, [votablePositions.length]);
 
   if (votablePositions.length === 0) {
     return (
