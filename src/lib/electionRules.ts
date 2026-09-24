@@ -54,9 +54,9 @@ export function isSessionOpen(session: VotingSession | null | undefined, now = D
   const start = session.startDate instanceof Date ? session.startDate.getTime() : (session.startDate ? new Date(session.startDate).getTime() : NaN);
   const end = session.endDate instanceof Date ? session.endDate.getTime() : (session.endDate ? new Date(session.endDate).getTime() : NaN);
 
-  // If schedule status is explicitly marked as ongoing by admin, treat as open unless expired by end date
+  // If schedule status is explicitly marked as ongoing by admin, treat as open
   if (session.scheduleStatus === 'ongoing') {
-    return !Number.isFinite(end) || now < end;
+    return true;
   }
 
   return (!Number.isFinite(start) || start <= now) && (!Number.isFinite(end) || now < end);

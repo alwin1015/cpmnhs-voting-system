@@ -541,17 +541,11 @@ export default function VotingPage() {
           description: 'Your votes have been recorded.',
         });
         setJustVoted(true);
-      } else {
-        toast({
-          title: 'Submission Failed',
-          description: 'Failed to record your vote. Please try again.',
-          variant: 'destructive',
-        });
       }
-    } catch (error) {
+    } catch (error: any) {
       toast({
-        title: 'Error',
-        description: 'Failed to submit your vote. Please check your connection.',
+        title: 'Submission Failed',
+        description: error?.message || 'Failed to submit your vote. Please try again.',
         variant: 'destructive',
       });
     } finally {

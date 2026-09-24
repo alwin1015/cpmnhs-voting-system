@@ -1633,14 +1633,33 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const submitVotes = useCallback(async (): Promise<boolean> => {
-    if (!user || user.role !== 'voter' || hasVoted || !isDataLoaded || dataError
-      || !isSessionOpen(election) || !isEligibleForSession(election, user)
-      || (activeSessionId && votedSessionIds.includes(activeSessionId))) return false;
+    if (!user || user.role !== 'voter') {
+      throw new Error('You must be logged in as a student to submit a ballot.');
+    }
+    if (hasVoted || (activeSessionId && votedSessionIds.includes(activeSessionId))) {
+      throw new Error('You have already cast your vote in this election session.');
+    }
+    if (!isDataLoaded) {
+      throw new Error('Election data is still loading. Please wait a moment and try again.');
+    }
+    if (dataError) {
+      throw new Error(dataError);
+    }
+    if (!isSessionOpen(election)) {
+      throw new Error('This election session is currently closed for voting.');
+    }
+    if (!isEligibleForSession(election, user)) {
+      throw new Error('Your grade level or section is not eligible for this voting session.');
+    }
+
     try {
       const votesArray = Object.entries(votes).map(([positionId, candidateId]) => ({
         candidate_id: candidateId,
         position_id: positionId,
       }));
+      if (votesArray.length === 0) {
+        throw new Error('Ballot is empty. Please select your candidates before submitting.');
+      }
       await api.submitVotes(votesArray, activeSessionId || undefined);
       setHasVoted(true);
       if (activeSessionId) {
@@ -1658,7 +1677,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       return true;
     } catch (error) {
       console.error('Submit votes failed:', error);
-      return false;
+      throw error;
     }
   }, [votes, user, hasVoted, isDataLoaded, dataError, election, activeSessionId, votedSessionIds, broadcastChange]);
 

@@ -1105,8 +1105,10 @@ begin
 
   if v_session.id is null or not v_session.is_active or v_session.status <> 'active'
      or coalesce(v_session.results_finalized, false)
-     or (coalesce(v_session.schedule_status, '') <> 'ongoing' and v_session.start_date is not null and now() < v_session.start_date)
-     or (v_session.end_date is not null and now() >= v_session.end_date) then
+     or (coalesce(v_session.schedule_status, '') <> 'ongoing' and (
+          (v_session.start_date is not null and now() < v_session.start_date) or
+          (v_session.end_date is not null and now() >= v_session.end_date)
+        )) then
     raise exception 'Election is not open for voting';
   end if;
 

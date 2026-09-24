@@ -27,6 +27,17 @@ describe('election rules', () => {
     expect(isSessionOpen(launchedSession, Date.parse('2026-09-22T12:00:00Z'))).toBe(true);
   });
 
+  it('keeps ongoing launched sessions open even if end date timestamp passed until admin closes', () => {
+    const ongoingSession = session({
+      scheduleStatus: 'ongoing',
+      startDate: new Date('2026-09-22T08:00:00Z'),
+      endDate: new Date('2026-09-22T09:00:00Z'),
+    });
+    expect(isSessionOpen(ongoingSession, Date.parse('2026-09-22T10:00:00Z'))).toBe(true);
+    expect(isSessionOpen({ ...ongoingSession, resultsFinalized: true }, Date.parse('2026-09-22T10:00:00Z'))).toBe(false);
+    expect(isSessionOpen({ ...ongoingSession, isActive: false }, Date.parse('2026-09-22T10:00:00Z'))).toBe(false);
+  });
+
   it('applies both grade and section eligibility with flexible normalization', () => {
     const restricted = session({ eligibleGradeLevels: ['10'], eligibleSections: ['Rizal'] });
     expect(isEligibleForSession(restricted, { gradeLevel: '10', section: 'Rizal' })).toBe(true);
