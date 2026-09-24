@@ -32,7 +32,7 @@ const emptyForm: CandidateForm = {
 };
 
 export default function CandidatesPage() {
-  const { candidates, positions, addCandidate, updateCandidate, deleteCandidate, user, isLoggedIn, activeSession, sessions, activeSessionId, switchSession } = useVoting();
+  const { candidates, positions, addCandidate, updateCandidate, deleteCandidate, user, isLoggedIn, activeSession, sessions, activeSessionId, switchSession, sections } = useVoting();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
@@ -49,6 +49,24 @@ export default function CandidatesPage() {
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
 
   const isAdmin = isLoggedIn && user?.role === 'admin';
+
+  // Dynamic Grade Levels configured in the Admin Dashboard
+  const availableGrades = useMemo(() => {
+    const gradesFromSections = sections.map((s) => String(s.gradeLevel));
+    const combined = [...new Set(gradesFromSections.length > 0 ? gradesFromSections : ['7', '8', '9', '10', '11', '12'])]
+      .filter(Boolean)
+      .sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0));
+    return combined;
+  }, [sections]);
+
+  // Dynamic Sections matching the currently chosen Grade Level
+  const availableSections = useMemo(() => {
+    if (!form.gradeLevel) return [];
+    return sections
+      .filter((s) => String(s.gradeLevel) === String(form.gradeLevel))
+      .map((s) => s.name)
+      .sort();
+  }, [sections, form.gradeLevel]);
 
   const positionOrder = useMemo(() => {
     return positions.reduce((acc, p) => ({ ...acc, [p.id]: p.order }), {} as Record<string, number>);
@@ -335,32 +353,46 @@ export default function CandidatesPage() {
                   <div className="grid grid-cols-2 gap-4">
                     {/* Grade Level */}
                     <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Grade *</label>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Grade Level *</label>
                       <select
                         value={form.gradeLevel}
-                        onChange={e => setForm(prev => ({ ...prev, gradeLevel: e.target.value }))}
+                        onChange={e => {
+                          const newGrade = e.target.value;
+                          setForm(prev => ({
+                            ...prev,
+                            gradeLevel: newGrade,
+                            section: '', // Reset section when grade level changes
+                          }));
+                        }}
                         className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                       >
-                        <option value="">Select grade</option>
-                        <option value="7">Grade 7</option>
-                        <option value="8">Grade 8</option>
-                        <option value="9">Grade 9</option>
-                        <option value="10">Grade 10</option>
-                        <option value="11">Grade 11</option>
-                        <option value="12">Grade 12</option>
+                        <option value="">Select Grade Level</option>
+                        {availableGrades.map(g => (
+                          <option key={g} value={g}>Grade {g}</option>
+                        ))}
                       </select>
                     </div>
 
                     {/* Section */}
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1">Section *</label>
-                      <input
-                        type="text"
+                      <select
                         value={form.section}
                         onChange={e => setForm(prev => ({ ...prev, section: e.target.value }))}
-                        className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                        placeholder="e.g. Rizal"
-                      />
+                        disabled={!form.gradeLevel || availableSections.length === 0}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white disabled:bg-slate-50 disabled:text-slate-400"
+                      >
+                        <option value="">
+                          {!form.gradeLevel 
+                            ? 'Select grade first' 
+                            : availableSections.length === 0 
+                            ? `No sections for Grade ${form.gradeLevel}` 
+                            : 'Select Section'}
+                        </option>
+                        {availableSections.map(s => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 

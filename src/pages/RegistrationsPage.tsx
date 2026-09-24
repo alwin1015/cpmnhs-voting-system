@@ -51,7 +51,7 @@ export default function RegistrationsPage() {
   const [rejectConfirmId, setRejectConfirmId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGradeTab, setSelectedGradeTab] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'pending' | 'rejected'>('pending');
+  const [viewMode, setViewMode] = useState<'all' | 'approved' | 'pending' | 'rejected'>('all');
 
   const isAdmin = isLoggedIn && user?.role === 'admin';
 
@@ -63,13 +63,23 @@ export default function RegistrationsPage() {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  // Only students for approval (pending) and rejected signups
+  // Status-scoped student lists
+  const approvedVoters = useMemo(() => voters.filter(v => v.status === 'approved'), [voters]);
   const pendingVoters = useMemo(() => voters.filter(v => v.status === 'pending'), [voters]);
   const rejectedVoters = useMemo(() => voters.filter(v => v.status === 'rejected'), [voters]);
   const pendingCount = pendingVoters.length;
+  const approvedCount = approvedVoters.length;
+  const totalCount = voters.length;
 
-  // Active list based on view mode (strictly pending for approval by default)
-  const activeList = viewMode === 'pending' ? pendingVoters : rejectedVoters;
+  // Active list based on view mode (default to all students)
+  const activeList = useMemo(() => {
+    switch (viewMode) {
+      case 'approved': return approvedVoters;
+      case 'pending': return pendingVoters;
+      case 'rejected': return rejectedVoters;
+      default: return voters;
+    }
+  }, [voters, approvedVoters, pendingVoters, rejectedVoters, viewMode]);
 
   // Filter active list by search query
   const filteredStudents = useMemo(() => {
@@ -147,7 +157,7 @@ export default function RegistrationsPage() {
     setRejectConfirmId(null);
   };
 
-  // Bulk Upload handler
+  // Bulk Upload handler (LRN, Full Name, Grade Level, Section - No passwords required)
   const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -164,20 +174,65 @@ export default function RegistrationsPage() {
         const worksheet = workbook.Sheets[firstSheetName];
         
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
-        const rows = jsonData.slice(1);
-        
-        const students = rows.map((row: any) => ({
-          lrn: row[0] ? String(row[0]).trim() : '',
-          name: row[1] ? String(row[1]).trim() : '',
-          gradeLevel: row[2] ? String(row[2]).trim() : '',
-          section: row[3] ? String(row[3]).trim() : '',
-          password: row[4] ? String(row[4]).trim() : '',
-        })).filter((s) => s.lrn && s.name && s.gradeLevel && s.section && s.password);
+        if (!jsonData || jsonData.length === 0) {
+          toast({
+            title: 'Error',
+            description: 'The uploaded file is empty.',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        const firstRow = jsonData[0].map((h: any) => String(h || '').trim().toLowerCase());
+        const hasHeader = firstRow.some((h: string) => h.includes('lrn') || h.includes('name') || h.includes('grade') || h.includes('section'));
+
+        let lrnIdx = 0;
+        let nameIdx = 1;
+        let gradeIdx = 2;
+        let sectionIdx = 3;
+
+        if (hasHeader) {
+          const lIdx = firstRow.findIndex((h: string) => h.includes('lrn'));
+          const nIdx = firstRow.findIndex((h: string) => h.includes('name'));
+          const gIdx = firstRow.findIndex((h: string) => h.includes('grade'));
+          const sIdx = firstRow.findIndex((h: string) => h.includes('section'));
+          if (lIdx !== -1) lrnIdx = lIdx;
+          if (nIdx !== -1) nameIdx = nIdx;
+          if (gIdx !== -1) gradeIdx = gIdx;
+          if (sIdx !== -1) sectionIdx = sIdx;
+        }
+
+        const dataRows = hasHeader ? jsonData.slice(1) : jsonData;
+        const seenLrns = new Set<string>();
+        const students: any[] = [];
+
+        dataRows.forEach((row: any) => {
+          const rawLrn = row[lrnIdx] !== undefined ? String(row[lrnIdx]).trim() : '';
+          const cleanLrn = rawLrn.replace(/\D/g, '');
+          const rawName = row[nameIdx] !== undefined ? String(row[nameIdx]).trim() : '';
+          let rawGrade = row[gradeIdx] !== undefined ? String(row[gradeIdx]).trim() : '';
+          const rawSection = row[sectionIdx] !== undefined ? String(row[sectionIdx]).trim() : '';
+
+          if (cleanLrn.length === 12 && rawName) {
+            if (!seenLrns.has(cleanLrn)) {
+              seenLrns.add(cleanLrn);
+              if (rawGrade.toLowerCase().includes('grade')) {
+                rawGrade = rawGrade.replace(/\D/g, '');
+              }
+              students.push({
+                lrn: cleanLrn,
+                name: rawName,
+                gradeLevel: rawGrade || '7',
+                section: rawSection || 'Pearl',
+              });
+            }
+          }
+        });
 
         if (students.length === 0) {
           toast({
-            title: 'Error',
-            description: 'No valid students found. Ensure columns are: LRN, Name, Grade Level, Section, Password.',
+            title: 'No Valid Students Found',
+            description: 'Please ensure your CSV contains: LRN (12 digits), Full Name, Grade Level, and Section.',
             variant: 'destructive',
           });
           return;
@@ -188,15 +243,10 @@ export default function RegistrationsPage() {
         if (result.success) {
           toast({
             title: 'Bulk Upload Successful',
-            description: result.message,
+            description: `${students.length} student(s) successfully uploaded and marked as APPROVED.`,
           });
-          if (result.errors && result.errors.length > 0) {
-             toast({
-               title: 'Some rows skipped',
-               description: `${result.errors.length} records were skipped (duplicates or missing fields).`,
-               variant: 'destructive',
-             });
-          }
+          // Immediately switch view to 'all' or 'approved' so all uploaded students are displayed
+          setViewMode('approved');
         } else {
           toast({
             title: 'Bulk Upload Failed',
@@ -204,11 +254,11 @@ export default function RegistrationsPage() {
             variant: 'destructive',
           });
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error(error);
         toast({
           title: 'Error',
-          description: 'Failed to process the uploaded file.',
+          description: error?.message || 'Failed to process the uploaded file.',
           variant: 'destructive',
         });
       } finally {
@@ -248,19 +298,19 @@ export default function RegistrationsPage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 animate-slide-up">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                  Awaiting Approval
+                <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                  Student Registry
                 </span>
                 <span className="text-xs text-slate-400">•</span>
                 <Link to="/voters" className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1">
-                  View Approved Voters ({voters.filter(v => v.status === 'approved').length}) <ArrowRight className="w-3 h-3" />
+                  View Voters List ({voters.filter(v => v.status === 'approved').length}) <ArrowRight className="w-3 h-3" />
                 </Link>
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                Student Registrations for Approval
+                Student Registrations & Masterlist
               </h1>
               <p className="text-sm text-slate-500 mt-0.5">
-                Review and approve student signups organized by Grade Level & Section
+                Manage uploaded voter masterlist and student signups organized by Grade Level & Section
               </p>
             </div>
 
@@ -300,7 +350,31 @@ export default function RegistrationsPage() {
           </div>
 
           {/* Quick Metrics Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+            <Card className="bg-white border-slate-200/80 shadow-xs rounded-xl overflow-hidden">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-500">Total Students</p>
+                  <p className="text-2xl font-extrabold text-blue-700">{totalCount}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white border-slate-200/80 shadow-xs rounded-xl overflow-hidden">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-500">Approved Voters</p>
+                  <p className="text-2xl font-extrabold text-emerald-600">{approvedCount}</p>
+                </div>
+              </CardContent>
+            </Card>
+
             <Card className="bg-white border-slate-200/80 shadow-xs rounded-xl overflow-hidden">
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
@@ -314,18 +388,6 @@ export default function RegistrationsPage() {
             </Card>
 
             <Card className="bg-white border-slate-200/80 shadow-xs rounded-xl overflow-hidden">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                  <GraduationCap className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-500">Grade Levels with Pending</p>
-                  <p className="text-2xl font-extrabold text-slate-900">{gradesWithPending.length} of 6</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white border-slate-200/80 shadow-xs rounded-xl overflow-hidden col-span-2 sm:col-span-1">
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
                   <XCircle className="w-5 h-5" />
@@ -344,10 +406,10 @@ export default function RegistrationsPage() {
               <div className="flex flex-col lg:flex-row items-center gap-3 justify-between">
                 
                 {/* Search Input */}
-                <div className="relative w-full lg:w-80">
+                <div className="relative w-full lg:w-72">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <Input
-                    placeholder="Search pending by name, LRN, or section..."
+                    placeholder="Search by name, LRN, or section..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-9 h-10 rounded-lg bg-slate-50/50 border-slate-200 text-sm focus:bg-white transition-colors"
@@ -375,7 +437,7 @@ export default function RegistrationsPage() {
                     All Grades
                   </button>
                   {GRADES.map(grade => {
-                    const countInGrade = pendingVoters.filter(v => v.gradeLevel === grade).length;
+                    const countInGrade = activeList.filter(v => v.gradeLevel === grade).length;
                     return (
                       <button
                         key={grade}
@@ -389,7 +451,7 @@ export default function RegistrationsPage() {
                         Grade {grade}
                         {countInGrade > 0 && (
                           <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-                            selectedGradeTab === grade ? 'bg-white text-blue-700' : 'bg-amber-500 text-white'
+                            selectedGradeTab === grade ? 'bg-white text-blue-700' : 'bg-slate-200 text-slate-700'
                           }`}>
                             {countInGrade}
                           </span>
@@ -399,11 +461,33 @@ export default function RegistrationsPage() {
                   })}
                 </div>
 
-                {/* Mode Toggle: Pending Approval vs Rejected */}
-                <div className="flex items-center gap-1 w-full lg:w-auto justify-end">
+                {/* Mode Toggle: All vs Approved vs Pending vs Rejected */}
+                <div className="flex items-center gap-1 w-full lg:w-auto justify-end flex-wrap">
+                  <button
+                    onClick={() => setViewMode('all')}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                      viewMode === 'all'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    All ({totalCount})
+                  </button>
+                  <button
+                    onClick={() => setViewMode('approved')}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
+                      viewMode === 'approved'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Approved ({approvedCount})
+                  </button>
                   <button
                     onClick={() => setViewMode('pending')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
                       viewMode === 'pending'
                         ? 'bg-amber-600 text-white shadow-xs'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -414,7 +498,7 @@ export default function RegistrationsPage() {
                   </button>
                   <button
                     onClick={() => setViewMode('rejected')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
                       viewMode === 'rejected'
                         ? 'bg-rose-600 text-white shadow-xs'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -429,33 +513,43 @@ export default function RegistrationsPage() {
             </CardContent>
           </Card>
 
-          {/* Grade 7–12 Tables Section for Pending Approvals */}
+          {/* Grade 7–12 Tables Section for Registrations */}
           {filteredStudents.length === 0 ? (
             <Card className="bg-white border-slate-200/80 shadow-xs rounded-2xl p-12 text-center">
-              <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4">
-                <CheckCircle2 className="w-9 h-9" />
+              <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
+                <Users className="w-9 h-9" />
               </div>
               <h3 className="text-xl font-bold text-slate-900 mb-1">
                 {searchQuery 
                   ? 'No matching students found' 
                   : viewMode === 'pending' 
                   ? 'No Pending Registrations' 
-                  : 'No Rejected Registrations'}
+                  : viewMode === 'approved'
+                  ? 'No Approved Students'
+                  : viewMode === 'rejected'
+                  ? 'No Rejected Registrations'
+                  : 'No Students Found'}
               </h3>
               <p className="text-sm text-slate-500 max-w-md mx-auto mb-6">
                 {searchQuery
                   ? 'Try searching with a different name, LRN, or section.'
                   : viewMode === 'pending'
                   ? 'All student registrations have been approved! Registered students can now log in and vote.'
-                  : 'There are currently no rejected student registrations.'}
+                  : viewMode === 'approved'
+                  ? 'No approved students found. Upload students via CSV or approve pending registrations.'
+                  : viewMode === 'rejected'
+                  ? 'There are currently no rejected student registrations.'
+                  : 'No students have been registered yet. Upload students via CSV or wait for student registrations.'}
               </p>
-              <Button 
-                variant="outline"
-                onClick={() => navigate('/voters')}
-                className="rounded-xl"
-              >
-                Go to Approved Voters List
-              </Button>
+              {viewMode !== 'approved' && (
+                <Button 
+                  variant="outline"
+                  onClick={() => setViewMode('approved')}
+                  className="rounded-xl"
+                >
+                  View Approved Students
+                </Button>
+              )}
             </Card>
           ) : (
             <div className="space-y-8">
@@ -491,15 +585,23 @@ export default function RegistrationsPage() {
                             Grade {grade} Registrations
                           </h2>
                           <p className="text-xs text-blue-100/80">
-                            {gradeStudents.length} student{gradeStudents.length === 1 ? '' : 's'} awaiting action in Grade {grade}
+                            {gradeStudents.length} student{gradeStudents.length === 1 ? '' : 's'} in Grade {grade}
                           </p>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-400 text-amber-950 shadow-xs">
-                          <Clock className="w-3.5 h-3.5" />
-                          {gradeStudents.length} {viewMode === 'pending' ? 'Pending' : 'Rejected'}
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold shadow-xs ${
+                          viewMode === 'approved' ? 'bg-emerald-400 text-emerald-950' :
+                          viewMode === 'pending' ? 'bg-amber-400 text-amber-950' :
+                          viewMode === 'rejected' ? 'bg-rose-400 text-rose-950' :
+                          'bg-blue-300 text-blue-950'
+                        }`}>
+                          {viewMode === 'approved' ? <CheckCircle2 className="w-3.5 h-3.5" /> :
+                           viewMode === 'pending' ? <Clock className="w-3.5 h-3.5" /> :
+                           viewMode === 'rejected' ? <XCircle className="w-3.5 h-3.5" /> :
+                           <Users className="w-3.5 h-3.5" />}
+                          {gradeStudents.length} {viewMode === 'all' ? 'Registered' : viewMode.charAt(0).toUpperCase() + viewMode.slice(1)}
                         </span>
                       </div>
                     </div>
@@ -508,7 +610,7 @@ export default function RegistrationsPage() {
                     <div className="p-4 sm:p-6 space-y-6">
                       {gradeStudents.length === 0 ? (
                         <div className="text-center py-8 text-slate-400 text-sm">
-                          No {viewMode} students in Grade {grade}.
+                          No {viewMode === 'all' ? '' : viewMode} students in Grade {grade}.
                         </div>
                       ) : (
                         allSectionsToDisplay.map(secName => {
@@ -567,7 +669,13 @@ export default function RegistrationsPage() {
                                         {/* Student Info */}
                                         <td className="py-3 px-4">
                                           <div className="flex items-center gap-2.5">
-                                            <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-xs shrink-0">
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                                              student.status === 'approved'
+                                                ? 'bg-emerald-50 text-emerald-600'
+                                                : student.status === 'rejected'
+                                                ? 'bg-rose-50 text-rose-600'
+                                                : 'bg-amber-50 text-amber-600'
+                                            }`}>
                                               {student.name.charAt(0).toUpperCase()}
                                             </div>
                                             <div>
@@ -598,7 +706,12 @@ export default function RegistrationsPage() {
 
                                         {/* Status Badge */}
                                         <td className="py-3 px-4 text-center">
-                                          {student.status === 'pending' ? (
+                                          {student.status === 'approved' ? (
+                                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                              <CheckCircle2 className="w-3.5 h-3.5" />
+                                              Approved
+                                            </span>
+                                          ) : student.status === 'pending' ? (
                                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
                                               <Clock className="w-3.5 h-3.5" />
                                               Pending
@@ -613,39 +726,75 @@ export default function RegistrationsPage() {
 
                                         {/* Actions: Approve & Reject buttons */}
                                         <td className="py-3 px-4 text-right">
-                                          <div className="flex items-center justify-end gap-1.5">
-                                            {/* Approve Button */}
-                                            <Button
-                                              size="sm"
-                                              onClick={() => handleApprove(student.id, student.name)}
-                                              className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 px-3 rounded-lg text-xs font-semibold shadow-2xs active:scale-95"
-                                              title="Approve Student"
-                                            >
-                                              <Check className="h-3.5 w-3.5 mr-1" />
-                                              Approve
-                                            </Button>
+                                          {student.status === 'approved' ? (
+                                            <div className="flex items-center justify-end gap-1.5">
+                                              <span className="inline-flex items-center text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                                                <Check className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                                                Approved
+                                              </span>
+                                              {rejectConfirmId === student.id ? (
+                                                <div className="flex items-center gap-1">
+                                                  <Button
+                                                    size="sm"
+                                                    onClick={() => handleReject(student.id, student.name)}
+                                                    className="bg-rose-600 hover:bg-rose-700 text-white h-7 px-2 rounded-lg text-xs font-semibold"
+                                                  >
+                                                    Confirm
+                                                  </Button>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => setRejectConfirmId(null)}
+                                                    className="h-7 px-1.5 rounded-lg text-xs"
+                                                  >
+                                                    Cancel
+                                                  </Button>
+                                                </div>
+                                              ) : (
+                                                <Button
+                                                  size="sm"
+                                                  variant="ghost"
+                                                  onClick={() => setRejectConfirmId(student.id)}
+                                                  className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 h-7 w-7 p-0 rounded-lg"
+                                                  title="Revoke / Reject"
+                                                >
+                                                  <XCircle className="h-3.5 w-3.5" />
+                                                </Button>
+                                              )}
+                                            </div>
+                                          ) : student.status === 'pending' ? (
+                                            <div className="flex items-center justify-end gap-1.5">
+                                              {/* Approve Button */}
+                                              <Button
+                                                size="sm"
+                                                onClick={() => handleApprove(student.id, student.name)}
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 px-3 rounded-lg text-xs font-semibold shadow-2xs active:scale-95"
+                                                title="Approve Student"
+                                              >
+                                                <Check className="h-3.5 w-3.5 mr-1" />
+                                                Approve
+                                              </Button>
 
-                                            {/* Reject Button with inline confirmation */}
-                                            {rejectConfirmId === student.id ? (
-                                              <div className="flex items-center gap-1">
-                                                <Button
-                                                  size="sm"
-                                                  onClick={() => handleReject(student.id, student.name)}
-                                                  className="bg-rose-600 hover:bg-rose-700 text-white h-8 px-2.5 rounded-lg text-xs font-semibold"
-                                                >
-                                                  Confirm
-                                                </Button>
-                                                <Button
-                                                  size="sm"
-                                                  variant="outline"
-                                                  onClick={() => setRejectConfirmId(null)}
-                                                  className="h-8 px-2 rounded-lg text-xs"
-                                                >
-                                                  Cancel
-                                                </Button>
-                                              </div>
-                                            ) : (
-                                              student.status !== 'rejected' && (
+                                              {/* Reject Button with inline confirmation */}
+                                              {rejectConfirmId === student.id ? (
+                                                <div className="flex items-center gap-1">
+                                                  <Button
+                                                    size="sm"
+                                                    onClick={() => handleReject(student.id, student.name)}
+                                                    className="bg-rose-600 hover:bg-rose-700 text-white h-8 px-2.5 rounded-lg text-xs font-semibold"
+                                                  >
+                                                    Confirm
+                                                  </Button>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => setRejectConfirmId(null)}
+                                                    className="h-8 px-2 rounded-lg text-xs"
+                                                  >
+                                                    Cancel
+                                                  </Button>
+                                                </div>
+                                              ) : (
                                                 <Button
                                                   size="sm"
                                                   variant="ghost"
@@ -656,9 +805,21 @@ export default function RegistrationsPage() {
                                                   <XCircle className="h-3.5 w-3.5 mr-1" />
                                                   Reject
                                                 </Button>
-                                              )
-                                            )}
-                                          </div>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <div className="flex items-center justify-end gap-1.5">
+                                              <Button
+                                                size="sm"
+                                                onClick={() => handleApprove(student.id, student.name)}
+                                                className="bg-emerald-600 hover:bg-emerald-700 text-white h-7 px-2.5 rounded-lg text-xs font-semibold shadow-2xs active:scale-95"
+                                                title="Re-approve Student"
+                                              >
+                                                <Check className="h-3 w-3 mr-1" />
+                                                Restore
+                                              </Button>
+                                            </div>
+                                          )}
                                         </td>
                                       </tr>
                                     ))}

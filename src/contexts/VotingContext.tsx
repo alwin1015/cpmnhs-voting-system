@@ -34,7 +34,7 @@ interface VotingContextType {
   login: (lrn: string, password: string) => Promise<boolean>;
   adminLogin: (username: string, password: string) => Promise<{ success: boolean; mustChangePassword: boolean }>;
   adminChangePassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
-  register: (lrn: string, firstName: string, middleInitial: string, lastName: string, gradeLevel: string, section: string, password: string) => Promise<{ success: boolean; message: string }>;
+  register: (lrn: string, firstName: string, middleInitial: string, lastName: string, gradeLevel: string, section: string, password: string) => Promise<{ success: boolean; autoApproved?: boolean; message: string }>;
   bulkRegister: (students: any[]) => Promise<{ success: boolean; message: string; errors?: string[] }>;
   logout: () => void;
   // Voting
@@ -1151,12 +1151,32 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             setElection(prev => prev ? { ...prev, ...updates } : null);
           }
         } else if (p.event === 'ballot_submitted') {
-          // Update admin turnout counters locally with zero network roundtrips
+          // Update admin turnout counters and candidate vote counts in real time
           if (userRef.current?.role === 'admin' && p.sessionId) {
             const sId = String(p.sessionId);
             setSessions(prev => prev.map(s => s.id === sId ? { ...s, totalVoted: (s.totalVoted ?? 0) + 1 } : s));
             if (sId === activeSessionIdRef.current) {
               setElection(prev => prev ? { ...prev, totalVoted: (prev.totalVoted ?? 0) + 1 } : null);
+              clearApiCache('getCandidates');
+              api.getCandidates(sId).then(fresh => {
+                if (Array.isArray(fresh) && isMounted) {
+                  setCandidates(prev => {
+                    const mapped = fresh.map(c => ({
+                      id: String(c.id),
+                      name: c.name,
+                      position: String(c.position_id ?? c.position),
+                      party: c.party ?? '',
+                      photo: c.photo_url ?? c.photo ?? '',
+                      motto: c.motto ?? '',
+                      gradeLevel: c.grade_level ?? c.gradeLevel ?? '',
+                      section: c.section ?? '',
+                      votes: Number(c.votes ?? 0),
+                      sessionId: String(c.session_id ?? sId),
+                    }));
+                    return areCandidatesEqual(prev, mapped) ? prev : mapped;
+                  });
+                }
+              }).catch(() => {});
             }
           }
           // Students / voters do not need to refresh anything
@@ -1664,17 +1684,18 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     async (
       lrn: string, firstName: string, middleInitial: string, lastName: string,
       gradeLevel: string, section: string, password: string
-    ): Promise<{ success: boolean; message: string }> => {
+    ): Promise<{ success: boolean; autoApproved?: boolean; message: string }> => {
       try {
         const data = await api.register({ lrn, firstName, middleInitial, lastName, gradeLevel, section, password });
         broadcastChange('voter_registered');
         await refreshData();
         return {
           success: data.success ?? true,
+          autoApproved: Boolean(data.autoApproved),
           message: data.message ?? 'Registration submitted! Please wait for admin approval.',
         };
       } catch (error: any) {
-        return { success: false, message: error.message || 'Registration failed.' };
+        return { success: false, autoApproved: false, message: error.message || 'Registration failed.' };
       }
     },
     [refreshData, broadcastChange]

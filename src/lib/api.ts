@@ -268,13 +268,23 @@ export const api = {
       fullName = `${data.firstName} ${data.middleInitial ? data.middleInitial + '. ' : ''}${data.lastName}`.trim();
     }
 
-    const { error } = await supabase.rpc('secure_register_voter', {
-      p_lrn: data.lrn, p_name: fullName, p_grade_level: data.gradeLevel,
-      p_section: data.section, p_password: data.password,
+    const { data: res, error } = await supabase.rpc('secure_register_voter', {
+      p_lrn: data.lrn,
+      p_name: fullName,
+      p_grade_level: data.gradeLevel,
+      p_section: data.section,
+      p_password: data.password,
+      p_first_name: data.firstName || null,
+      p_last_name: data.lastName || null,
     });
 
     if (error) throw new Error(error.message);
-    return { success: true, message: 'Registration submitted! Please wait for admin approval.' };
+    const resultObj = res as { success?: boolean; autoApproved?: boolean; message?: string } | null;
+    return {
+      success: resultObj?.success ?? true,
+      autoApproved: Boolean(resultObj?.autoApproved),
+      message: resultObj?.message ?? (resultObj?.autoApproved ? "You've been approved and are ready to vote!" : 'Registration submitted! Please wait for admin approval.'),
+    };
   },
 
   bulkRegister: async (students: any[]) => {
@@ -285,7 +295,8 @@ export const api = {
       handleSessionError(error);
       throw new Error(error.message);
     }
-    return { success: true, message: `${count || 0} students registered.` };
+    clearApiCache('getVoters');
+    return { success: true, message: `${count || 0} students successfully uploaded and approved.` };
   },
 
   logout: async () => {

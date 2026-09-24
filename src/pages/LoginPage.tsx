@@ -284,15 +284,12 @@ export default function LoginPage() {
       const result = await register(regLrn, regFirstName, regMiddleInitial, regLastName, regGradeLevel, regSection, regPassword);
 
       if (result.success) {
-        toast({
-          title: 'Registration Submitted',
-          description: result.message,
-        });
-        // Save LRN on this device so approval popup shows automatically when approved by admin
+        // Save LRN on this device so student can easily sign in
         localStorage.setItem('student_device_lrn', regLrn);
         setLrn(regLrn);
+        setPassword('');
 
-        // Reset register form and switch to login
+        // Reset register form and switch to login page
         setRegLrn('');
         setRegFirstName('');
         setRegMiddleInitial('');
@@ -302,6 +299,19 @@ export default function LoginPage() {
         setRegPassword('');
         setRegConfirmPassword('');
         setIsRegisterMode(false);
+
+        if (result.autoApproved) {
+          // Immediately show the approval notification at the top of the Login page for 3 seconds
+          setShowApprovalBanner(true);
+          setIsBannerFadingOut(false);
+          // Mark as shown once so it won't pop up again repeatedly
+          localStorage.setItem(`approval_dismissed_${regLrn}`, 'true');
+        } else {
+          toast({
+            title: 'Registration Submitted',
+            description: result.message || 'Please wait for admin approval.',
+          });
+        }
       } else {
         toast({
           title: 'Registration Failed',

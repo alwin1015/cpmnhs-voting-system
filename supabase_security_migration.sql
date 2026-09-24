@@ -180,6 +180,7 @@ create table if not exists public.app_sessions (
 -- Add missing columns safely if upgrading from an older version
 alter table public.admins add column if not exists must_change_password boolean not null default false;
 alter table public.voters add column if not exists academic_history jsonb not null default '[]'::jsonb;
+alter table public.voters alter column password_hash drop not null;
 
 alter table public.voters drop constraint if exists voters_status_check;
 alter table public.voters add constraint voters_status_check
@@ -463,8 +464,15 @@ declare
 begin
   select * into v from public.voters where lrn = trim(p_lrn) limit 1;
 
-  if v.id is null or v.password_hash is null or
-     (case when v.password_hash like '$2%' then crypt(p_password, v.password_hash) <> v.password_hash
+  if v.id is null then
+    raise exception 'Invalid LRN or password';
+  end if;
+
+  if v.password_hash is null or v.password_hash = '' then
+    raise exception 'Account not yet activated. Please register first to set your password.';
+  end if;
+
+  if (case when v.password_hash like '$2%' then crypt(p_password, v.password_hash) <> v.password_hash
            else p_password <> v.password_hash end) then
     raise exception 'Invalid LRN or password';
   end if;
@@ -591,38 +599,112 @@ end;
 $$;
 
 -- Student Online Registration
+-- Student Online Registration with Pre-approved Masterlist Matching
 create or replace function public.secure_register_voter(
-  p_lrn text, p_name text, p_grade_level text, p_section text, p_password text
+  p_lrn text,
+  p_name text,
+  p_grade_level text,
+  p_section text,
+  p_password text,
+  p_first_name text default null,
+  p_last_name text default null
 )
-returns void
+returns jsonb
 language plpgsql
 security definer
 set search_path = public, extensions, pg_temp
 as $$
+declare
+  v_clean_lrn text := regexp_replace(trim(p_lrn), '[^0-9]', '', 'g');
+  v_existing public.voters%rowtype;
+  v_first text;
+  v_last text;
+  v_match boolean := false;
+  v_norm_existing text;
+  v_norm_first text;
+  v_norm_last text;
+  v_norm_input text;
 begin
-  if trim(p_lrn) !~ '^[0-9]{12}$' then
+  if length(v_clean_lrn) <> 12 then
     raise exception 'LRN must contain exactly 12 digits';
   end if;
 
-  if length(p_password) < 8 then
-    raise exception 'Password must contain at least 8 characters';
+  if length(p_password) < 6 then
+    raise exception 'Password must contain at least 6 characters';
   end if;
 
-  insert into public.voters (lrn, name, grade_level, section, password_hash, status)
-  values (
-    trim(p_lrn),
-    trim(p_name),
-    trim(p_grade_level),
-    trim(p_section),
-    crypt(p_password, gen_salt('bf', 10)),
-    'pending'
-  );
-exception when unique_violation then
-  raise exception 'This LRN is already registered';
+  -- Extract or use first and last name
+  v_first := trim(coalesce(nullif(p_first_name, ''), split_part(trim(p_name), ' ', 1)));
+  v_last := trim(coalesce(nullif(p_last_name, ''), 
+              case when strpos(trim(p_name), ' ') > 0 
+                   then substr(trim(p_name), strpos(trim(p_name), ' ') + 1)
+                   else trim(p_name) end));
+
+  -- Look up existing voter by LRN
+  select * into v_existing from public.voters where lrn = v_clean_lrn limit 1;
+
+  if v_existing.id is not null then
+    -- If already has password set and is approved, account is already active
+    if v_existing.password_hash is not null and v_existing.password_hash <> '' then
+      raise exception 'This LRN is already registered. Please go to the student login page to sign in.';
+    end if;
+
+    -- Clean names for matching (remove punctuation, multiple spaces, lowercase)
+    v_norm_existing := lower(regexp_replace(regexp_replace(v_existing.name, '[,.\-]', ' ', 'g'), '\s+', ' ', 'g'));
+    v_norm_input := lower(regexp_replace(regexp_replace(p_name, '[,.\-]', ' ', 'g'), '\s+', ' ', 'g'));
+    v_norm_first := lower(regexp_replace(regexp_replace(v_first, '[,.\-]', ' ', 'g'), '\s+', ' ', 'g'));
+    v_norm_last := lower(regexp_replace(regexp_replace(v_last, '[,.\-]', ' ', 'g'), '\s+', ' ', 'g'));
+
+    -- Check matching:
+    -- 1. Exact full name match
+    if v_norm_existing = v_norm_input then
+      v_match := true;
+    -- 2. First and last name are both present in the bulk-uploaded record name
+    elsif v_norm_first <> '' and v_norm_last <> '' and
+          v_norm_existing like '%' || v_norm_first || '%' and
+          v_norm_existing like '%' || v_norm_last || '%' then
+      v_match := true;
+    end if;
+
+    if not v_match then
+      raise exception 'The provided name does not match the official student masterlist for this LRN. Please check your spelling or contact your administrator.';
+    end if;
+
+    -- Match found! Automatically activate and approve the student's account
+    update public.voters
+    set password_hash = crypt(p_password, gen_salt('bf', 10)),
+        status = 'approved',
+        grade_level = coalesce(nullif(trim(p_grade_level), ''), v_existing.grade_level),
+        section = coalesce(nullif(trim(p_section), ''), v_existing.section)
+    where id = v_existing.id;
+
+    return jsonb_build_object(
+      'success', true,
+      'autoApproved', true,
+      'message', 'You''ve been approved and are ready to vote!'
+    );
+  else
+    -- Not pre-uploaded by admin; create pending registration requiring manual approval
+    insert into public.voters (lrn, name, grade_level, section, password_hash, status)
+    values (
+      v_clean_lrn,
+      trim(p_name),
+      trim(p_grade_level),
+      trim(p_section),
+      crypt(p_password, gen_salt('bf', 10)),
+      'pending'
+    );
+
+    return jsonb_build_object(
+      'success', true,
+      'autoApproved', false,
+      'message', 'Registration submitted! Please wait for admin approval.'
+    );
+  end if;
 end;
 $$;
 
--- Bulk Student Registration (Admin CSV Import)
+-- Bulk Student Registration (Admin CSV Import: LRN, Name, Grade Level, Section - No Passwords Required)
 create or replace function public.secure_bulk_register_voters(p_token text, p_students jsonb)
 returns integer
 language plpgsql
@@ -633,6 +715,10 @@ declare
   v_admin_id text := public.require_app_session(p_token, 'admin');
   v_student jsonb;
   v_count integer := 0;
+  v_lrn text;
+  v_name text;
+  v_grade text;
+  v_section text;
 begin
   if jsonb_typeof(p_students) <> 'array' then
     raise exception 'Student list is invalid';
@@ -640,19 +726,35 @@ begin
 
   for v_student in select value from jsonb_array_elements(p_students)
   loop
-    if (v_student->>'lrn') !~ '^[0-9]{12}$' or length(coalesce(v_student->>'password', '')) < 8 then
-      raise exception 'Every student requires a 12-digit LRN and an 8-character password';
+    v_lrn := regexp_replace(coalesce(v_student->>'lrn', ''), '[^0-9]', '', 'g');
+    v_name := trim(coalesce(v_student->>'name', ''));
+    v_grade := trim(coalesce(v_student->>'gradeLevel', v_student->>'grade_level', ''));
+    v_section := trim(coalesce(v_student->>'section', ''));
+
+    -- Require exactly 12-digit LRN and non-empty Name
+    if length(v_lrn) <> 12 or v_name = '' then
+      continue;
     end if;
 
-    insert into public.voters (lrn, name, grade_level, section, password_hash, status)
+    -- Clean Grade format: e.g. "Grade 7" -> "7"
+    if v_grade ~* 'grade' then
+      v_grade := regexp_replace(v_grade, '[^0-9]', '', 'g');
+    end if;
+
+    insert into public.voters (lrn, name, grade_level, section, status)
     values (
-      trim(v_student->>'lrn'),
-      trim(v_student->>'name'),
-      trim(v_student->>'gradeLevel'),
-      trim(v_student->>'section'),
-      crypt(v_student->>'password', gen_salt('bf', 10)),
+      v_lrn,
+      v_name,
+      v_grade,
+      v_section,
       'approved'
-    );
+    )
+    on conflict (lrn) do update set
+      name = excluded.name,
+      grade_level = case when excluded.grade_level <> '' then excluded.grade_level else public.voters.grade_level end,
+      section = case when excluded.section <> '' then excluded.section else public.voters.section end,
+      status = 'approved';
+
     v_count := v_count + 1;
   end loop;
 
