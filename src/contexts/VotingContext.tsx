@@ -334,6 +334,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   votersRef.current = voters;
   const sessionsRef = React.useRef<VotingSession[]>([]);
   sessionsRef.current = sessions;
+  const endingSessionIdsRef = React.useRef<Set<string>>(new Set());
 
   // Deletion tombstones to prevent deleted items from temporarily reappearing due to race conditions
   const deletedIdsRef = React.useRef<Map<string, number>>(new Map());
@@ -872,7 +873,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         const wasInactive = !oldRow?.is_active || oldRow?.status !== 'active';
         if (wasInactive && updated.isActive && updated.status === 'active' && id !== activeSessionIdRef.current) {
           const currentUser = userRef.current;
-          const currentSession = sessions.find(s => s.id === activeSessionIdRef.current);
+          const currentSession = sessionsRef.current.find(s => s.id === activeSessionIdRef.current);
           const isCurrentActive = currentSession?.isActive && currentSession.status === 'active';
 
           const shouldSwitch = currentUser?.role === 'voter'
@@ -1221,13 +1222,10 @@ export function VotingProvider({ children }: { children: ReactNode }) {
               const currentSessId = activeSessionIdRef.current;
               try {
                 const storedVoted = JSON.parse(localStorage.getItem(`voted_sessions_${u.id}`) || '[]');
-                if (Array.isArray(storedVoted) && currentSessId && storedVoted.includes(currentSessId)) {
-                  voted = true;
+                if (Array.isArray(storedVoted) && currentSessId) {
+                  voted = storedVoted.includes(currentSessId);
                 }
               } catch (_) {}
-              if (!voted) {
-                voted = Boolean(parsed.has_voted ?? parsed.hasVoted ?? false);
-              }
               setHasVoted(voted);
             }
           } catch (_) {}
@@ -1308,18 +1306,15 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     clearApiCache('getVoterSessions');
 
     // Immediately update election object from sessions if found
-    setSessions(prev => {
-      const s = prev.find(sess => sess.id === id);
-      if (s) {
-        const vList = votersRef.current || [];
-        setElection({
-          ...s,
-          totalVoters: vList.filter(v => v.status === 'approved' && isEligibleForSession(s, v)).length,
-          totalVoted: vList.filter(v => v.status === 'approved' && v.hasVoted).length,
-        });
-      }
-      return prev;
-    });
+    const targetSession = sessionsRef.current.find(sess => sess.id === id);
+    if (targetSession) {
+      const vList = votersRef.current || [];
+      setElection({
+        ...targetSession,
+        totalVoters: vList.filter(v => v.status === 'approved' && isEligibleForSession(targetSession, v)).length,
+        totalVoted: vList.filter(v => v.status === 'approved' && v.hasVoted).length,
+      });
+    }
 
     setIsDataLoaded(false);
 
@@ -1361,11 +1356,23 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
       if (expired.length === 0) return;
 
+      // Synchronously mark in sessionsRef to immediately prevent duplicate triggers on next tick
+      sessionsRef.current = sessionsRef.current.map(s => {
+        const isExpired = expired.some(e => e.id === s.id);
+        if (isExpired) {
+          return {
+            ...s,
+            isActive: false,
+            status: 'completed',
+            scheduleStatus: 'completed',
+          };
+        }
+        return s;
+      });
+
       setSessions(prev =>
         prev.map(s => {
-          const isExpired = (s.isActive || s.status === 'active' || s.scheduleStatus === 'ongoing') &&
-            s.endDate && !isNaN(new Date(s.endDate).getTime()) &&
-            now >= new Date(s.endDate).getTime();
+          const isExpired = expired.some(e => e.id === s.id);
           if (isExpired) {
             return {
               ...s,
@@ -1380,9 +1387,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
       setElection(prev => {
         if (!prev) return null;
-        const isExpired = (prev.isActive || prev.status === 'active' || prev.scheduleStatus === 'ongoing') &&
-          prev.endDate && !isNaN(new Date(prev.endDate).getTime()) &&
-          now >= new Date(prev.endDate).getTime();
+        const isExpired = expired.some(e => e.id === prev.id);
         if (isExpired) {
           return {
             ...prev,
@@ -1399,15 +1404,18 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       });
 
       if (userRef.current?.role === 'admin') {
-        for (const s of expired) {
-          try {
-            await api.updateSession(s.id, {
-              is_active: false,
-              status: 'completed',
-              schedule_status: 'completed',
-              end_date: new Date(s.endDate).toISOString(),
-            });
-          } catch (_) {}
+        const toPersist = expired.filter(s => !endingSessionIdsRef.current.has(s.id));
+        for (const s of toPersist) {
+          endingSessionIdsRef.current.add(s.id);
+          api.updateSession(s.id, {
+            is_active: false,
+            status: 'completed',
+            schedule_status: 'completed',
+            end_date: new Date(s.endDate).toISOString(),
+          }).catch(err => {
+            console.error('Failed to auto-end session in DB:', err);
+            endingSessionIdsRef.current.delete(s.id);
+          });
         }
       }
     };

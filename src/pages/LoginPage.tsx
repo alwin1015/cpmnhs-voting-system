@@ -44,11 +44,38 @@ export default function LoginPage() {
 
   // Track previous voter status to detect approval transition
   const previousVoterStatusRef = React.useRef<string | null>(null);
+  const showApprovalBannerRef = React.useRef(showApprovalBanner);
+  showApprovalBannerRef.current = showApprovalBanner;
+  const votersRef = React.useRef(voters);
+  votersRef.current = voters;
+  const sessionsRef = React.useRef(sessions);
+  sessionsRef.current = sessions;
+  const electionRef = React.useRef(election);
+  electionRef.current = election;
+
+  const dismissApprovalBanner = useCallback(() => {
+    setIsBannerFadingOut(true);
+    setTimeout(() => {
+      setShowApprovalBanner(false);
+      setIsBannerFadingOut(false);
+    }, 400);
+
+    // Mark as dismissed so it doesn't show again for this session
+    if (lrn && votersRef.current) {
+      const voter = votersRef.current.find(v => v.lrn === lrn);
+      if (voter) {
+        const activeSessions = sessionsRef.current.filter(s => s.isActive && s.status === 'active');
+        const eligibleSession = activeSessions.find(s => isEligibleForSession(s, voter)) || (activeSessions.length > 0 ? activeSessions[0] : null);
+        const sessionId = eligibleSession ? eligibleSession.id : (electionRef.current?.id || 'current');
+        localStorage.setItem(`approval_dismissed_${voter.id}_${sessionId}`, 'true');
+      }
+    }
+  }, [lrn]);
 
   const checkAndTriggerApprovalNotification = useCallback((targetLrn: string, forceShow?: boolean) => {
-    if (!targetLrn || targetLrn.length !== 12 || !voters || voters.length === 0) return;
+    if (!targetLrn || targetLrn.length !== 12 || !votersRef.current || votersRef.current.length === 0) return;
 
-    const voter = voters.find(v => v.lrn === targetLrn);
+    const voter = votersRef.current.find(v => v.lrn === targetLrn);
     if (!voter) return;
 
     // Show only to students who are approved
@@ -58,10 +85,10 @@ export default function LoginPage() {
       return;
     }
 
-    const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
+    const activeSessions = sessionsRef.current.filter(s => s.isActive && s.status === 'active');
     const eligibleSession = activeSessions.find(s => isEligibleForSession(s, voter)) || (activeSessions.length > 0 ? activeSessions[0] : null);
 
-    const sessionId = eligibleSession ? eligibleSession.id : (election?.id || 'current');
+    const sessionId = eligibleSession ? eligibleSession.id : (electionRef.current?.id || 'current');
 
     // Check if this notification was already dismissed by the student
     const dismissKey = `approval_dismissed_${voter.id}_${sessionId}`;
@@ -74,31 +101,12 @@ export default function LoginPage() {
       (previousVoterStatusRef.current && previousVoterStatusRef.current !== 'approved');
     previousVoterStatusRef.current = voter.status;
 
-    // Show the persistent banner (stays until dismissed or login)
-    if (!showApprovalBanner || wasJustApproved) {
+    // Show the banner for 3 seconds
+    if (!showApprovalBannerRef.current || wasJustApproved) {
       setShowApprovalBanner(true);
       setIsBannerFadingOut(false);
     }
-  }, [election?.id, sessions, showApprovalBanner, voters]);
-
-  const dismissApprovalBanner = useCallback(() => {
-    setIsBannerFadingOut(true);
-    setTimeout(() => {
-      setShowApprovalBanner(false);
-      setIsBannerFadingOut(false);
-    }, 400);
-
-    // Mark as dismissed so it doesn't show again for this session
-    if (lrn && voters) {
-      const voter = voters.find(v => v.lrn === lrn);
-      if (voter) {
-        const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
-        const eligibleSession = activeSessions.find(s => isEligibleForSession(s, voter)) || (activeSessions.length > 0 ? activeSessions[0] : null);
-        const sessionId = eligibleSession ? eligibleSession.id : (election?.id || 'current');
-        localStorage.setItem(`approval_dismissed_${voter.id}_${sessionId}`, 'true');
-      }
-    }
-  }, [election?.id, lrn, sessions, voters]);
+  }, []);
 
   // Show the approval notification for only 3 seconds, then automatically hide it
   useEffect(() => {
