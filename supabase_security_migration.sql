@@ -475,7 +475,13 @@ begin
   end if;
 
   if v.status <> 'approved' then
-    raise exception 'Account is not approved';
+    if v.status = 'graduated' then
+      raise exception 'Account is marked as graduated and is not eligible to vote';
+    elsif v.status = 'inactive' then
+      raise exception 'Account is inactive. Please contact the administrator';
+    else
+      raise exception 'Account is not approved';
+    end if;
   end if;
 
   v_token := encode(gen_random_bytes(32), 'hex');
@@ -813,6 +819,21 @@ begin
       delete from public.voter_sessions where voter_id::text = p_voter_id;
       delete from public.app_sessions where user_id = p_voter_id;
       delete from public.voters where id::text = p_voter_id;
+    when 'reset_ballot' then
+      -- Reconcile candidate vote counts before removing votes
+      update public.candidates c
+      set votes = greatest(c.votes - sub.cnt, 0)
+      from (
+        select candidate_id, count(*) as cnt
+        from public.votes
+        where voter_id::text = p_voter_id
+        group by candidate_id
+      ) sub
+      where c.id = sub.candidate_id;
+
+      delete from public.votes where voter_id::text = p_voter_id;
+      delete from public.voter_sessions where voter_id::text = p_voter_id;
+      update public.voters set has_voted = false, voted_at = null where id::text = p_voter_id;
     else
       raise exception 'Unsupported voter action';
   end case;
@@ -1084,7 +1105,7 @@ begin
 
   if v_session.id is null or not v_session.is_active or v_session.status <> 'active'
      or coalesce(v_session.results_finalized, false)
-     or (v_session.start_date is not null and now() < v_session.start_date)
+     or (coalesce(v_session.schedule_status, '') <> 'ongoing' and v_session.start_date is not null and now() < v_session.start_date)
      or (v_session.end_date is not null and now() >= v_session.end_date) then
     raise exception 'Election is not open for voting';
   end if;
@@ -1120,7 +1141,7 @@ begin
     end if;
   end if;
 
-  if exists (select 1 from public.voter_sessions where voter_id::text = v_voter_id and session_id = p_session_id and has_voted) then
+  if exists (select 1 from public.voter_sessions where voter_id = v_voter.id and session_id = p_session_id and has_voted) then
     raise exception 'You have already voted in this election';
   end if;
 
@@ -1145,12 +1166,21 @@ begin
     end if;
 
     -- Strict Grade Representative Verification
-    if v_position_name ~* '(representative|(^|[^a-z])rep([^a-z]|$))'
-       and jsonb_typeof(v_session.grade_mappings) = 'object' then
-      v_target_grade := v_session.grade_mappings->>v_voter.grade_level;
+    if v_position_name ~* '(representative|(^|[^a-z])rep([^a-z]|$))' then
+      v_target_grade := null;
+      if jsonb_typeof(v_session.grade_mappings) = 'object' then
+        v_target_grade := v_session.grade_mappings->>v_voter.grade_level;
+        if v_target_grade is null and v_voter.grade_level is not null then
+          v_target_grade := v_session.grade_mappings->>regexp_replace(v_voter.grade_level, '[^0-9]', '', 'g');
+        end if;
+      end if;
 
       if v_target_grade = 'none' then
         raise exception 'You are not eligible for a representative position in this election';
+      end if;
+
+      if nullif(v_target_grade, '') is null and v_voter.grade_level is not null then
+        v_target_grade := regexp_replace(v_voter.grade_level, '[^0-9]', '', 'g');
       end if;
 
       if nullif(v_target_grade, '') is not null then

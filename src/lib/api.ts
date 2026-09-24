@@ -184,7 +184,7 @@ function cachedFetch<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promi
 }
 
 // Minimal column projections to eliminate select('*') over-fetching
-const SESSION_COLUMNS = 'id, name, school_year, start_date, end_date, is_active, status, schedule_status, grade_mappings, eligible_grade_levels, eligible_sections, results_finalized, finalized_by, finalized_at, authorization_doc_generated, authorization_confirmed_at, signatories';
+const SESSION_COLUMNS = 'id, name, school_year, start_date, end_date, is_active, status, schedule_status, grade_mappings, eligible_grade_levels, eligible_sections, results_finalized, finalized_by, finalized_at, authorization_doc_generated, authorization_confirmed_at, signatories, created_at';
 const POSITION_COLUMNS = 'id, session_id, name, display_order, max_votes, strict_grade_mapping';
 const SECTION_COLUMNS = 'id, name, grade_level';
 const SYSTEM_SETTINGS_COLUMNS = 'id, current_school_year';
@@ -383,6 +383,21 @@ export const api = {
       throw new Error(error.message);
     }
     clearApiCache('getVoters');
+    return { success: true };
+  },
+
+  resetVoterBallot: async (id: string) => {
+    const { error } = await supabase.rpc('secure_admin_voter_action', {
+      p_token: requireSessionToken('admin'), p_action: 'reset_ballot', p_voter_id: String(id),
+    });
+    if (error) {
+      handleSessionError(error);
+      throw new Error(error.message);
+    }
+    clearApiCache('getVoters');
+    clearApiCache('getVoterSessions');
+    clearApiCache('getVoterSessionStatus');
+    clearApiCache('getCandidates');
     return { success: true };
   },
 
@@ -628,7 +643,7 @@ export const api = {
   // ==================== Positions (Session-Scoped) ====================
   getPositions: async (sessionId?: string) => {
     const key = `getPositions:${sessionId || 'all'}`;
-    return cachedFetch(key, 300000, () =>
+    return cachedFetch(key, 60000, () =>
       withRetry(async () => {
         let query = supabase.from('positions').select(POSITION_COLUMNS).order('display_order', { ascending: true });
         if (sessionId) query = query.eq('session_id', sessionId);
@@ -717,6 +732,7 @@ export const api = {
       clearApiCache('getVoterSessions');
       clearApiCache('getVoterSessionStatus');
       clearApiCache('getCandidates');
+      clearApiCache('getPositions');
       return { success: true };
     } catch (err) {
       handleSessionError(err);
@@ -743,6 +759,8 @@ export const api = {
       clearApiCache('getCandidates');
       clearApiCache('getVoterSessions');
       clearApiCache('getVoterSessionStatus');
+      clearApiCache('getSessions');
+      clearApiCache('getElection');
       return { success: true };
     } catch (err) {
       handleSessionError(err);
@@ -979,11 +997,7 @@ export const api = {
           supabase.rpc('secure_get_audit_data', {
             p_token: requireSessionToken('admin'), p_session_id: Number(sessionId),
           }),
-          supabase
-            .from('voters')
-            .select('id', { count: 'exact', head: true })
-            .eq('status', 'approved')
-            .then(({ count, error }) => (error ? 0 : count || 0)),
+          api.getVoters().then(voters => voters.filter((v: any) => v.status === 'approved').length).catch(() => 0),
         ]);
 
         if (sessionRes.error) {

@@ -81,7 +81,7 @@ export default function LoginPage() {
     }
   }, [election?.id, sessions, showApprovalBanner, voters]);
 
-  const dismissApprovalBanner = () => {
+  const dismissApprovalBanner = useCallback(() => {
     setIsBannerFadingOut(true);
     setTimeout(() => {
       setShowApprovalBanner(false);
@@ -98,7 +98,17 @@ export default function LoginPage() {
         localStorage.setItem(`approval_dismissed_${voter.id}_${sessionId}`, 'true');
       }
     }
-  };
+  }, [election?.id, lrn, sessions, voters]);
+
+  // Show the approval notification for only 3 seconds, then automatically hide it
+  useEffect(() => {
+    if (showApprovalBanner) {
+      const timer = setTimeout(() => {
+        dismissApprovalBanner();
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showApprovalBanner, dismissApprovalBanner]);
 
   // Automatically check approval status on 12-digit LRN or when voters/sessions update (realtime)
   useEffect(() => {
@@ -173,11 +183,17 @@ export default function LoginPage() {
       }
     } catch (error: any) {
       const errMsg = error?.message || '';
+      let displayMsg = errMsg || 'Invalid LRN or password.';
+      if (errMsg.toLowerCase().includes('not approved')) {
+        displayMsg = 'Your registration is still pending administrator approval. Please wait for an admin to approve your account.';
+      } else if (errMsg.toLowerCase().includes('graduated')) {
+        displayMsg = 'This account is recorded as graduated and is not eligible to vote.';
+      } else if (errMsg.toLowerCase().includes('inactive')) {
+        displayMsg = 'Your account is currently inactive. Please contact the election administrator.';
+      }
       toast({
         title: 'Login Failed',
-        description: errMsg.toLowerCase().includes('approved')
-          ? 'Your registration is still pending administrator approval. Please wait for an admin to approve your account.'
-          : (errMsg || 'Invalid LRN or password.'),
+        description: displayMsg,
         variant: 'destructive',
       });
     } finally {

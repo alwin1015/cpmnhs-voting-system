@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { Candidate, Position, Voter, Section, Election, VotingSession, User } from '@/types/voting';
-import { api } from '@/lib/api';
+import { api, clearApiCache } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 import { isEligibleForSession, isSessionOpen, parseStoredJson } from '@/lib/electionRules';
 
@@ -18,7 +18,7 @@ interface VotingContextType {
   sessions: VotingSession[];
   activeSessionId: string | null;
   activeSession: VotingSession | null;
-  switchSession: (id: string) => void;
+  switchSession: (id: string) => Promise<void>;
   createSession: (data: any) => Promise<VotingSession>;
   deleteSession: (id: string) => Promise<void>;
   duplicateSession: (id: string) => Promise<VotingSession>;
@@ -380,6 +380,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   const inFlightRefreshRef = React.useRef<Promise<void> | null>(null);
   const queuedRefreshRef = React.useRef(false);
   const queuedSessionIdRef = React.useRef<string | null | undefined>(undefined);
+  const queuedDeferredListRef = React.useRef<Array<{ resolve: () => void; reject: (err: any) => void }>>([]);
 
   const broadcastChange = useCallback((event: string, payload?: any) => {
     try {
@@ -560,7 +561,9 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       if (overrideSessionId !== undefined) {
         queuedSessionIdRef.current = overrideSessionId;
       }
-      return inFlightRefreshRef.current;
+      return new Promise<void>((resolve, reject) => {
+        queuedDeferredListRef.current.push({ resolve, reject });
+      });
     }
 
     const run = async () => {
@@ -572,7 +575,19 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           queuedRefreshRef.current = false;
           const nextSession = queuedSessionIdRef.current;
           queuedSessionIdRef.current = undefined;
-          refreshData(nextSession).catch(console.error);
+          const deferreds = [...queuedDeferredListRef.current];
+          queuedDeferredListRef.current = [];
+          refreshData(nextSession)
+            .then(() => {
+              deferreds.forEach(d => d.resolve());
+            })
+            .catch((err) => {
+              deferreds.forEach(d => d.reject(err));
+            });
+        } else {
+          const deferreds = [...queuedDeferredListRef.current];
+          queuedDeferredListRef.current = [];
+          deferreds.forEach(d => d.resolve());
         }
       }
     };
@@ -621,14 +636,18 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         })
       );
 
-      const voted = results.filter(r => r.hasVoted).map(r => r.sessionId);
+      let voted = results.filter(r => r.hasVoted).map(r => r.sessionId);
+      try {
+        const stored = JSON.parse(localStorage.getItem(`voted_sessions_${currentUser.id}`) || '[]');
+        if (Array.isArray(stored)) {
+          voted = Array.from(new Set([...voted, ...stored]));
+        }
+      } catch (_) {}
       setVotedSessionIds(voted);
 
       if (activeSessionIdRef.current) {
-        const cur = results.find(r => r.sessionId === activeSessionIdRef.current);
-        if (cur) {
-          setHasVoted(cur.hasVoted);
-        }
+        const isCurrentVoted = voted.includes(activeSessionIdRef.current);
+        setHasVoted(isCurrentVoted);
       }
       return voted;
     } catch (err) {
@@ -717,9 +736,35 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
           const currentUser = userRef.current;
           if (currentUser?.role === 'voter' && activeSessions.length > 0) {
-            // Pick active session voter is assigned to
-            const eligible = activeSessions.find(s => isEligibleForSession(s, currentUser));
-            resolvedSessionId = eligible ? eligible.id : activeSessions[0].id;
+            const eligibleActives = activeSessions.filter((s: VotingSession) => isEligibleForSession(s, currentUser));
+            if (eligibleActives.length > 0) {
+              try {
+                const checks = await Promise.all(
+                  eligibleActives.map(async (s: VotingSession) => {
+                    try {
+                      const st = await api.getVoterSessionStatus(currentUser.id, s.id);
+                      return { id: s.id, hasVoted: Boolean(st.hasVoted) };
+                    } catch {
+                      return { id: s.id, hasVoted: false };
+                    }
+                  })
+                );
+                let voted = checks.filter(c => c.hasVoted).map(c => c.id);
+                try {
+                  const stored = JSON.parse(localStorage.getItem(`voted_sessions_${currentUser.id}`) || '[]');
+                  if (Array.isArray(stored)) {
+                    voted = Array.from(new Set([...voted, ...stored]));
+                  }
+                } catch (_) {}
+                setVotedSessionIds(voted);
+                const unvoted = eligibleActives.find((s: VotingSession) => !voted.includes(s.id));
+                resolvedSessionId = unvoted ? unvoted.id : eligibleActives[0].id;
+              } catch (_) {
+                resolvedSessionId = eligibleActives[0].id;
+              }
+            } else {
+              resolvedSessionId = activeSessions[0].id;
+            }
           } else if (currentUser?.role === 'admin' && savedSessionId && isUserSelected && parsed.some((s: VotingSession) => s.id === savedSessionId)) {
             resolvedSessionId = savedSessionId;
           } else if (currentUser?.role === 'admin' && primarySession) {
@@ -805,15 +850,16 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           return areSessionsEqual(prev, next) ? prev : next;
         });
 
-        // Real-time sequential transition: If this session just launched,
-        // automatically switch active session for students assigned to it or when currently inactive
-        if (updated.isActive && updated.status === 'active') {
+        // Real-time sequential transition: If a DIFFERENT session was newly launched from inactive,
+        // automatically switch active session only for voters whose current session is inactive
+        const wasInactive = !oldRow?.is_active || oldRow?.status !== 'active';
+        if (wasInactive && updated.isActive && updated.status === 'active' && id !== activeSessionIdRef.current) {
           const currentUser = userRef.current;
           const currentSession = sessions.find(s => s.id === activeSessionIdRef.current);
           const isCurrentActive = currentSession?.isActive && currentSession.status === 'active';
 
           const shouldSwitch = currentUser?.role === 'voter'
-            ? isEligibleForSession(updated, currentUser) && (!isCurrentActive || hasVoted)
+            ? isEligibleForSession(updated, currentUser) && !isCurrentActive
             : !isCurrentActive;
 
           if (shouldSwitch) {
@@ -1143,7 +1189,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           try {
             const parsed = JSON.parse(e.newValue);
             if (parsed?.user) {
-              setUser({
+              const u: User = {
                 id: String(parsed.user.id),
                 role: parsed.user.role,
                 name: parsed.user.name,
@@ -1151,8 +1197,34 @@ export function VotingProvider({ children }: { children: ReactNode }) {
                 email: parsed.user.email,
                 gradeLevel: parsed.user.gradeLevel || parsed.user.grade_level,
                 section: parsed.user.section,
-              });
-              setHasVoted(Boolean(parsed.has_voted ?? parsed.hasVoted ?? false));
+              };
+              setUser(u);
+
+              let voted = false;
+              const currentSessId = activeSessionIdRef.current;
+              try {
+                const storedVoted = JSON.parse(localStorage.getItem(`voted_sessions_${u.id}`) || '[]');
+                if (Array.isArray(storedVoted) && currentSessId && storedVoted.includes(currentSessId)) {
+                  voted = true;
+                }
+              } catch (_) {}
+              if (!voted) {
+                voted = Boolean(parsed.has_voted ?? parsed.hasVoted ?? false);
+              }
+              setHasVoted(voted);
+            }
+          } catch (_) {}
+        }
+      } else if (e.key && e.key.startsWith('voted_sessions_')) {
+        const currentUser = userRef.current;
+        if (currentUser && e.key === `voted_sessions_${currentUser.id}`) {
+          try {
+            const votedList = JSON.parse(e.newValue || '[]');
+            if (Array.isArray(votedList)) {
+              setVotedSessionIds(votedList);
+              if (activeSessionIdRef.current && votedList.includes(activeSessionIdRef.current)) {
+                setHasVoted(true);
+              }
             }
           } catch (_) {}
         }
@@ -1199,9 +1271,8 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   }, [activeSessionId]);
 
   // Session management
-  const switchSession = useCallback((id: string) => {
+  const switchSession = useCallback(async (id: string) => {
     if (!id) return;
-    if (activeSessionIdRef.current === id && isDataLoaded) return;
 
     try {
       localStorage.setItem('activeSessionId', id);
@@ -1212,8 +1283,52 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     setActiveSessionId(id);
     setVotes({});
     setHasVoted(false);
-    refreshData(id);
-  }, [refreshData, isDataLoaded]);
+    setCandidates([]);
+    setPositions([]);
+
+    // Invalidate API caches so we fetch fresh data for this specific session
+    clearApiCache('getCandidates');
+    clearApiCache('getPositions');
+    clearApiCache('getVoterSessionStatus');
+    clearApiCache('getVoterSessions');
+
+    // Immediately update election object from sessions if found
+    setSessions(prev => {
+      const s = prev.find(sess => sess.id === id);
+      if (s) {
+        setElection({
+          ...s,
+          totalVoters: voters.filter(v => v.status === 'approved' && isEligibleForSession(s, v)).length,
+          totalVoted: voters.filter(v => v.status === 'approved' && v.hasVoted).length,
+        });
+      }
+      return prev;
+    });
+
+    setIsDataLoaded(false);
+
+    try {
+      await refreshData(id);
+    } finally {
+      setIsDataLoaded(true);
+    }
+
+    // Verify voter status for this target session
+    const currentUser = userRef.current;
+    if (currentUser?.role === 'voter') {
+      try {
+        const st = await api.getVoterSessionStatus(currentUser.id, id);
+        let voted = Boolean(st.hasVoted);
+        try {
+          const stored = JSON.parse(localStorage.getItem(`voted_sessions_${currentUser.id}`) || '[]');
+          if (Array.isArray(stored) && stored.includes(id)) {
+            voted = true;
+          }
+        } catch (_) {}
+        setHasVoted(voted);
+      } catch (_) {}
+    }
+  }, [refreshData, voters]);
 
   const createSessionFn = useCallback(async (data: any): Promise<VotingSession> => {
     const created = await api.createSession(data);
@@ -1358,6 +1473,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           const activeSessions = sessions.filter(s => s.isActive && s.status === 'active');
           const eligibleActives = activeSessions.filter(s => isEligibleForSession(s, voterUser));
           let targetSessionId = activeSessionIdRef.current || '1';
+          let voted: string[] = [];
 
           if (eligibleActives.length > 0) {
             try {
@@ -1371,9 +1487,15 @@ export function VotingProvider({ children }: { children: ReactNode }) {
                   }
                 })
               );
-              const voted = checks.filter((c) => c.hasVoted).map((c) => c.id);
+              voted = checks.filter((c) => c.hasVoted).map((c) => c.id);
+              try {
+                const stored = JSON.parse(localStorage.getItem(`voted_sessions_${voterUser.id}`) || '[]');
+                if (Array.isArray(stored)) {
+                  voted = Array.from(new Set([...voted, ...stored]));
+                }
+              } catch (_) {}
               setVotedSessionIds(voted);
-              const unvoted = checks.find((c) => !c.hasVoted);
+              const unvoted = eligibleActives.find((c) => !voted.includes(c.id));
               targetSessionId = unvoted ? unvoted.id : eligibleActives[0].id;
             } catch (_) {
               targetSessionId = eligibleActives[0].id;
@@ -1388,6 +1510,12 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             try {
               localStorage.setItem('activeSessionId', targetSessionId);
             } catch (_) {}
+          }
+
+          if (eligibleActives.length > 0) {
+            setHasVoted(voted.includes(targetSessionId));
+          } else {
+            setHasVoted(Boolean(data.hasVoted));
           }
 
           await refreshData(targetSessionId);
@@ -1506,7 +1634,8 @@ export function VotingProvider({ children }: { children: ReactNode }) {
 
   const submitVotes = useCallback(async (): Promise<boolean> => {
     if (!user || user.role !== 'voter' || hasVoted || !isDataLoaded || dataError
-      || !isSessionOpen(election) || !isEligibleForSession(election, user)) return false;
+      || !isSessionOpen(election) || !isEligibleForSession(election, user)
+      || (activeSessionId && votedSessionIds.includes(activeSessionId))) return false;
     try {
       const votesArray = Object.entries(votes).map(([positionId, candidateId]) => ({
         candidate_id: candidateId,
@@ -1515,7 +1644,15 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       await api.submitVotes(votesArray, activeSessionId || undefined);
       setHasVoted(true);
       if (activeSessionId) {
-        setVotedSessionIds(prev => Array.from(new Set([...prev, activeSessionId])));
+        setVotedSessionIds(prev => {
+          const next = Array.from(new Set([...prev, activeSessionId]));
+          if (user?.id) {
+            try {
+              localStorage.setItem(`voted_sessions_${user.id}`, JSON.stringify(next));
+            } catch (_) {}
+          }
+          return next;
+        });
       }
       broadcastChange('ballot_submitted', { sessionId: activeSessionId });
       return true;
@@ -1523,7 +1660,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
       console.error('Submit votes failed:', error);
       return false;
     }
-  }, [votes, user, hasVoted, isDataLoaded, dataError, election, activeSessionId, broadcastChange]);
+  }, [votes, user, hasVoted, isDataLoaded, dataError, election, activeSessionId, votedSessionIds, broadcastChange]);
 
   const getResults = useCallback(() => {
     return positions.map((position) => ({

@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Vote, CheckCircle, CheckCircle2, ArrowRight, ArrowLeft, Send, Clock, User, Check, Sparkles } from 'lucide-react';
-import { isEligibleForSession, formatSessionEligibility } from '@/lib/electionRules';
+import { isEligibleForSession, formatSessionEligibility, normalizeGrade } from '@/lib/electionRules';
 import type { VotingSession } from '@/types/voting';
 
 export default function VotingPage() {
@@ -51,7 +51,7 @@ export default function VotingPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Auto-select an active session the voter is eligible for, prioritizing sessions they haven't voted in yet
+  // Auto-select an active session the voter is eligible for if none is selected or current is invalid
   useEffect(() => {
     if (user?.role === 'voter' && sessions.length > 0) {
       const eligibleActives = sessions.filter(
@@ -59,17 +59,19 @@ export default function VotingPage() {
       );
 
       if (eligibleActives.length > 0) {
-        // Prioritize unvoted session
-        const unvoted = eligibleActives.find((s) => !votedSessionIds.includes(s.id));
-        if (unvoted && unvoted.id !== activeSessionId) {
-          switchSession(unvoted.id);
-        } else if (!unvoted && !eligibleActives.some((s) => s.id === activeSessionId)) {
-          // If all completed, select the first eligible session so they view the completion summary
-          switchSession(eligibleActives[0].id);
+        const isCurrentActiveEligible = eligibleActives.some((s) => s.id === activeSessionId);
+        if (!isCurrentActiveEligible) {
+          const unvoted = eligibleActives.find((s) => !votedSessionIds.includes(s.id));
+          switchSession(unvoted ? unvoted.id : eligibleActives[0].id);
         }
       }
     }
   }, [user, sessions, votedSessionIds, activeSessionId, switchSession]);
+
+  // Ensure position index is reset to 0 whenever the active session changes
+  useEffect(() => {
+    setCurrentPositionIndex(0);
+  }, [activeSessionId]);
 
   // Redirect if not logged in or not a voter
   if (!isLoggedIn || user?.role !== 'voter') {
@@ -166,14 +168,15 @@ export default function VotingPage() {
 
   const nextAvailableSession = remainingSessions[0] || null;
 
-  const handleProceedToNextSession = (sessionToOpen: VotingSession) => {
+  const handleProceedToNextSession = async (sessionToOpen: VotingSession) => {
     setJustVoted(false);
     setCurrentPositionIndex(0);
-    switchSession(sessionToOpen.id);
+    await switchSession(sessionToOpen.id);
   };
 
   // Show thank you / confirmation page if voted in this session
-  if (hasVoted) {
+  const isCurrentSessionVoted = hasVoted || (activeSessionId ? votedSessionIds.includes(activeSessionId) : false);
+  if (isCurrentSessionVoted) {
     // If there is another active session assigned to this student that they haven't voted in yet
     if (nextAvailableSession) {
       return (
@@ -186,16 +189,11 @@ export default function VotingPage() {
                   <CheckCircle className="h-8 w-8 stroke-[2.5]" />
                 </div>
 
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold uppercase tracking-wider mb-2">
-                  <Check className="h-3 w-3 stroke-[3]" />
-                  {justVoted ? 'Vote Submitted Successfully' : 'Session Already Voted'}
-                </div>
-
-                <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-1">
-                  {election?.name || 'Election Session Completed'}
+                <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-3 leading-snug">
+                  Your vote has been submitted successfully. Proceed to the next voting session?
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-500 mb-6 leading-relaxed">
-                  Thank you, <strong>{user?.name}</strong>! Your official ballot has been securely counted and recorded.
+                  Thank you, <strong>{user?.name}</strong>! Your ballot for <strong>{election?.name || 'this session'}</strong> has been securely recorded.
                 </p>
 
                 {/* Next Available Session Card Prompt */}
@@ -220,7 +218,7 @@ export default function VotingPage() {
                   </div>
 
                   <p className="text-xs text-slate-500 leading-relaxed pt-1 border-t border-blue-200/60">
-                    You are also authorized to vote in this session. Proceed now to cast your ballot.
+                    You are authorized to vote in this session.
                   </p>
                 </div>
 
@@ -230,7 +228,7 @@ export default function VotingPage() {
                     onClick={() => handleProceedToNextSession(nextAvailableSession)}
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-12 text-sm font-bold shadow-md shadow-blue-600/20 gap-2 transition-all hover:scale-[1.01] active:scale-[0.99]"
                   >
-                    <span>Proceed to {nextAvailableSession.name}</span>
+                    <span>Proceed</span>
                     <ArrowRight className="h-4 w-4" />
                   </Button>
 
@@ -262,7 +260,7 @@ export default function VotingPage() {
       );
     }
 
-    // Otherwise, all assigned sessions have been completed!
+    // Otherwise, all assigned sessions have been completed (or voter has only 1 session)
     return (
       <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-emerald-50/20 to-teal-50/20">
         <Header />
@@ -273,40 +271,12 @@ export default function VotingPage() {
                 <CheckCircle className="h-8 w-8 stroke-[2.5]" />
               </div>
 
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-semibold uppercase tracking-wider mb-2">
-                <Check className="h-3 w-3 stroke-[3]" />
-                All Sessions Completed
-              </div>
-
-              <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-1">
-                Thank You for Voting!
+              <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-2 leading-snug">
+                Your vote has been submitted successfully.
               </h2>
-              <p className="text-xs sm:text-sm text-slate-500 mb-5 leading-relaxed">
-                Great job, <strong>{user?.name}</strong>! You have completed all voting sessions assigned to your grade level and section.
+              <p className="text-xs sm:text-sm text-slate-500 mb-6 leading-relaxed">
+                Thank you, <strong>{user?.name}</strong>! Your official ballot has been securely counted and recorded.
               </p>
-
-              {/* Completed Sessions Checklist */}
-              {eligibleActiveSessions.length > 0 && (
-                <div className="space-y-2 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-left mb-6">
-                  <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    Completed Ballots ({eligibleActiveSessions.length})
-                  </p>
-                  <div className="space-y-1.5 pt-1">
-                    {eligibleActiveSessions.map((s) => (
-                      <div
-                        key={s.id}
-                        className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-xl bg-white border border-slate-100 shadow-2xs"
-                      >
-                        <span className="font-semibold text-slate-800 truncate mr-2">{s.name}</span>
-                        <span className="inline-flex items-center gap-1 text-emerald-700 font-bold text-[11px] bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded-md flex-shrink-0">
-                          <Check className="h-3 w-3 stroke-[3]" />
-                          Voted
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               <div className="space-y-2">
                 <Button
@@ -472,8 +442,10 @@ export default function VotingPage() {
     if (!isRep) return true; // Non-representative positions (President, VP, etc.) are always visible
 
     // If election has gradeMappings configured and voter has a gradeLevel:
-    if (election?.gradeMappings && user?.gradeLevel) {
-      const targetGrade = election.gradeMappings[user.gradeLevel];
+    if (user?.gradeLevel) {
+      const userGrade = normalizeGrade(user.gradeLevel);
+      const targetGrade = (election?.gradeMappings && (election.gradeMappings[user.gradeLevel] || election.gradeMappings[userGrade])) 
+        || userGrade;
 
       // If 'none' is selected, this grade cannot see or vote for any Grade 7–12 Representative
       if (targetGrade === 'none') {
@@ -495,6 +467,13 @@ export default function VotingPage() {
 
     return true;
   });
+
+  // Guard against out-of-bounds position index
+  useEffect(() => {
+    if (votablePositions.length > 0 && currentPositionIndex >= votablePositions.length) {
+      setCurrentPositionIndex(0);
+    }
+  }, [currentPositionIndex, votablePositions.length]);
 
   if (votablePositions.length === 0) {
     return (
@@ -522,13 +501,15 @@ export default function VotingPage() {
   
   let positionCandidates = candidates.filter(c => c.position === currentPosition.id);
   const isRepresentativePosition = /representative|rep\b/i.test(currentPosition.name);
-  if (isRepresentativePosition && election?.gradeMappings && user?.gradeLevel) {
-    const targetGrade = election.gradeMappings[user.gradeLevel];
+  if (isRepresentativePosition && user?.gradeLevel) {
+    const userGrade = normalizeGrade(user.gradeLevel);
+    const targetGrade = (election?.gradeMappings && (election.gradeMappings[user.gradeLevel] || election.gradeMappings[userGrade]))
+      || userGrade;
     if (targetGrade && targetGrade !== 'none') {
       const repGrade = getRepresentativeGrade(currentPosition.name);
       // Only filter candidates by candidate.gradeLevel if the position itself is generic (no grade in position name)
       if (!repGrade) {
-        positionCandidates = positionCandidates.filter(c => c.gradeLevel === targetGrade);
+        positionCandidates = positionCandidates.filter(c => normalizeGrade(c.gradeLevel) === targetGrade);
       }
     }
   }
@@ -538,14 +519,14 @@ export default function VotingPage() {
 
   const handleNext = () => {
     if (currentPositionIndex < votablePositions.length - 1) {
-      setCurrentPositionIndex(currentPositionIndex + 1);
+      setCurrentPositionIndex(prev => prev + 1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
   const handlePrevious = () => {
     if (currentPositionIndex > 0) {
-      setCurrentPositionIndex(currentPositionIndex - 1);
+      setCurrentPositionIndex(prev => prev - 1);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
@@ -697,7 +678,7 @@ export default function VotingPage() {
               Previous
             </Button>
 
-            {currentPositionIndex === votablePositions.length - 1 ? (
+            {currentPositionIndex >= votablePositions.length - 1 ? (
               <Button
                 size="sm"
                 onClick={() => setShowConfirmDialog(true)}

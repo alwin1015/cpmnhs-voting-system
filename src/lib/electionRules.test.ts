@@ -109,4 +109,57 @@ describe('election rules', () => {
     const eligibleG8Emerald = getEligibleActiveSessions(sessionsList, g8EmeraldStudent);
     expect(eligibleG8Emerald.map(s => s.id)).toEqual(['4']);
   });
+
+  it('determines the next unvoted session accurately across multi-session flows', () => {
+    const s1 = session({ id: '1', name: 'General Election', isActive: true, status: 'active', eligibleGradeLevels: [] });
+    const s2 = session({ id: '2', name: 'Grade 8 Rep', isActive: true, status: 'active', eligibleGradeLevels: ['8'] });
+    const s3 = session({ id: '3', name: 'Club Election', isActive: true, status: 'active', eligibleGradeLevels: ['8'] });
+    const sessionsList = [s1, s2, s3];
+    const student = { gradeLevel: '8', section: 'Rizal' };
+
+    const eligible = getEligibleActiveSessions(sessionsList, student);
+    expect(eligible.map(s => s.id)).toEqual(['1', '2', '3']);
+
+    // Case 1: Student has not voted yet (votedSessionIds = [])
+    let votedSessionIds: string[] = [];
+    let remaining = eligible.filter(s => !votedSessionIds.includes(s.id));
+    expect(remaining.map(s => s.id)).toEqual(['1', '2', '3']);
+    let nextAvailable = remaining.find(s => s.id !== '1');
+    expect(nextAvailable?.id).toBe('2');
+
+    // Case 2: Student voted in Session 1
+    votedSessionIds = ['1'];
+    remaining = eligible.filter(s => s.id !== '1' && !votedSessionIds.includes(s.id));
+    expect(remaining.map(s => s.id)).toEqual(['2', '3']);
+    nextAvailable = remaining[0];
+    expect(nextAvailable?.id).toBe('2');
+
+    // Case 3: Student voted in Session 2
+    votedSessionIds = ['1', '2'];
+    remaining = eligible.filter(s => s.id !== '2' && !votedSessionIds.includes(s.id));
+    expect(remaining.map(s => s.id)).toEqual(['3']);
+    nextAvailable = remaining[0];
+    expect(nextAvailable?.id).toBe('3');
+
+    // Case 4: Student finished all assigned sessions
+    votedSessionIds = ['1', '2', '3'];
+    remaining = eligible.filter(s => !votedSessionIds.includes(s.id));
+    expect(remaining.length).toBe(0);
+  });
+
+  it('resolves representative target grade with fallback to student grade level', () => {
+    // When gradeMappings is empty or undefined, fallback to normalized user grade
+    const studentGrade = 'Grade 8';
+    const normalized = normalizeGrade(studentGrade);
+    expect(normalized).toBe('8');
+
+    const emptyMappings: Record<string, string> = {};
+    const targetDefault = emptyMappings[studentGrade] || emptyMappings[normalized] || normalized;
+    expect(targetDefault).toBe('8');
+
+    // When gradeMappings has custom override e.g. 'none'
+    const customMappings: Record<string, string> = { '8': 'none' };
+    const targetOverride = customMappings[studentGrade] || customMappings[normalized] || normalized;
+    expect(targetOverride).toBe('none');
+  });
 });
