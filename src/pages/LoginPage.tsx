@@ -269,10 +269,10 @@ export default function LoginPage() {
       return;
     }
 
-    if (regPassword.length < 6) {
+    if (regPassword.length < 8) {
       toast({
         title: 'Error',
-        description: 'Password must be at least 6 characters.',
+        description: 'Password must be at least 8 characters.',
         variant: 'destructive',
       });
       return;
@@ -306,10 +306,14 @@ export default function LoginPage() {
           setIsBannerFadingOut(false);
           // Mark as shown once so it won't pop up again repeatedly
           localStorage.setItem(`approval_dismissed_${regLrn}`, 'true');
+          toast({
+            title: 'Registration Approved',
+            description: "You've been approved and are ready to vote! Please enter your password to sign in.",
+          });
         } else {
           toast({
-            title: 'Registration Submitted',
-            description: result.message || 'Please wait for admin approval.',
+            title: 'Registration Successful',
+            description: result.message || 'Registration successful. Please wait for admin approval.',
           });
         }
       } else {

@@ -600,14 +600,14 @@ $$;
 
 -- Student Online Registration
 -- Student Online Registration with Pre-approved Masterlist Matching
+drop function if exists public.secure_register_voter(text, text, text, text, text, text, text);
+drop function if exists public.secure_register_voter(text, text, text, text, text);
 create or replace function public.secure_register_voter(
   p_lrn text,
   p_name text,
   p_grade_level text,
   p_section text,
-  p_password text,
-  p_first_name text default null,
-  p_last_name text default null
+  p_password text
 )
 returns jsonb
 language plpgsql
@@ -629,16 +629,15 @@ begin
     raise exception 'LRN must contain exactly 12 digits';
   end if;
 
-  if length(p_password) < 6 then
-    raise exception 'Password must contain at least 6 characters';
+  if length(p_password) < 8 then
+    raise exception 'Password must contain at least 8 characters';
   end if;
 
-  -- Extract or use first and last name
-  v_first := trim(coalesce(nullif(p_first_name, ''), split_part(trim(p_name), ' ', 1)));
-  v_last := trim(coalesce(nullif(p_last_name, ''), 
-              case when strpos(trim(p_name), ' ') > 0 
-                   then substr(trim(p_name), strpos(trim(p_name), ' ') + 1)
-                   else trim(p_name) end));
+  -- Extract first and last name from full name
+  v_first := trim(split_part(trim(p_name), ' ', 1));
+  v_last := trim(case when strpos(trim(p_name), ' ') > 0 
+                      then substr(trim(p_name), strpos(trim(p_name), ' ') + 1)
+                      else trim(p_name) end);
 
   -- Look up existing voter by LRN
   select * into v_existing from public.voters where lrn = v_clean_lrn limit 1;
@@ -698,7 +697,7 @@ begin
     return jsonb_build_object(
       'success', true,
       'autoApproved', false,
-      'message', 'Registration submitted! Please wait for admin approval.'
+      'message', 'Registration successful. Please wait for admin approval.'
     );
   end if;
 end;

@@ -1696,7 +1696,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         return {
           success: data.success ?? true,
           autoApproved: Boolean(data.autoApproved),
-          message: data.message ?? 'Registration submitted! Please wait for admin approval.',
+          message: data.message ?? 'Registration successful. Please wait for admin approval.',
         };
       } catch (error: any) {
         return { success: false, autoApproved: false, message: error.message || 'Registration failed.' };

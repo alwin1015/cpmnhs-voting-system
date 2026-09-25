@@ -274,22 +274,38 @@ export const api = {
       p_grade_level: data.gradeLevel,
       p_section: data.section,
       p_password: data.password,
-      p_first_name: data.firstName || null,
-      p_last_name: data.lastName || null,
     });
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      const msg = error.message || '';
+      if (msg.toLowerCase().includes('already registered')) {
+        throw new Error('This LRN is already registered. Please go to the student login page to sign in.');
+      }
+      throw new Error(msg);
+    }
+
     const resultObj = res as { success?: boolean; autoApproved?: boolean; message?: string } | null;
+    const isAutoApproved = Boolean(resultObj?.autoApproved);
+
     return {
-      success: resultObj?.success ?? true,
-      autoApproved: Boolean(resultObj?.autoApproved),
-      message: resultObj?.message ?? (resultObj?.autoApproved ? "You've been approved and are ready to vote!" : 'Registration submitted! Please wait for admin approval.'),
+      success: true,
+      autoApproved: isAutoApproved,
+      message: resultObj?.message || (isAutoApproved ? "You've been approved and are ready to vote!" : 'Registration successful. Please wait for admin approval.'),
     };
   },
 
   bulkRegister: async (students: any[]) => {
+    const formattedStudents = students.map((s: any) => ({
+      lrn: s.lrn,
+      name: s.name,
+      gradeLevel: s.gradeLevel,
+      section: s.section,
+      password: s.password || `CPMNHS_CSV_${s.lrn}`,
+    }));
+
     const { data: count, error } = await supabase.rpc('secure_bulk_register_voters', {
-      p_token: requireSessionToken('admin'), p_students: students,
+      p_token: requireSessionToken('admin'),
+      p_students: formattedStudents,
     });
     if (error) {
       handleSessionError(error);
