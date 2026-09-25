@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, Rea
 import { Candidate, Position, Voter, Section, Election, VotingSession, User } from '@/types/voting';
 import { api, clearApiCache } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
-import { isEligibleForSession, isSessionOpen, parseStoredJson } from '@/lib/electionRules';
+import { isEligibleForSession, isSessionOpen, parseStoredJson, normalizeGrade } from '@/lib/electionRules';
 
 interface VotingContextType {
   user: User | null;
@@ -59,6 +59,7 @@ interface VotingContextType {
   updateMySection: (voterId: string, newSection: string) => Promise<void>;
   rejectVoter: (id: string) => Promise<boolean>;
   deleteVoter: (id: string) => Promise<boolean>;
+  deleteVoters: (ids: string[]) => Promise<boolean>;
   isInitializing: boolean;
   isDataLoaded: boolean;
   dataError: string | null;
@@ -543,11 +544,14 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             const rawStatus = v.status ?? 'pending';
             const effectiveStatus = getVoterStatusOverride(String(v.id), rawStatus);
 
+            const rawGrade = String(v.grade_level ?? v.gradeLevel ?? '').trim();
+            const normalizedGrade = normalizeGrade(rawGrade) || (rawGrade ? rawGrade.replace(/[^0-9]/g, '') : '') || rawGrade;
+
             return {
               id: String(v.id),
               lrn: v.lrn,
               name: v.name,
-              gradeLevel: v.grade_level ?? v.gradeLevel ?? '',
+              gradeLevel: normalizedGrade,
               section: v.section ?? '',
               hasVoted: vs ? Boolean(vs.has_voted) : false,
               votedAt: vs && vs.voted_at ? new Date(vs.voted_at) : undefined,
@@ -2246,6 +2250,32 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     [broadcastChange, markDeleted]
   );
 
+  const deleteVoters = useCallback(
+    async (ids: string[]): Promise<boolean> => {
+      if (!ids || ids.length === 0) return true;
+      ids.forEach(id => markDeleted(id));
+      const idSet = new Set(ids);
+      const removed = voters.filter(v => idSet.has(v.id));
+      setVoters(prev => prev.filter(v => !idSet.has(v.id)));
+
+      try {
+        for (const id of ids) {
+          await api.deleteVoter(id);
+        }
+        broadcastChange('voters_bulk_deleted', { count: ids.length });
+        return true;
+      } catch (error) {
+        if (removed.length > 0) {
+          ids.forEach(id => deletedIdsRef.current.delete(id));
+          setVoters(prev => [...prev, ...removed]);
+        }
+        console.error('Delete voters failed:', error);
+        return false;
+      }
+    },
+    [voters, broadcastChange, markDeleted]
+  );
+
   return (
     <VotingContext.Provider
       value={{
@@ -2298,6 +2328,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         updateMySection,
         rejectVoter,
         deleteVoter,
+        deleteVoters,
         isInitializing: isInitializing || isCheckingVotingStatus,
         isDataLoaded,
         dataError,

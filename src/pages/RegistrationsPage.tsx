@@ -20,7 +20,10 @@ import {
   AlertCircle,
   Users,
   Check,
-  ArrowRight
+  ArrowRight,
+  Trash2,
+  Square,
+  CheckSquare
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -34,12 +37,13 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useNavigate, Link } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
+import { normalizeGrade } from '@/lib/electionRules';
 import * as XLSX from 'xlsx';
 
 const GRADES = ['7', '8', '9', '10', '11', '12'];
 
 export default function RegistrationsPage() {
-  const { voters, approveVoter, rejectVoter, approveAllVoters, user, isLoggedIn, bulkRegister, sections } = useVoting();
+  const { voters, approveVoter, rejectVoter, deleteVoter, deleteVoters, approveAllVoters, user, isLoggedIn, bulkRegister, sections } = useVoting();
   const navigate = useNavigate();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -49,6 +53,10 @@ export default function RegistrationsPage() {
   const [isApprovingAll, setIsApprovingAll] = useState(false);
   const [showApproveAllDialog, setShowApproveAllDialog] = useState(false);
   const [rejectConfirmId, setRejectConfirmId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGradeTab, setSelectedGradeTab] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'all' | 'approved' | 'pending' | 'rejected'>('all');
@@ -155,6 +163,85 @@ export default function RegistrationsPage() {
       });
     }
     setRejectConfirmId(null);
+  };
+
+  // Individual Student Delete
+  const handleDeleteStudent = async (id: string, name: string) => {
+    setIsDeleting(true);
+    try {
+      const ok = await deleteVoter(id);
+      if (ok) {
+        toast({
+          title: 'Student Deleted',
+          description: `${name} has been removed from the registry.`,
+        });
+        setSelectedStudentIds(prev => prev.filter(sId => sId !== id));
+      } else {
+        toast({
+          title: 'Error',
+          description: 'Failed to delete student.',
+          variant: 'destructive',
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Error',
+        description: err?.message || 'Failed to delete student.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirmId(null);
+    }
+  };
+
+  // Bulk Delete Selected Students
+  const handleBulkDelete = async () => {
+    if (selectedStudentIds.length === 0) return;
+    setIsDeleting(true);
+    try {
+      const count = selectedStudentIds.length;
+      const ok = await deleteVoters(selectedStudentIds);
+      if (ok) {
+        toast({
+          title: 'Students Deleted',
+          description: `Successfully deleted ${count} student(s) from the registry.`,
+        });
+        setSelectedStudentIds([]);
+        setShowBulkDeleteDialog(false);
+      } else {
+        toast({
+          title: 'Error',
+          description: 'Failed to delete selected students.',
+          variant: 'destructive',
+        });
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Error',
+        description: err?.message || 'Failed to delete selected students.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Individual Student Selection Toggle
+  const toggleSelectStudent = (id: string) => {
+    setSelectedStudentIds(prev => 
+      prev.includes(id) ? prev.filter(sId => sId !== id) : [...prev, id]
+    );
+  };
+
+  // Toggle select all students in a section
+  const toggleSelectAllSection = (sectionStudentIds: string[]) => {
+    const allSelected = sectionStudentIds.length > 0 && sectionStudentIds.every(id => selectedStudentIds.includes(id));
+    if (allSelected) {
+      setSelectedStudentIds(prev => prev.filter(id => !sectionStudentIds.includes(id)));
+    } else {
+      setSelectedStudentIds(prev => Array.from(new Set([...prev, ...sectionStudentIds])));
+    }
   };
 
   // Bulk Upload handler (LRN, Full Name, Grade Level, Section - No passwords required)
@@ -513,7 +600,40 @@ export default function RegistrationsPage() {
             </CardContent>
           </Card>
 
-          {/* Grade 7–12 Tables Section for Registrations */}
+          {/* Multi-Selection Bulk Action Bar */}
+          {selectedStudentIds.length > 0 && (
+            <div className="sticky top-20 z-30 mb-6 p-3 sm:p-4 bg-slate-900 text-white rounded-2xl shadow-xl flex items-center justify-between gap-3 animate-slide-up border border-slate-700/80">
+              <div className="flex items-center gap-2 px-2">
+                <span className="w-7 h-7 rounded-lg bg-blue-600 text-white font-extrabold text-xs flex items-center justify-center">
+                  {selectedStudentIds.length}
+                </span>
+                <span className="text-sm font-semibold text-white">
+                  {selectedStudentIds.length} student{selectedStudentIds.length === 1 ? '' : 's'} selected
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSelectedStudentIds([])}
+                  className="text-slate-300 hover:text-white hover:bg-slate-800 text-xs rounded-xl h-9 px-3"
+                >
+                  Clear Selection
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => setShowBulkDeleteDialog(true)}
+                  disabled={isDeleting}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl h-9 px-4 flex items-center gap-1.5 shadow-sm active:scale-95"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {isDeleting ? 'Deleting...' : `Delete Selected (${selectedStudentIds.length})`}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {filteredStudents.length === 0 ? (
             <Card className="bg-white border-slate-200/80 shadow-xs rounded-2xl p-12 text-center">
               <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
@@ -554,8 +674,8 @@ export default function RegistrationsPage() {
           ) : (
             <div className="space-y-8">
               {GRADES.filter(g => selectedGradeTab === 'all' || selectedGradeTab === g).map(grade => {
-                // Students in this grade for current view
-                const gradeStudents = filteredStudents.filter(v => v.gradeLevel === grade);
+                // Students in this grade for current view (normalized so Grade 12 matches 12)
+                const gradeStudents = filteredStudents.filter(v => normalizeGrade(v.gradeLevel) === grade);
 
                 // If no students in this grade matching current filter, skip unless specifically filtered to this grade
                 if (gradeStudents.length === 0 && selectedGradeTab === 'all') {
@@ -563,7 +683,7 @@ export default function RegistrationsPage() {
                 }
 
                 // All unique sections present in this grade's students
-                const gradeDefinedSections = sections.filter(s => s.gradeLevel === grade).map(s => s.name);
+                const gradeDefinedSections = sections.filter(s => normalizeGrade(s.gradeLevel) === grade).map(s => s.name);
                 const studentSections = gradeStudents.map(v => v.section).filter(Boolean);
                 const uniqueSections = [...new Set([...gradeDefinedSections, ...studentSections])].sort();
 
@@ -590,7 +710,25 @@ export default function RegistrationsPage() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {gradeStudents.length > 0 && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const gradeIds = gradeStudents.map(s => s.id);
+                              const allSelected = gradeIds.length > 0 && gradeIds.every(id => selectedStudentIds.includes(id));
+                              if (allSelected) {
+                                setSelectedStudentIds(prev => prev.filter(id => !gradeIds.includes(id)));
+                              } else {
+                                setSelectedStudentIds(prev => Array.from(new Set([...prev, ...gradeIds])));
+                              }
+                            }}
+                            className="bg-white/10 hover:bg-white/20 text-white text-xs h-7 px-2.5 rounded-lg border border-white/20 font-medium"
+                          >
+                            {gradeStudents.every(s => selectedStudentIds.includes(s.id)) ? 'Deselect Grade' : 'Select All in Grade'}
+                          </Button>
+                        )}
                         <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold shadow-xs ${
                           viewMode === 'approved' ? 'bg-emerald-400 text-emerald-950' :
                           viewMode === 'pending' ? 'bg-amber-400 text-amber-950' :
@@ -647,7 +785,16 @@ export default function RegistrationsPage() {
                                 <table className="w-full text-left text-xs sm:text-sm min-w-[540px]">
                                   <thead>
                                     <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                                      <th className="py-2.5 px-3 w-12 text-center">#</th>
+                                      <th className="py-2.5 px-3 w-10 text-center">
+                                        <input
+                                          type="checkbox"
+                                          aria-label="Select all students in this section"
+                                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-3.5 w-3.5"
+                                          checked={sectionStudents.length > 0 && sectionStudents.every(s => selectedStudentIds.includes(s.id))}
+                                          onChange={() => toggleSelectAllSection(sectionStudents.map(s => s.id))}
+                                        />
+                                      </th>
+                                      <th className="py-2.5 px-2 w-10 text-center">#</th>
                                       <th className="py-2.5 px-4">Student Name</th>
                                       <th className="py-2.5 px-4 hidden sm:table-cell">LRN</th>
                                       <th className="py-2.5 px-4 hidden md:table-cell">Grade & Section</th>
@@ -660,9 +807,20 @@ export default function RegistrationsPage() {
                                     {sectionStudents.map((student, idx) => (
                                       <tr 
                                         key={student.id} 
-                                        className="hover:bg-slate-50/70 transition-colors"
+                                        className={`transition-colors ${selectedStudentIds.includes(student.id) ? 'bg-blue-50/70' : 'hover:bg-slate-50/70'}`}
                                       >
-                                        <td className="py-3 px-3 text-center text-slate-400 font-medium text-xs">
+                                        {/* Selection Checkbox */}
+                                        <td className="py-3 px-3 text-center">
+                                          <input
+                                            type="checkbox"
+                                            aria-label={`Select ${student.name}`}
+                                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-3.5 w-3.5"
+                                            checked={selectedStudentIds.includes(student.id)}
+                                            onChange={() => toggleSelectStudent(student.id)}
+                                          />
+                                        </td>
+
+                                        <td className="py-3 px-2 text-center text-slate-400 font-medium text-xs">
                                           {idx + 1}
                                         </td>
                                         
@@ -724,7 +882,7 @@ export default function RegistrationsPage() {
                                           )}
                                         </td>
 
-                                        {/* Actions: Approve & Reject buttons */}
+                                        {/* Actions: Approve, Reject, Delete */}
                                         <td className="py-3 px-4 text-right">
                                           {student.status === 'approved' ? (
                                             <div className="flex items-center justify-end gap-1.5">
@@ -737,7 +895,7 @@ export default function RegistrationsPage() {
                                                   <Button
                                                     size="sm"
                                                     onClick={() => handleReject(student.id, student.name)}
-                                                    className="bg-rose-600 hover:bg-rose-700 text-white h-7 px-2 rounded-lg text-xs font-semibold"
+                                                    className="bg-amber-600 hover:bg-amber-700 text-white h-7 px-2 rounded-lg text-xs font-semibold"
                                                   >
                                                     Confirm
                                                   </Button>
@@ -750,16 +908,48 @@ export default function RegistrationsPage() {
                                                     Cancel
                                                   </Button>
                                                 </div>
+                                              ) : deleteConfirmId === student.id ? (
+                                                <div className="flex items-center gap-1 bg-rose-50 p-1 rounded-lg border border-rose-200 animate-in fade-in">
+                                                  <span className="text-[11px] font-bold text-rose-700">Delete?</span>
+                                                  <Button
+                                                    size="sm"
+                                                    onClick={() => handleDeleteStudent(student.id, student.name)}
+                                                    disabled={isDeleting}
+                                                    className="bg-rose-600 hover:bg-rose-700 text-white h-6 px-2 rounded-md text-[11px] font-bold shadow-xs"
+                                                  >
+                                                    Yes
+                                                  </Button>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() => setDeleteConfirmId(null)}
+                                                    disabled={isDeleting}
+                                                    className="h-6 px-1.5 rounded-md text-[11px] text-slate-600 hover:bg-slate-200"
+                                                  >
+                                                    No
+                                                  </Button>
+                                                </div>
                                               ) : (
-                                                <Button
-                                                  size="sm"
-                                                  variant="ghost"
-                                                  onClick={() => setRejectConfirmId(student.id)}
-                                                  className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 h-7 w-7 p-0 rounded-lg"
-                                                  title="Revoke / Reject"
-                                                >
-                                                  <XCircle className="h-3.5 w-3.5" />
-                                                </Button>
+                                                <div className="flex items-center gap-0.5">
+                                                  <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() => setRejectConfirmId(student.id)}
+                                                    className="text-slate-400 hover:text-amber-600 hover:bg-amber-50 h-7 w-7 p-0 rounded-lg"
+                                                    title="Revoke / Reject"
+                                                  >
+                                                    <XCircle className="h-3.5 w-3.5" />
+                                                  </Button>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() => setDeleteConfirmId(student.id)}
+                                                    className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 h-7 w-7 p-0 rounded-lg transition-colors"
+                                                    title="Delete Student from Registry"
+                                                  >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                  </Button>
+                                                </div>
                                               )}
                                             </div>
                                           ) : student.status === 'pending' ? (
@@ -794,17 +984,49 @@ export default function RegistrationsPage() {
                                                     Cancel
                                                   </Button>
                                                 </div>
+                                              ) : deleteConfirmId === student.id ? (
+                                                <div className="flex items-center gap-1 bg-rose-50 p-1 rounded-lg border border-rose-200 animate-in fade-in">
+                                                  <span className="text-[11px] font-bold text-rose-700">Delete?</span>
+                                                  <Button
+                                                    size="sm"
+                                                    onClick={() => handleDeleteStudent(student.id, student.name)}
+                                                    disabled={isDeleting}
+                                                    className="bg-rose-600 hover:bg-rose-700 text-white h-6 px-2 rounded-md text-[11px] font-bold shadow-xs"
+                                                  >
+                                                    Yes
+                                                  </Button>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() => setDeleteConfirmId(null)}
+                                                    disabled={isDeleting}
+                                                    className="h-6 px-1.5 rounded-md text-[11px] text-slate-600 hover:bg-slate-200"
+                                                  >
+                                                    No
+                                                  </Button>
+                                                </div>
                                               ) : (
-                                                <Button
-                                                  size="sm"
-                                                  variant="ghost"
-                                                  onClick={() => setRejectConfirmId(student.id)}
-                                                  className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 h-8 px-2 rounded-lg text-xs font-medium"
-                                                  title="Reject Registration"
-                                                >
-                                                  <XCircle className="h-3.5 w-3.5 mr-1" />
-                                                  Reject
-                                                </Button>
+                                                <div className="flex items-center gap-0.5">
+                                                  <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() => setRejectConfirmId(student.id)}
+                                                    className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 h-8 px-2 rounded-lg text-xs font-medium"
+                                                    title="Reject Registration"
+                                                  >
+                                                    <XCircle className="h-3.5 w-3.5 mr-1" />
+                                                    Reject
+                                                  </Button>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() => setDeleteConfirmId(student.id)}
+                                                    className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 h-8 w-8 p-0 rounded-lg transition-colors"
+                                                    title="Delete Student from Registry"
+                                                  >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                  </Button>
+                                                </div>
                                               )}
                                             </div>
                                           ) : (
@@ -818,6 +1040,38 @@ export default function RegistrationsPage() {
                                                 <Check className="h-3 w-3 mr-1" />
                                                 Restore
                                               </Button>
+                                              {deleteConfirmId === student.id ? (
+                                                <div className="flex items-center gap-1 bg-rose-50 p-1 rounded-lg border border-rose-200 animate-in fade-in">
+                                                  <span className="text-[11px] font-bold text-rose-700">Delete?</span>
+                                                  <Button
+                                                    size="sm"
+                                                    onClick={() => handleDeleteStudent(student.id, student.name)}
+                                                    disabled={isDeleting}
+                                                    className="bg-rose-600 hover:bg-rose-700 text-white h-6 px-2 rounded-md text-[11px] font-bold shadow-xs"
+                                                  >
+                                                    Yes
+                                                  </Button>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() => setDeleteConfirmId(null)}
+                                                    disabled={isDeleting}
+                                                    className="h-6 px-1.5 rounded-md text-[11px] text-slate-600 hover:bg-slate-200"
+                                                  >
+                                                    No
+                                                  </Button>
+                                                </div>
+                                              ) : (
+                                                <Button
+                                                  size="sm"
+                                                  variant="ghost"
+                                                  onClick={() => setDeleteConfirmId(student.id)}
+                                                  className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 h-7 w-7 p-0 rounded-lg transition-colors"
+                                                  title="Delete Student from Registry"
+                                                >
+                                                  <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                              )}
                                             </div>
                                           )}
                                         </td>
@@ -834,6 +1088,171 @@ export default function RegistrationsPage() {
                   </div>
                 );
               })}
+
+              {/* Fallback Section: Any students whose grade doesn't match standard Grades 7-12 */}
+              {selectedGradeTab === 'all' && (() => {
+                const unclassifiedStudents = filteredStudents.filter(
+                  v => !GRADES.includes(normalizeGrade(v.gradeLevel))
+                );
+                if (unclassifiedStudents.length === 0) return null;
+
+                const unclassifiedIds = unclassifiedStudents.map(s => s.id);
+                const allSelected = unclassifiedIds.length > 0 && unclassifiedIds.every(id => selectedStudentIds.includes(id));
+
+                return (
+                  <div className="bg-white border border-slate-200/80 shadow-xs rounded-2xl overflow-hidden animate-fade-in">
+                    {/* Header */}
+                    <div className="bg-gradient-to-r from-amber-600 to-amber-700 text-white p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-xs border border-white/20 flex items-center justify-center font-extrabold text-lg text-white">
+                          ?
+                        </div>
+                        <div>
+                          <h2 className="text-xl font-bold flex items-center gap-2">
+                            Other / Unclassified Registrations
+                          </h2>
+                          <p className="text-xs text-amber-100/80">
+                            {unclassifiedStudents.length} student{unclassifiedStudents.length === 1 ? '' : 's'} with non-standard grade level
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            if (allSelected) {
+                              setSelectedStudentIds(prev => prev.filter(id => !unclassifiedIds.includes(id)));
+                            } else {
+                              setSelectedStudentIds(prev => Array.from(new Set([...prev, ...unclassifiedIds])));
+                            }
+                          }}
+                          className="bg-white/10 hover:bg-white/20 text-white text-xs h-7 px-2.5 rounded-lg border border-white/20 font-medium"
+                        >
+                          {allSelected ? 'Deselect All' : 'Select All'}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Table */}
+                    <div className="overflow-x-auto bg-white">
+                      <table className="w-full text-left text-xs sm:text-sm min-w-[540px]">
+                        <thead>
+                          <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                            <th className="py-2.5 px-3 w-10 text-center">
+                              <input
+                                type="checkbox"
+                                aria-label="Select all unclassified students"
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-3.5 w-3.5"
+                                checked={allSelected}
+                                onChange={() => {
+                                  if (allSelected) {
+                                    setSelectedStudentIds(prev => prev.filter(id => !unclassifiedIds.includes(id)));
+                                  } else {
+                                    setSelectedStudentIds(prev => Array.from(new Set([...prev, ...unclassifiedIds])));
+                                  }
+                                }}
+                              />
+                            </th>
+                            <th className="py-2.5 px-2 w-10 text-center">#</th>
+                            <th className="py-2.5 px-4">Student Name</th>
+                            <th className="py-2.5 px-4 hidden sm:table-cell">LRN</th>
+                            <th className="py-2.5 px-4 hidden md:table-cell">Grade & Section</th>
+                            <th className="py-2.5 px-4 hidden lg:table-cell">Registration Date</th>
+                            <th className="py-2.5 px-4 text-center">Status</th>
+                            <th className="py-2.5 px-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {unclassifiedStudents.map((student, idx) => (
+                            <tr
+                              key={student.id}
+                              className={`transition-colors ${selectedStudentIds.includes(student.id) ? 'bg-blue-50/70' : 'hover:bg-slate-50/70'}`}
+                            >
+                              <td className="py-3 px-3 text-center">
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Select ${student.name}`}
+                                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-3.5 w-3.5"
+                                  checked={selectedStudentIds.includes(student.id)}
+                                  onChange={() => toggleSelectStudent(student.id)}
+                                />
+                              </td>
+                              <td className="py-3 px-2 text-center text-slate-400 font-medium text-xs">
+                                {idx + 1}
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 bg-amber-50 text-amber-600">
+                                    {student.name.charAt(0).toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-slate-900 leading-tight">
+                                      {student.name}
+                                    </p>
+                                    <p className="text-[11px] text-slate-400">
+                                      Grade: {student.gradeLevel || 'None'} • {student.section || 'No section'}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 font-mono font-medium text-slate-700 hidden sm:table-cell">
+                                {student.lrn || 'N/A'}
+                              </td>
+                              <td className="py-3 px-4 text-slate-600 text-xs hidden md:table-cell">
+                                {student.gradeLevel || 'N/A'} - {student.section || 'Unassigned'}
+                              </td>
+                              <td className="py-3 px-4 text-slate-500 text-xs whitespace-nowrap hidden lg:table-cell">
+                                {formatDate(student.createdAt)}
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                  {student.status}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                {deleteConfirmId === student.id ? (
+                                  <div className="flex items-center justify-end gap-1 bg-rose-50 p-1 rounded-lg border border-rose-200 animate-in fade-in">
+                                    <span className="text-[11px] font-bold text-rose-700">Delete?</span>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleDeleteStudent(student.id, student.name)}
+                                      disabled={isDeleting}
+                                      className="bg-rose-600 hover:bg-rose-700 text-white h-6 px-2 rounded-md text-[11px] font-bold shadow-xs"
+                                    >
+                                      Yes
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => setDeleteConfirmId(null)}
+                                      disabled={isDeleting}
+                                      className="h-6 px-1.5 rounded-md text-[11px] text-slate-600 hover:bg-slate-200"
+                                    >
+                                      No
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setDeleteConfirmId(student.id)}
+                                    className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 h-7 w-7 p-0 rounded-lg transition-colors ml-auto"
+                                    title="Delete Student from Registry"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -841,6 +1260,40 @@ export default function RegistrationsPage() {
       </main>
 
       <Footer />
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+        <AlertDialogContent className="max-w-md rounded-2xl">
+          <AlertDialogHeader className="text-center sm:text-left">
+            <div className="w-12 h-12 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center mb-2 mx-auto sm:mx-0">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <AlertDialogTitle className="text-xl font-bold text-slate-900">
+              Delete Selected Students?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-600 text-sm mt-1.5">
+              Are you sure you want to delete <strong>{selectedStudentIds.length} selected student(s)</strong>?
+              <br /><br />
+              This will permanently remove them from the voter registry and delete any associated voting session records. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="pt-3 gap-2">
+            <AlertDialogCancel disabled={isDeleting} className="rounded-xl">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleBulkDelete();
+              }}
+              disabled={isDeleting || selectedStudentIds.length === 0}
+              className="bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl"
+            >
+              {isDeleting ? 'Deleting...' : `Yes, Delete (${selectedStudentIds.length})`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Approve All Confirmation Dialog */}
       <AlertDialog open={showApproveAllDialog} onOpenChange={setShowApproveAllDialog}>
