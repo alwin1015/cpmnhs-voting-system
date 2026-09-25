@@ -23,7 +23,8 @@ import {
   ArrowRight,
   Trash2,
   Square,
-  CheckSquare
+  CheckSquare,
+  X
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -54,6 +55,7 @@ export default function RegistrationsPage() {
   const [showApproveAllDialog, setShowApproveAllDialog] = useState(false);
   const [rejectConfirmId, setRejectConfirmId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -208,6 +210,7 @@ export default function RegistrationsPage() {
           description: `Successfully deleted ${count} student(s) from the registry.`,
         });
         setSelectedStudentIds([]);
+        setIsSelectionMode(false);
         setShowBulkDeleteDialog(false);
       } else {
         toast({
@@ -225,6 +228,23 @@ export default function RegistrationsPage() {
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  // Select all currently displayed students
+  const handleSelectAllDisplayed = () => {
+    const displayedIds = filteredStudents.map(s => s.id);
+    setSelectedStudentIds(displayedIds);
+  };
+
+  // Deselect all students
+  const handleDeselectAll = () => {
+    setSelectedStudentIds([]);
+  };
+
+  // Cancel/Exit selection mode
+  const handleCancelSelection = () => {
+    setIsSelectionMode(false);
+    setSelectedStudentIds([]);
   };
 
   // Individual Student Selection Toggle
@@ -433,6 +453,37 @@ export default function RegistrationsPage() {
                 <Upload className="h-4 w-4 mr-2 text-slate-500" />
                 {isUploading ? 'Uploading...' : 'Bulk Upload'}
               </Button>
+
+              {/* Select Students Button */}
+              <Button
+                variant={isSelectionMode ? "secondary" : "outline"}
+                onClick={() => {
+                  if (isSelectionMode) {
+                    handleCancelSelection();
+                  } else {
+                    setIsSelectionMode(true);
+                  }
+                }}
+                disabled={filteredStudents.length === 0}
+                className={`h-10 px-4 rounded-xl font-semibold shadow-xs transition-colors flex items-center gap-1.5 ${
+                  isSelectionMode
+                    ? 'bg-slate-800 text-white hover:bg-slate-900 border-slate-800'
+                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                }`}
+                title={isSelectionMode ? 'Cancel Selection' : 'Select students to delete or manage'}
+              >
+                {isSelectionMode ? (
+                  <>
+                    <X className="h-4 w-4 mr-1 text-slate-300" />
+                    Cancel Selection
+                  </>
+                ) : (
+                  <>
+                    <CheckSquare className="h-4 w-4 mr-1 text-blue-600" />
+                    Select
+                  </>
+                )}
+              </Button>
             </div>
           </div>
 
@@ -600,35 +651,75 @@ export default function RegistrationsPage() {
             </CardContent>
           </Card>
 
-          {/* Multi-Selection Bulk Action Bar */}
-          {selectedStudentIds.length > 0 && (
-            <div className="sticky top-20 z-30 mb-6 p-3 sm:p-4 bg-slate-900 text-white rounded-2xl shadow-xl flex items-center justify-between gap-3 animate-slide-up border border-slate-700/80">
-              <div className="flex items-center gap-2 px-2">
-                <span className="w-7 h-7 rounded-lg bg-blue-600 text-white font-extrabold text-xs flex items-center justify-center">
-                  {selectedStudentIds.length}
-                </span>
-                <span className="text-sm font-semibold text-white">
-                  {selectedStudentIds.length} student{selectedStudentIds.length === 1 ? '' : 's'} selected
-                </span>
+          {/* Selection Mode Action Bar (visible only in selection mode) */}
+          {isSelectionMode && (
+            <div className="sticky top-20 z-30 mb-6 p-3.5 sm:p-4 bg-slate-900 text-white rounded-2xl shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-slide-up border border-slate-700/80">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-blue-600/30 border border-blue-500/40 text-blue-400 flex items-center justify-center font-bold">
+                  <CheckSquare className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-white">
+                      Selection Mode
+                    </span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-medium border border-blue-500/30">
+                      {selectedStudentIds.length} of {filteredStudents.length} selected
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Select students to delete or manage in bulk
+                  </p>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                {/* Select All / Deselect All Option */}
+                {selectedStudentIds.length > 0 && selectedStudentIds.length === filteredStudents.length ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleDeselectAll}
+                    className="text-slate-300 hover:text-white hover:bg-slate-800 text-xs rounded-xl h-9 px-3 flex items-center gap-1.5"
+                  >
+                    <Square className="w-3.5 h-3.5" />
+                    Deselect All
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleSelectAllDisplayed}
+                    disabled={filteredStudents.length === 0}
+                    className="bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-100 hover:text-white text-xs rounded-xl h-9 px-3 flex items-center gap-1.5"
+                  >
+                    <CheckSquare className="w-3.5 h-3.5 text-blue-400" />
+                    Select All ({filteredStudents.length})
+                  </Button>
+                )}
+
+                {/* Delete Selected Option - ONLY when at least one student is selected */}
+                {selectedStudentIds.length > 0 && (
+                  <Button
+                    size="sm"
+                    onClick={() => setShowBulkDeleteDialog(true)}
+                    disabled={isDeleting}
+                    className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl h-9 px-4 flex items-center gap-1.5 shadow-sm active:scale-95 animate-in fade-in"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    {isDeleting ? 'Deleting...' : `Delete Selected (${selectedStudentIds.length})`}
+                  </Button>
+                )}
+
+                {/* Cancel Selection */}
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => setSelectedStudentIds([])}
-                  className="text-slate-300 hover:text-white hover:bg-slate-800 text-xs rounded-xl h-9 px-3"
+                  onClick={handleCancelSelection}
+                  className="text-slate-400 hover:text-slate-200 hover:bg-slate-800 text-xs rounded-xl h-9 px-3 flex items-center gap-1"
                 >
-                  Clear Selection
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => setShowBulkDeleteDialog(true)}
-                  disabled={isDeleting}
-                  className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl h-9 px-4 flex items-center gap-1.5 shadow-sm active:scale-95"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  {isDeleting ? 'Deleting...' : `Delete Selected (${selectedStudentIds.length})`}
+                  <X className="w-3.5 h-3.5" />
+                  Cancel
                 </Button>
               </div>
             </div>
@@ -711,7 +802,7 @@ export default function RegistrationsPage() {
                       </div>
 
                       <div className="flex items-center gap-2 flex-wrap">
-                        {gradeStudents.length > 0 && (
+                        {isSelectionMode && gradeStudents.length > 0 && (
                           <Button
                             size="sm"
                             variant="ghost"
@@ -785,15 +876,17 @@ export default function RegistrationsPage() {
                                 <table className="w-full text-left text-xs sm:text-sm min-w-[540px]">
                                   <thead>
                                     <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                                      <th className="py-2.5 px-3 w-10 text-center">
-                                        <input
-                                          type="checkbox"
-                                          aria-label="Select all students in this section"
-                                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-3.5 w-3.5"
-                                          checked={sectionStudents.length > 0 && sectionStudents.every(s => selectedStudentIds.includes(s.id))}
-                                          onChange={() => toggleSelectAllSection(sectionStudents.map(s => s.id))}
-                                        />
-                                      </th>
+                                      {isSelectionMode && (
+                                        <th className="py-2.5 px-3 w-10 text-center">
+                                          <input
+                                            type="checkbox"
+                                            aria-label="Select all students in this section"
+                                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-3.5 w-3.5"
+                                            checked={sectionStudents.length > 0 && sectionStudents.every(s => selectedStudentIds.includes(s.id))}
+                                            onChange={() => toggleSelectAllSection(sectionStudents.map(s => s.id))}
+                                          />
+                                        </th>
+                                      )}
                                       <th className="py-2.5 px-2 w-10 text-center">#</th>
                                       <th className="py-2.5 px-4">Student Name</th>
                                       <th className="py-2.5 px-4 hidden sm:table-cell">LRN</th>
@@ -807,18 +900,20 @@ export default function RegistrationsPage() {
                                     {sectionStudents.map((student, idx) => (
                                       <tr 
                                         key={student.id} 
-                                        className={`transition-colors ${selectedStudentIds.includes(student.id) ? 'bg-blue-50/70' : 'hover:bg-slate-50/70'}`}
+                                        className={`transition-colors ${isSelectionMode && selectedStudentIds.includes(student.id) ? 'bg-blue-50/70' : 'hover:bg-slate-50/70'}`}
                                       >
-                                        {/* Selection Checkbox */}
-                                        <td className="py-3 px-3 text-center">
-                                          <input
-                                            type="checkbox"
-                                            aria-label={`Select ${student.name}`}
-                                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-3.5 w-3.5"
-                                            checked={selectedStudentIds.includes(student.id)}
-                                            onChange={() => toggleSelectStudent(student.id)}
-                                          />
-                                        </td>
+                                        {/* Selection Checkbox (visible only in selection mode) */}
+                                        {isSelectionMode && (
+                                          <td className="py-3 px-3 text-center">
+                                            <input
+                                              type="checkbox"
+                                              aria-label={`Select ${student.name}`}
+                                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-3.5 w-3.5"
+                                              checked={selectedStudentIds.includes(student.id)}
+                                              onChange={() => toggleSelectStudent(student.id)}
+                                            />
+                                          </td>
+                                        )}
 
                                         <td className="py-3 px-2 text-center text-slate-400 font-medium text-xs">
                                           {idx + 1}
@@ -886,10 +981,6 @@ export default function RegistrationsPage() {
                                         <td className="py-3 px-4 text-right">
                                           {student.status === 'approved' ? (
                                             <div className="flex items-center justify-end gap-1.5">
-                                              <span className="inline-flex items-center text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-                                                <Check className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-                                                Approved
-                                              </span>
                                               {rejectConfirmId === student.id ? (
                                                 <div className="flex items-center gap-1">
                                                   <Button
@@ -1118,20 +1209,22 @@ export default function RegistrationsPage() {
                       </div>
 
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            if (allSelected) {
-                              setSelectedStudentIds(prev => prev.filter(id => !unclassifiedIds.includes(id)));
-                            } else {
-                              setSelectedStudentIds(prev => Array.from(new Set([...prev, ...unclassifiedIds])));
-                            }
-                          }}
-                          className="bg-white/10 hover:bg-white/20 text-white text-xs h-7 px-2.5 rounded-lg border border-white/20 font-medium"
-                        >
-                          {allSelected ? 'Deselect All' : 'Select All'}
-                        </Button>
+                        {isSelectionMode && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              if (allSelected) {
+                                setSelectedStudentIds(prev => prev.filter(id => !unclassifiedIds.includes(id)));
+                              } else {
+                                setSelectedStudentIds(prev => Array.from(new Set([...prev, ...unclassifiedIds])));
+                              }
+                            }}
+                            className="bg-white/10 hover:bg-white/20 text-white text-xs h-7 px-2.5 rounded-lg border border-white/20 font-medium"
+                          >
+                            {allSelected ? 'Deselect All' : 'Select All'}
+                          </Button>
+                        )}
                       </div>
                     </div>
 
@@ -1140,21 +1233,23 @@ export default function RegistrationsPage() {
                       <table className="w-full text-left text-xs sm:text-sm min-w-[540px]">
                         <thead>
                           <tr className="border-b border-slate-100 bg-slate-50/50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                            <th className="py-2.5 px-3 w-10 text-center">
-                              <input
-                                type="checkbox"
-                                aria-label="Select all unclassified students"
-                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-3.5 w-3.5"
-                                checked={allSelected}
-                                onChange={() => {
-                                  if (allSelected) {
-                                    setSelectedStudentIds(prev => prev.filter(id => !unclassifiedIds.includes(id)));
-                                  } else {
-                                    setSelectedStudentIds(prev => Array.from(new Set([...prev, ...unclassifiedIds])));
-                                  }
-                                }}
-                              />
-                            </th>
+                            {isSelectionMode && (
+                              <th className="py-2.5 px-3 w-10 text-center">
+                                <input
+                                  type="checkbox"
+                                  aria-label="Select all unclassified students"
+                                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-3.5 w-3.5"
+                                  checked={allSelected}
+                                  onChange={() => {
+                                    if (allSelected) {
+                                      setSelectedStudentIds(prev => prev.filter(id => !unclassifiedIds.includes(id)));
+                                    } else {
+                                      setSelectedStudentIds(prev => Array.from(new Set([...prev, ...unclassifiedIds])));
+                                    }
+                                  }}
+                                />
+                              </th>
+                            )}
                             <th className="py-2.5 px-2 w-10 text-center">#</th>
                             <th className="py-2.5 px-4">Student Name</th>
                             <th className="py-2.5 px-4 hidden sm:table-cell">LRN</th>
@@ -1168,17 +1263,19 @@ export default function RegistrationsPage() {
                           {unclassifiedStudents.map((student, idx) => (
                             <tr
                               key={student.id}
-                              className={`transition-colors ${selectedStudentIds.includes(student.id) ? 'bg-blue-50/70' : 'hover:bg-slate-50/70'}`}
+                              className={`transition-colors ${isSelectionMode && selectedStudentIds.includes(student.id) ? 'bg-blue-50/70' : 'hover:bg-slate-50/70'}`}
                             >
-                              <td className="py-3 px-3 text-center">
-                                <input
-                                  type="checkbox"
-                                  aria-label={`Select ${student.name}`}
-                                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-3.5 w-3.5"
-                                  checked={selectedStudentIds.includes(student.id)}
-                                  onChange={() => toggleSelectStudent(student.id)}
-                                />
-                              </td>
+                              {isSelectionMode && (
+                                <td className="py-3 px-3 text-center">
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`Select ${student.name}`}
+                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-3.5 w-3.5"
+                                    checked={selectedStudentIds.includes(student.id)}
+                                    onChange={() => toggleSelectStudent(student.id)}
+                                  />
+                                </td>
+                              )}
                               <td className="py-3 px-2 text-center text-slate-400 font-medium text-xs">
                                 {idx + 1}
                               </td>
@@ -1207,9 +1304,22 @@ export default function RegistrationsPage() {
                                 {formatDate(student.createdAt)}
                               </td>
                               <td className="py-3 px-4 text-center">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                                  {student.status}
-                                </span>
+                                {student.status === 'approved' ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    Approved
+                                  </span>
+                                ) : student.status === 'pending' ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    Pending
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                    <XCircle className="w-3.5 h-3.5" />
+                                    Rejected
+                                  </span>
+                                )}
                               </td>
                               <td className="py-3 px-4 text-right">
                                 {deleteConfirmId === student.id ? (
