@@ -1718,6 +1718,13 @@ begin
     ) then
       alter publication supabase_realtime add table public.system_settings;
     end if;
+
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'candidates'
+    ) then
+      alter publication supabase_realtime add table public.candidates;
+    end if;
   end if;
 end $$;
 

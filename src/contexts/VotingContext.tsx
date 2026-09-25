@@ -148,6 +148,8 @@ function areSessionsEqual(a: VotingSession[], b: VotingSession[]): boolean {
       s1.status !== s2.status ||
       s1.scheduleStatus !== s2.scheduleStatus ||
       s1.resultsFinalized !== s2.resultsFinalized ||
+      s1.totalVoted !== s2.totalVoted ||
+      s1.totalVoters !== s2.totalVoters ||
       s1.startDate?.getTime() !== s2.startDate?.getTime() ||
       s1.endDate?.getTime() !== s2.endDate?.getTime() ||
       JSON.stringify(s1.gradeMappings || {}) !== JSON.stringify(s2.gradeMappings || {}) ||
@@ -400,6 +402,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
   const queuedRefreshRef = React.useRef(false);
   const queuedSessionIdRef = React.useRef<string | null | undefined>(undefined);
   const queuedDeferredListRef = React.useRef<Array<{ resolve: () => void; reject: (err: any) => void }>>([]);
+  const processedVotesRef = React.useRef(new Set<string>());
 
   const broadcastChange = useCallback((event: string, payload?: any) => {
     try {
@@ -623,10 +626,20 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     if (activeSessionId) {
       const s = sessions.find(s => s.id === activeSessionId);
       if (s) {
+        const approvedVoters = voters.filter(v => v.status === 'approved');
+        const eligibleCount = approvedVoters.filter(v => isEligibleForSession(s, v)).length;
+        const votedCountFromVoters = approvedVoters.filter(v => v.hasVoted).length;
+        const effectiveTotalVoted = s.totalVoted !== undefined
+          ? Math.max(s.totalVoted, votedCountFromVoters)
+          : votedCountFromVoters;
+        const effectiveTotalVoters = s.totalVoters !== undefined
+          ? Math.max(s.totalVoters, eligibleCount)
+          : eligibleCount;
+
         const nextElection: Election = {
           ...s,
-          totalVoters: voters.filter(v => v.status === 'approved' && isEligibleForSession(s, v)).length,
-          totalVoted: voters.filter(v => v.status === 'approved' && v.hasVoted).length,
+          totalVoters: effectiveTotalVoters,
+          totalVoted: effectiveTotalVoted,
         };
         setElection(prev => areElectionsEqual(prev, nextElection) ? prev : nextElection);
       } else {
@@ -1045,7 +1058,17 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         const newRow = payload?.new;
         if (newRow?.session_id) {
           const sId = String(newRow.session_id);
-          setSessions(prev => prev.map(s => s.id === sId ? { ...s, totalVoted: (s.totalVoted ?? 0) + 1 } : s));
+          const vId = newRow.voter_id ? String(newRow.voter_id) : '';
+          const dedupeKey = `${sId}:${vId}`;
+          if (vId && processedVotesRef.current.has(dedupeKey)) return;
+          if (vId) {
+            processedVotesRef.current.add(dedupeKey);
+            setTimeout(() => { processedVotesRef.current.delete(dedupeKey); }, 15000);
+          }
+          setSessions(prev => {
+            const next = prev.map(s => s.id === sId ? { ...s, totalVoted: (s.totalVoted ?? 0) + 1 } : s);
+            return areSessionsEqual(prev, next) ? prev : next;
+          });
           if (sId === activeSessionIdRef.current) {
             setElection(prev => prev ? { ...prev, totalVoted: (prev.totalVoted ?? 0) + 1 } : null);
           }
@@ -1092,6 +1115,7 @@ export function VotingProvider({ children }: { children: ReactNode }) {
             return [...prev, p.candidate];
           });
         } else if (p.event === 'candidate_updated' && p.id && p.updates) {
+          if (p.sessionId && activeSessionIdRef.current && p.sessionId !== activeSessionIdRef.current) return;
           setCandidates(prev => prev.map(c => c.id === p.id ? { ...c, ...p.updates } : c));
         } else if (p.event === 'candidate_deleted' && p.id) {
           markDeleted(p.id);
@@ -1126,8 +1150,46 @@ export function VotingProvider({ children }: { children: ReactNode }) {
         } else if (p.event === 'session_deleted' && p.id) {
           markDeleted(p.id);
           setSessions(prev => prev.filter(s => s.id !== p.id));
-        } else if (p.event === 'session_reset') {
-          if (p.sessionId === activeSessionIdRef.current) {
+        } else if (p.event === 'session_launched' && p.sessionId) {
+          const sId = String(p.sessionId);
+          setSessions(prev => {
+            const next = prev.map(s => s.id === sId ? { ...s, isActive: true, status: 'active' as const, scheduleStatus: 'ongoing' as const } : s);
+            return areSessionsEqual(prev, next) ? prev : next;
+          });
+          if (sId === activeSessionIdRef.current) {
+            setElection(prev => prev ? { ...prev, isActive: true, status: 'active', scheduleStatus: 'ongoing' } : null);
+          }
+          const currentUser = userRef.current;
+          if (currentUser?.role === 'voter' && sId !== activeSessionIdRef.current) {
+            const currentSession = sessionsRef.current.find(s => s.id === activeSessionIdRef.current);
+            const isCurrentActive = currentSession?.isActive && currentSession.status === 'active';
+            const launched = sessionsRef.current.find(s => s.id === sId);
+            if (!isCurrentActive && launched && isEligibleForSession(launched, currentUser)) {
+              activeSessionIdRef.current = sId;
+              setActiveSessionId(sId);
+              setVotes({});
+              setHasVoted(false);
+              try { localStorage.setItem('activeSessionId', sId); } catch (_) {}
+              refreshData(sId).catch(console.error);
+            }
+          }
+        } else if (p.event === 'session_closed' && p.sessionId) {
+          const sId = String(p.sessionId);
+          setSessions(prev => {
+            const next = prev.map(s => s.id === sId ? { ...s, isActive: false, status: 'completed' as const, scheduleStatus: 'completed' as const } : s);
+            return areSessionsEqual(prev, next) ? prev : next;
+          });
+          if (sId === activeSessionIdRef.current) {
+            setElection(prev => prev ? { ...prev, isActive: false, status: 'completed', scheduleStatus: 'completed' } : null);
+          }
+        } else if (p.event === 'session_reset' && p.sessionId) {
+          const sId = String(p.sessionId);
+          setSessions(prev => {
+            const next = prev.map(s => s.id === sId ? { ...s, totalVoted: 0 } : s);
+            return areSessionsEqual(prev, next) ? prev : next;
+          });
+          if (sId === activeSessionIdRef.current) {
+            setElection(prev => prev ? { ...prev, totalVoted: 0 } : null);
             setCandidates(prev => prev.map(c => ({ ...c, votes: 0 })));
             setVoters(prev => prev.map(v => ({ ...v, hasVoted: false, votedAt: undefined })));
           }
@@ -1156,16 +1218,47 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           }
         } else if (p.event === 'ballot_submitted') {
           // Update admin turnout counters and candidate vote counts in real time
-          if (userRef.current?.role === 'admin' && p.sessionId) {
-            const sId = String(p.sessionId);
-            setSessions(prev => prev.map(s => s.id === sId ? { ...s, totalVoted: (s.totalVoted ?? 0) + 1 } : s));
-            if (sId === activeSessionIdRef.current) {
-              setElection(prev => prev ? { ...prev, totalVoted: (prev.totalVoted ?? 0) + 1 } : null);
-              clearApiCache('getCandidates');
-              api.getCandidates(sId).then(fresh => {
-                if (Array.isArray(fresh) && isMounted) {
+          const sId = p.sessionId ? String(p.sessionId) : null;
+          if (sId) {
+            // Unconditionally clear candidate, voter session, and session caches
+            clearApiCache(`getCandidates:${sId}`);
+            clearApiCache('getCandidates');
+            clearApiCache(`getVoterSessions:${sId}`);
+            clearApiCache('getVoterSessions');
+            clearApiCache('getSessions');
+
+            if (userRef.current?.role === 'admin') {
+              const vId = p.voterId ? String(p.voterId) : '';
+              const dedupeKey = `${sId}:${vId}`;
+              if (vId && processedVotesRef.current.has(dedupeKey)) return;
+              if (vId) {
+                processedVotesRef.current.add(dedupeKey);
+                setTimeout(() => { processedVotesRef.current.delete(dedupeKey); }, 15000);
+              }
+
+              // 1. Update session turnout counter across ALL sessions
+              setSessions(prev => {
+                const next = prev.map(s => s.id === sId ? { ...s, totalVoted: (s.totalVoted ?? 0) + 1 } : s);
+                return areSessionsEqual(prev, next) ? prev : next;
+              });
+
+              // 2. If viewing this session, update active election turnout immediately
+              if (sId === activeSessionIdRef.current) {
+                setElection(prev => prev ? { ...prev, totalVoted: (prev.totalVoted ?? 0) + 1 } : null);
+
+                // 3. Immediately apply optimistic vote increments to candidates (0ms visual update)
+                if (Array.isArray(p.votedCandidateIds) && p.votedCandidateIds.length > 0) {
+                  const votedSet = new Set(p.votedCandidateIds.map(String));
                   setCandidates(prev => {
-                    const mapped = fresh.map(c => ({
+                    const next = prev.map(c => votedSet.has(c.id) ? { ...c, votes: (c.votes || 0) + 1 } : c);
+                    return areCandidatesEqual(prev, next) ? prev : next;
+                  });
+                }
+
+                // 4. Fetch authoritative counts from DB and reconcile
+                api.getCandidates(sId).then(fresh => {
+                  if (Array.isArray(fresh) && isMounted) {
+                    const mapped = fresh.map((c: any) => ({
                       id: String(c.id),
                       name: c.name,
                       position: String(c.position_id ?? c.position),
@@ -1177,34 +1270,74 @@ export function VotingProvider({ children }: { children: ReactNode }) {
                       votes: Number(c.votes ?? 0),
                       sessionId: String(c.session_id ?? sId),
                     }));
-                    return areCandidatesEqual(prev, mapped) ? prev : mapped;
-                  });
-                }
-              }).catch(() => {});
+                    setCandidates(prev => areCandidatesEqual(prev, mapped) ? prev : mapped);
+                  }
+                }).catch(() => {});
+              }
+
+              // 5. If voterId is present, mark that voter as having voted
+              if (p.voterId) {
+                const vId = String(p.voterId);
+                setVoters(prev => {
+                  const next = prev.map(v => v.id === vId ? { ...v, hasVoted: true, votedAt: new Date() } : v);
+                  return areVotersEqual(prev, next) ? prev : next;
+                });
+              }
             }
           }
-          // Students / voters do not need to refresh anything
         } else {
           // Only perform single-flight refresh for unhandled / global actions
           refreshData().catch(console.error);
         }
       })
-      .subscribe((status: string) => {
+      .subscribe((status: string, err?: any) => {
         if (!isMounted) return;
         if (status === 'SUBSCRIBED') {
           // Channel connected or reconnected after a network blip; immediately sync latest data
           refreshData().catch(console.error);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn(`Supabase Realtime status: ${status}`, err);
+          setTimeout(() => {
+            if (isMounted && realtimeChannelRef.current) {
+              try {
+                realtimeChannelRef.current.subscribe();
+              } catch (_) {}
+            }
+          }, 3000);
         }
       });
 
     realtimeChannelRef.current = channel;
 
-    // Slow safety-net poll (5 mins): Realtime WebSocket already delivers instant push updates.
+    // Safety-net poll: 5 mins for voters, 6s adaptive poll for admin on active election results
     const pollInterval = setInterval(() => {
       if (isMounted && typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        refreshData();
+        if (userRef.current?.role === 'admin' && activeSessionIdRef.current) {
+          const sId = activeSessionIdRef.current;
+          clearApiCache(`getCandidates:${sId}`);
+          clearApiCache('getCandidates');
+          api.getCandidates(sId).then(fresh => {
+            if (Array.isArray(fresh) && isMounted) {
+              const mapped = fresh.map((c: any) => ({
+                id: String(c.id),
+                name: c.name,
+                position: String(c.position_id ?? c.position),
+                party: c.party ?? '',
+                photo: c.photo_url ?? c.photo ?? '',
+                motto: c.motto ?? '',
+                gradeLevel: c.grade_level ?? c.gradeLevel ?? '',
+                section: c.section ?? '',
+                votes: Number(c.votes ?? 0),
+                sessionId: String(c.session_id ?? sId),
+              }));
+              setCandidates(prev => areCandidatesEqual(prev, mapped) ? prev : mapped);
+            }
+          }).catch(() => {});
+        } else {
+          refreshData();
+        }
       }
-    }, 300000);
+    }, userRef.current?.role === 'admin' ? 6000 : 300000);
 
     // Throttled visibility/focus sync (max once every 2 minutes) to prevent egress exhaustion from tab switching
     let lastVisibilitySync = Date.now();
@@ -1333,10 +1466,20 @@ export function VotingProvider({ children }: { children: ReactNode }) {
     const targetSession = sessionsRef.current.find(sess => sess.id === id);
     if (targetSession) {
       const vList = votersRef.current || [];
+      const approvedList = vList.filter(v => v.status === 'approved');
+      const eligibleCount = approvedList.filter(v => isEligibleForSession(targetSession, v)).length;
+      const votedCount = approvedList.filter(v => v.hasVoted).length;
+      const effectiveTotalVoted = targetSession.totalVoted !== undefined
+        ? Math.max(targetSession.totalVoted, votedCount)
+        : votedCount;
+      const effectiveTotalVoters = targetSession.totalVoters !== undefined
+        ? Math.max(targetSession.totalVoters, eligibleCount)
+        : eligibleCount;
+
       setElection({
         ...targetSession,
-        totalVoters: vList.filter(v => v.status === 'approved' && isEligibleForSession(targetSession, v)).length,
-        totalVoted: vList.filter(v => v.status === 'approved' && v.hasVoted).length,
+        totalVoters: effectiveTotalVoters,
+        totalVoted: effectiveTotalVoted,
       });
     }
 
@@ -1792,7 +1935,12 @@ export function VotingProvider({ children }: { children: ReactNode }) {
           return next;
         });
       }
-      broadcastChange('ballot_submitted', { sessionId: activeSessionId });
+      const votedCandidateIds = votesArray.map(v => String(v.candidate_id));
+      broadcastChange('ballot_submitted', {
+        sessionId: activeSessionId,
+        votedCandidateIds,
+        voterId: user?.id,
+      });
       return true;
     } catch (error) {
       console.error('Submit votes failed:', error);
